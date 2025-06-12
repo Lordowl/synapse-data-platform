@@ -1,20 +1,23 @@
-// src/components/Login.jsx (MODIFICATO)
+// src/components/Login.jsx
 
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom"; // <-- IMPORTANTE: Importa l'hook useNavigate
 import apiClient from "../api/apiClient";
 import "./Login.css";
 
 function Login({ setIsAuthenticated }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState(""); // Usiamo uno stato per l'errore per mostrarlo nella UI
-  const [loading, setLoading] = useState(false); // Stato di caricamento per disabilitare il pulsante
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // Inizializza l'hook per poterlo usare dopo
+  const navigate = useNavigate();
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setError(""); // Pulisce l'errore precedente
-    setLoading(true); // Inizia il caricamento
+    setError("");
+    setLoading(true);
 
     const formData = new URLSearchParams();
     formData.append('username', username);
@@ -28,25 +31,27 @@ function Login({ setIsAuthenticated }) {
       const token = response.data.access_token;
       localStorage.setItem("accessToken", token);
       setIsAuthenticated(true);
-      navigate("/home");
+      
+      // Ora questa chiamata funzionerà e reindirizzerà l'utente
+      // Nota: nel tuo App.jsx la rotta per la Home è "/dashboard"
+      navigate("/dashboard"); 
 
     } catch (err) {
-      console.error("Login Error:", err); // Logghiamo l'errore completo per il debug
+      console.error("Login Error:", err);
 
-      // --- QUI C'È LA NUOVA LOGICA DI GESTIONE ERRORI ---
+      // Logica robusta per la gestione degli errori
       if (err.response) {
-        // Il server ha risposto con un codice di errore (es. 401, 404)
-        // Solitamente un errore di credenziali
+        // Il server ha risposto (es. 401 Unauthorized)
         setError(err.response.data.detail || "Username o password non validi.");
       } else if (err.request) {
-        // La richiesta è stata fatta ma non c'è stata risposta (server spento o irraggiungibile)
-        setError("Impossibile connettersi al server");
+        // La richiesta è partita ma non c'è stata risposta (server spento)
+        setError("Impossibile connettersi al server. Verificare che sia attivo.");
       } else {
-        // Errore generico (es. errore nella configurazione della richiesta)
+        // Qualsiasi altro errore
         setError("Si è verificato un errore imprevisto.");
       }
     } finally {
-        setLoading(false); // Fine del caricamento, in ogni caso
+      setLoading(false);
     }
   };
 
@@ -61,7 +66,7 @@ function Login({ setIsAuthenticated }) {
           id="username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          disabled={loading} // Disabilita durante il caricamento
+          disabled={loading}
         />
         <label>Password</label>
         <input
@@ -70,14 +75,14 @@ function Login({ setIsAuthenticated }) {
           id="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          disabled={loading} // Disabilita durante il caricamento
+          disabled={loading}
         />
         
-        {/* Mostra il messaggio di errore se presente */}
+        {/* Mostra il messaggio di errore nella UI */}
         {error && <p className="error-message">{error}</p>}
 
         <button type="submit" disabled={loading}>
-            {loading ? 'Accesso in corso...' : 'Login'}
+          {loading ? 'Accesso in corso...' : 'Login'}
         </button>
       </form>
     </div>

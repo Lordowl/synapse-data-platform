@@ -1,7 +1,7 @@
 # my_fastapi_backend/db/schemas.py
 
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional,List
 
 # --- Schemi per l'Utente ---
 
@@ -15,16 +15,15 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
     role: str = "user"
-
+    permissions: Optional[List[str]] = []
 # Schema per la lettura dei dati di un utente dall'API
 # Non deve mai includere la password!
 class UserInDB(UserBase):
     id: int
     role: str
     is_active: bool
+    permissions: List[str] # Aggiungiamo il campo alla risposta
 
-    # Configurazione per dire a Pydantic di leggere i dati
-    # anche se non sono un dizionario (es. un oggetto ORM)
     class Config:
         from_attributes = True
 
@@ -38,3 +37,9 @@ class Token(BaseModel):
 # Schema per i dati contenuti nel payload del token JWT
 class TokenData(BaseModel):
     username: Optional[str] = None
+
+class UserUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    role: Optional[str] = None
+    permissions: Optional[List[str]] = None
+    is_active: Optional[bool] = None

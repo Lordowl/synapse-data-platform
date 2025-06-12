@@ -683,20 +683,16 @@ function Settings() {
 
         // 2. SE l'utente è un admin, carica la lista degli altri utenti
         if (user && user.role === "admin") {
-          const permissionsResponse = await apiClient.get("/users/");
+          const permissionsResponse = await apiClient.get('/users/all'); 
 
           // 3. Trasforma i dati dell'API nel formato che il componente si aspetta
-          const formattedPermissions = permissionsResponse.data.map(
-            (dbUser) => ({
-              id: dbUser.id,
-              user: dbUser.email || dbUser.username, // Usa l'email, o lo username se l'email manca
-              role: dbUser.role,
-              accessTo: [], // Lasciamo vuoto per ora, non abbiamo ancora questi dati nel DB
-            })
-          );
-
-          // 4. Salva i dati reali nello stato
-          setPermissions(formattedPermissions);
+          const formattedPermissions = permissionsResponse.data.map(dbUser => ({
+            id: dbUser.id,
+            user: dbUser.email || dbUser.username,
+            role: dbUser.role,
+            accessTo: dbUser.permissions || [], // <<--- ORA USIAMO I PERMESSI REALI
+        }));
+        setPermissions(formattedPermissions);
         }
       } catch (error) {
         console.error("Errore nel caricamento dei dati iniziali:", error);
@@ -770,16 +766,68 @@ function Settings() {
     /* ... la tua logica ... */
   };
   const handlePermissionChange = (id, field, valueOrUpdater) => {
-    /* ... la tua logica ... */
+    setPermissions(prevPermissions =>
+      prevPermissions.map(p => {
+        if (p.id === id) {
+          // Se il valore è una funzione (come nel nostro caso per accessTo), la eseguiamo
+          if (typeof valueOrUpdater === 'function') {
+            return { ...p, [field]: valueOrUpdater(p[field]) };
+          }
+          // Altrimenti, è un valore semplice
+          return { ...p, [field]: valueOrUpdater };
+        }
+        return p;
+      })
+    );
   };
   const addNewPermission = () => {
     /* ... la tua logica ... */
   };
   const removePermission = async (id) => {
-    /* ... la tua logica ... */
+    // Cerchiamo l'utente da rimuovere per mostrare un messaggio di conferma più chiaro
+    const userToRemove = permissions.find(p => p.id === id);
+    if (!userToRemove) return;
+
+    if (window.confirm(`Sei sicuro di voler rimuovere l'utente "${userToRemove.user}"? L'azione è irreversibile.`)) {
+      setLoadingStates(prev => ({ ...prev, removingPermissionId: id }));
+      try {
+        // Chiamata API REALE per cancellare l'utente
+        await apiClient.delete(`/users/${id}`);
+        
+        // Se la chiamata ha successo, aggiorniamo lo stato del frontend
+        setPermissions(prev => prev.filter(p => p.id !== id));
+        alert(`Utente "${userToRemove.user}" rimosso con successo.`); // Sostituire con Toast
+      } catch (error) {
+        console.error("Errore nella rimozione dell'utente:", error);
+        alert(error.response?.data?.detail || "Impossibile rimuovere l'utente.");
+      } finally {
+        setLoadingStates(prev => ({ ...prev, removingPermissionId: null }));
+      }
+    }
   };
   const handleSavePermissions = async () => {
-    /* ... la tua logica ... */
+    setLoadingStates(prev => ({ ...prev, savingPermissions: true }));
+    try {
+      // Usiamo Promise.all per inviare tutte le richieste di aggiornamento in parallelo
+      const updatePromises = permissions.map(perm => {
+        // Prepariamo i dati da inviare per l'aggiornamento
+        const userDataToUpdate = {
+          role: perm.role,
+          permissions: perm.accessTo, // Il nostro campo 'accessTo' corrisponde a 'permissions' nel backend
+        };
+        // Chiamata API REALE per aggiornare l'utente
+        return apiClient.put(`/users/${perm.id}`, userDataToUpdate);
+      });
+
+      await Promise.all(updatePromises);
+      
+      alert("Permessi salvati con successo!"); // Sostituire con Toast
+    } catch (error) {
+      console.error("Errore nel salvataggio dei permessi:", error);
+      alert(error.response?.data?.detail || "Impossibile salvare i permessi.");
+    } finally {
+      setLoadingStates(prev => ({ ...prev, savingPermissions: false }));
+    }
   };
   const resetIniContent = async () => {
     /* ... la tua logica ... */

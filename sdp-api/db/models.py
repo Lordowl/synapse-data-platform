@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Integer, String
+from sqlalchemy import Column, Integer, String, Boolean, JSON 
 from .database import Base
 
 class User(Base):
@@ -12,3 +12,4 @@ class User(Base):
     # Aggiungiamo un campo "role" per la gestione dei permessi
     role = Column(String, default="user")  # Esempi: 'user', 'admin'
     is_active = Column(Boolean, default=True)
+    permissions = Column(JSON, nullable=False, server_default='[]')

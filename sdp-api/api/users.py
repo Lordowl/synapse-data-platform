@@ -57,19 +57,52 @@ def read_admin_dashboard(
 # ===================================================================
 # ---         AGGIUNGI QUESTO BLOCCO DI CODICE ALLA FINE          ---
 # ===================================================================
-@router.get("/", response_model=List[schemas.UserInDB])
+@router.get("/all", response_model=List[schemas.UserInDB])
 def read_all_users(
     skip: int = 0, 
     limit: int = 100,
     db: Session = Depends(get_db),
-    # Questa dependency protegge l'endpoint e si assicura che solo un admin possa chiamarlo
     admin_user: models.User = Security(get_current_active_admin)
 ):
     """
     Restituisce una lista di tutti gli utenti nel database.
-    
-    Questo endpoint è accessibile solo agli utenti con il ruolo 'admin'.
+    Accessibile solo agli admin.
     """
     users = crud.get_users(db, skip=skip, limit=limit)
     return users
-# ===================================================================
+@router.put("/{user_id}", response_model=schemas.UserInDB)
+def update_user_data(
+    user_id: int,
+    user_in: schemas.UserUpdate,
+    db: Session = Depends(get_db),
+    admin_user: models.User = Security(get_current_active_admin)
+):
+    """
+    Aggiorna i dati di un utente (ruolo, permessi, etc.).
+    Accessibile solo agli admin.
+    """
+    user = crud.update_user(db, user_id=user_id, user_data=user_in)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+# --- NUOVO ENDPOINT PER CANCELLARE UN UTENTE ---
+@router.delete("/{user_id}", response_model=schemas.UserInDB)
+def remove_user_data(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin_user: models.User = Security(get_current_active_admin)
+):
+    """
+    Cancella un utente dal database.
+    Accessibile solo agli admin.
+    """
+    # Non permettere a un admin di cancellare se stesso
+    if admin_user.id == user_id:
+        raise HTTPException(status_code=400, detail="Admins cannot delete themselves.")
+
+    user = crud.delete_user(db, user_id=user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
