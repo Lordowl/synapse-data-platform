@@ -20,7 +20,7 @@ function App() {
   useEffect(() => {
     const checkAuth = async () => {
       // Il nome della chiave è 'authToken' come nel tuo codice originale
-      const token = localStorage.getItem("accessToken");
+      const token = sessionStorage.getItem("accessToken");
       if (!token) {
         setIsAuthenticated(false);
         setIsLoading(false); // Finito di caricare
@@ -48,14 +48,10 @@ function App() {
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem("authToken");
+    // localStorage.removeItem("accessToken"); // VECCHIO
+    sessionStorage.removeItem("accessToken"); // NUOVO
     setIsAuthenticated(false);
   };
-
-  // Mostra uno spinner o un messaggio di caricamento mentre verifichiamo il token
-  if (isLoading) {
-    return <div>Verifica autenticazione...</div>;
-  }
 
   // Il resto della tua logica di routing è quasi perfetta.
   // Un piccolo miglioramento: la rotta "/" dovrebbe puntare a /login, non a se stessa.

@@ -29,7 +29,7 @@ function Login({ setIsAuthenticated }) {
       });
       
       const token = response.data.access_token;
-      localStorage.setItem("accessToken", token);
+      sessionStorage.setItem("accessToken", token);
       setIsAuthenticated(true);
       
       // Ora questa chiamata funzionerà e reindirizzerà l'utente
