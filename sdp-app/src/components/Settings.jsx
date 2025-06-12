@@ -613,6 +613,58 @@ function ConfigFileTabContent({
     </div>
   );
 }
+
+function CreateUserModal({ isOpen, onClose, newUser, setNewUser, onCreate, error, isCreating }) {
+  if (!isOpen) return null;
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setNewUser(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onCreate();
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content">
+        <h2>Crea Nuovo Utente</h2>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label htmlFor="username">Username</label>
+            <input type="text" id="username" name="username" value={newUser.username} onChange={handleChange} required disabled={isCreating} />
+          </div>
+          <div className="form-group">
+            <label htmlFor="email">Email</label>
+            <input type="email" id="email" name="email" value={newUser.email} onChange={handleChange} required disabled={isCreating} />
+          </div>
+          <div className="form-group">
+            <label htmlFor="password">Password</label>
+            <input type="password" id="password" name="password" value={newUser.password} onChange={handleChange} required disabled={isCreating} />
+          </div>
+          <div className="form-group">
+            <label htmlFor="role">Ruolo</label>
+            <select id="role" name="role" value={newUser.role} onChange={handleChange} disabled={isCreating}>
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+
+          {error && <p className="error-message">{error}</p>}
+
+          <div className="modal-actions">
+            <button type="button" onClick={onClose} className="btn btn-outline" disabled={isCreating}>Annulla</button>
+            <button type="submit" className="btn" disabled={isCreating}>
+              {isCreating ? 'Creazione...' : 'Crea Utente'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+} 
 // =====================================================
 // --- COMPONENTE PRINCIPALE SETTINGS (VERSIONE COMPLETA E MODIFICATA) ---
 // =====================================================
@@ -670,6 +722,16 @@ function Settings() {
     clearingLogs: false,
     downloadingLogs: false,
   });
+
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [newUser, setNewUser] = useState({
+    username: "",
+    email: "",
+    password: "",
+    role: "user", // Ruolo di default
+  });
+  const [createError, setCreateError] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
 
   // --- LOGICA DI AUTENTICAZIONE E PERMESSI ---
   useEffect(() => {
@@ -755,6 +817,45 @@ function Settings() {
       setActiveTab("metadata_file"); // Sposta al primo tab di default
     }
   }, [currentUser, activeTab]);
+  const openCreateModal = () => {
+    // Resetta i campi prima di aprire
+    setNewUser({ username: "", email: "", password: "", role: "user" });
+    setCreateError("");
+    setIsCreateModalOpen(true);
+  };
+
+  const closeCreateModal = () => {
+    setIsCreateModalOpen(false);
+  };
+
+  const handleCreateUser = async () => {
+    setIsCreating(true);
+    setCreateError("");
+    try {
+      // Chiamata API REALE per creare l'utente
+      const response = await apiClient.post('/users/', newUser);
+      
+      // Formatta il nuovo utente per aggiungerlo alla lista visualizzata
+      const createdUser = response.data;
+      const formattedNewUser = {
+        id: createdUser.id,
+        user: createdUser.email || createdUser.username,
+        role: createdUser.role,
+        accessTo: createdUser.permissions || [],
+      };
+      
+      // Aggiunge il nuovo utente in cima alla lista esistente
+      setPermissions(prev => [formattedNewUser, ...prev]);
+      
+      alert('Utente creato con successo!');
+      closeCreateModal(); // Chiude la modale
+    } catch (error) {
+      console.error("Errore nella creazione dell'utente:", error);
+      setCreateError(error.response?.data?.detail || "Impossibile creare l'utente.");
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   // --- GESTIONE DEGLI EVENTI (LE TUE FUNZIONI ORIGINALI) ---
   const simulateApiCall = (duration = 1500) =>
@@ -780,9 +881,7 @@ function Settings() {
       })
     );
   };
-  const addNewPermission = () => {
-    /* ... la tua logica ... */
-  };
+
   const removePermission = async (id) => {
     // Cerchiamo l'utente da rimuovere per mostrare un messaggio di conferma più chiaro
     const userToRemove = permissions.find(p => p.id === id);
@@ -877,7 +976,7 @@ function Settings() {
           <PermissionsTabContent
             permissions={permissions}
             onPermissionChange={handlePermissionChange}
-            onAddNew={addNewPermission}
+            onAddNew={openCreateModal} 
             onRemove={removePermission}
             onSave={handleSavePermissions}
             isSaving={loadingStates.savingPermissions}
@@ -889,6 +988,7 @@ function Settings() {
             accessFilter={permissionAccessFilter}
             setAccessFilter={setPermissionAccessFilter}
             availableRoles={AVAILABLE_ROLES_FOR_FILTER}
+            
           />
         );
       case "config":
@@ -991,7 +1091,17 @@ function Settings() {
         </nav>
         <main className="tab-content-main">{renderActiveTabContent()}</main>
       </div>
+      <CreateUserModal
+        isOpen={isCreateModalOpen}
+        onClose={closeCreateModal}
+        newUser={newUser}
+        setNewUser={setNewUser}
+        onCreate={handleCreateUser}
+        error={createError}
+        isCreating={isCreating}
+      />
     </div>
+    
   );
 }
 

@@ -14,10 +14,13 @@ router = APIRouter(prefix="/users", tags=["Users"])
 @router.post("/", response_model=schemas.UserInDB, status_code=status.HTTP_201_CREATED)
 def create_new_user(
     user: schemas.UserCreate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    # --- AGGIUNGIAMO LA SICUREZZA QUI ---
+    admin_user: models.User = Security(get_current_active_admin)
 ):
     """
-    Crea un nuovo utente. Questo endpoint è pubblico.
+    Crea un nuovo utente.
+    Endpoint accessibile solo agli admin.
     """
     db_user_by_username = crud.get_user_by_username(db, username=user.username)
     if db_user_by_username:
@@ -28,7 +31,6 @@ def create_new_user(
         raise HTTPException(status_code=400, detail="Email already registered")
         
     return crud.create_user(db=db, user=user)
-
 
 @router.get("/me", response_model=schemas.UserInDB)
 def read_users_me(
