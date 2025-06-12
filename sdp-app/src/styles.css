@@ -1,0 +1,378 @@
+/* src/styles.css - ADAPTED TO NEUMORPHIC THEME */
+
+:root {
+  /* --- Neumorphic Theme Variables (from settings.css) --- */
+  --primary-bg: #f0f2f5;
+  --neomorphic-light: #ffffff;
+  --neomorphic-dark: #d1d9e6;
+  --accent-color: #e30613; /* Main accent */
+  --accent-color-light: #ff5a65;
+  --text-color: #333333;
+  --text-color-muted: #777777;
+  --shadow-distance: 6px;
+  --shadow-blur-multiplier: 1.5; /* For calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) */
+
+  /* Accent colors for specific states/buttons */
+  --accent-color-success: #28a745;
+  --accent-color-success-light: #34d399;
+  --accent-color-primary-btn: #007bff; /* Blue for primary actions */
+  --accent-color-primary-btn-light: #3395ff;
+
+  /* Fonts (keeping consistency with settings.css) */
+  --font-main: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+
+  /* --- Spacing (merged from both, prefer settings.css if conflict) --- */
+  --space-0-5: 0.125rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  /* --- Rounding (merged, prefer settings.css) --- */
+  --rounded-sm: 0.125rem; /* Maintained from original for small details */
+  --rounded-base: 12px;   /* Neumorphic base rounding */
+  --rounded-md: 8px;      /* Maintained, can be used if --rounded-base is too much */
+  --rounded-lg: 15px;     /* Neumorphic large */
+  --rounded-xl: 20px;     /* Neumorphic extra large */
+  --rounded-full: 50px;   /* For fully rounded buttons */
+
+  /* Link colors (using accent) */
+  --color-link: var(--accent-color-primary-btn); /* Using primary blue for links for better contrast */
+  --color-link-hover: var(--accent-color-primary-btn-light);
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+   /* Keep this if your app structure relies on it */
+  font-family: var(--font-main);
+  color: var(--text-color);
+  background-color: var(--primary-bg); /* Neumorphic background */
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-size: 1rem; /* 16px */
+  line-height: 1.6; /* Slightly more for readability on light bg */
+  font-weight: 400;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text-color);
+  margin-bottom: var(--space-3);
+  font-weight: 600;
+}
+
+h1 {
+  font-size: 2rem;
+  text-align: center;
+}
+
+a {
+  font-weight: 500;
+  color: var(--color-link);
+  text-decoration: none;
+  transition: color 0.2s ease-in-out;
+}
+a:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden; /* Consistent with html, body, #root */
+}
+
+.app-navbar {
+  width: 100%;
+  /* Riduciamo il padding verticale per una navbar più sottile */
+  padding: var(--space-2) var(--space-4); /* Era var(--space-3) */
+  background-color: var(--primary-bg);
+  box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+              calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+  border: none;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-shrink: 0;
+  position: relative; /* O sticky/fixed se vuoi che rimanga in vista durante lo scroll di .app-content */
+  z-index: 1000;
+}
+
+.app-content {
+  flex-grow: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-6);
+  min-width: 0;
+  min-height: 0;
+  /* Background will be inherited from body */
+}
+
+/* Neumorphic Scrollbar for app-content */
+.app-content::-webkit-scrollbar {
+  width: 10px;
+}
+.app-content::-webkit-scrollbar-track {
+  background: var(--primary-bg);
+  border-radius: var(--rounded-base);
+}
+.app-content::-webkit-scrollbar-thumb {
+  background-color: var(--neomorphic-dark);
+  border-radius: var(--rounded-base);
+  /* Subtle inset shadow for thumb */
+  box-shadow: inset 1px 1px 2px rgba(0,0,0,0.1), inset -1px -1px 2px rgba(255,255,255,0.7);
+}
+.app-content::-webkit-scrollbar-thumb:hover {
+  background-color: #b0b8c5; /* Slightly darker than --neomorphic-dark */
+}
+.app-content {
+  scrollbar-width: thin;
+  scrollbar-color: var(--neomorphic-dark) var(--primary-bg);
+}
+
+/* Base Neumorphic Button (similar to btn-shared-settings) */
+.btn {
+  background: var(--primary-bg); /* Default neutral button */
+  color: var(--text-color);
+  border: none;
+  padding: var(--space-3) var(--space-4); /* Adjusted padding */
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: var(--rounded-full); /* More rounded for neumorphism */
+  box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+              calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+  font-family: inherit;
+  outline: none;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  user-select: none;
+}
+.btn:hover {
+  transform: translateY(-2px);
+  /* For neutral button, color change on hover can be nice */
+  color: var(--accent-color-primary-btn);
+}
+.btn:active {
+  transform: translateY(0);
+  box-shadow: inset calc(var(--shadow-distance) / 2) calc(var(--shadow-distance) / 2) var(--shadow-distance) var(--neomorphic-dark),
+              inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2) var(--shadow-distance) var(--neomorphic-light);
+  color: var(--accent-color-primary-btn); /* Keep color change on active */
+}
+.btn:focus-visible {
+  outline: 2px solid var(--accent-color-primary-btn); /* Use a theme color for focus */
+  outline-offset: 3px; /* More offset for neumorphic shapes */
+}
+
+/* Primary action button style (colored) */
+.btn-primary-action {
+  /* Inherit base .btn styles, then override */
+  background: var(--accent-color-primary-btn);
+  color: var(--neomorphic-light); /* White text on colored button */
+}
+.btn-primary-action:hover {
+  background: var(--accent-color-primary-btn-light);
+  color: var(--neomorphic-light); /* Ensure text color remains */
+  transform: translateY(-2px);
+}
+.btn-primary-action:active {
+  background: var(--accent-color-primary-btn); /* Or a slightly darker shade */
+  /* Keep inset shadow from .btn:active */
+}
+
+
+/* "Outline" Button - adapted to neumorphic, less prominent */
+.btn-outline {
+  /* Shares most styles with .btn, but different visual */
+  background: var(--primary-bg);
+  color: var(--text-color-muted);
+  /* Lighter shadow for less prominence */
+  box-shadow: calc(var(--shadow-distance) / 1.5) calc(var(--shadow-distance) / 1.5) calc(var(--shadow-distance) * var(--shadow-blur-multiplier) / 1.5) var(--neomorphic-dark),
+              calc(var(--shadow-distance) / -1.5) calc(var(--shadow-distance) / -1.5) calc(var(--shadow-distance) * var(--shadow-blur-multiplier) / 1.5) var(--neomorphic-light);
+}
+.btn-outline:hover {
+  color: var(--accent-color); /* Use main red accent for hover */
+  transform: translateY(-2px);
+}
+.btn-outline:active {
+  /* Same active effect as .btn */
+  color: var(--accent-color);
+}
+
+
+.app-navbar .logout-button {
+  /* Rimuoviamo lo stile neumorfico di .btn e .btn-outline per renderlo più discreto */
+  background: transparent; /* Sfondo trasparente */
+  color: var(--text-color-muted); /* Colore testo più tenue */
+  border: none; /* Nessun bordo */
+  box-shadow: none; /* Nessuna ombra */
+
+  padding: var(--space-1) var(--space-2); /* Padding ridotto */
+  font-size: var(--text-sm); /* Font più piccolo (0.875rem) */
+  font-weight: 500; /* Leggermente meno marcato di 600 */
+  border-radius: var(--rounded-md); /* Arrotondamento più leggero */
+  
+  /* Manteniamo le transizioni e il comportamento base */
+  transition: color 0.2s ease-in-out, background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+  cursor: pointer;
+  font-family: inherit;
+  outline: none;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1); /* Gap ridotto se avessi un'icona */
+  user-select: none;
+  margin-left: var(--space-3); /* Mantiene un po' di margine */
+}
+
+.app-navbar .logout-button:hover {
+  color: var(--accent-color); /* Cambia colore in hover (es. rosso accento) */
+  background-color: rgba(0,0,0,0.03); /* Leggerissimo sfondo in hover per feedback */
+  transform: none; /* Rimuoviamo il translateY per un effetto più flat */
+}
+
+.app-navbar .logout-button:active {
+  color: var(--accent-color);
+  background-color: rgba(0,0,0,0.06); /* Sfondo leggermente più scuro in active */
+  transform: translateY(1px); /* Leggero effetto "premuto" */
+  box-shadow: none; /* Assicuriamoci che non erediti ombre attive da .btn */
+}
+
+.app-navbar .logout-button:focus-visible {
+  outline: 2px solid var(--accent-color); /* Outline per accessibilità */
+  outline-offset: 2px;
+}
+
+
+
+/* --- Login Page Styles - Neumorphic --- */
+.login-page-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  width: 100%;
+  padding: var(--space-4); /* Add some padding for smaller screens */
+}
+.login-form-card {
+  max-width: 400px;
+  width: 100%;
+  padding: var(--space-6);
+  background-color: var(--primary-bg); /* Neumorphic background */
+  border-radius: var(--rounded-xl); /* Larger rounding for cards */
+  /* Neumorphic raised shadow */
+  box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+              calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+  border: none;
+}
+.login-form-card h1 {
+  margin-bottom: var(--space-6);
+  font-size: 1.8rem;
+  text-align: center;
+  color: var(--text-color);
+}
+.login-form-card form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.login-form-card label {
+  color: var(--text-color-muted);
+  font-weight: 600; /* More emphasis like form-label */
+  font-size: 0.875rem; /* var(--text-sm) */
+  margin-bottom: calc(var(--space-1) * -1); /* Pulls input closer */
+  display: block; /* Ensure it takes full width if needed */
+  user-select: none;
+}
+
+/* Neumorphic Inputs (like form-input from settings.css) */
+.login-form-card input[type="text"],
+.login-form-card input[type="password"],
+.login-form-card input[type="email"] {
+  outline: none;
+  border: none;
+  display: block;
+  font-size: 1rem; /* var(--text-base) or var(--text-sm) */
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-color);
+  background: var(--primary-bg);
+  border-radius: var(--rounded-base); /* Consistent rounding */
+  margin: var(--space-1) 0 var(--space-2) 0; /* Adjusted margin */
+  transition: box-shadow 0.2s ease-in-out;
+  /* Neumorphic inset shadow */
+  box-shadow: inset calc(var(--shadow-distance) / 2) calc(var(--shadow-distance) / 2) var(--shadow-distance) var(--neomorphic-dark),
+              inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2) var(--shadow-distance) var(--neomorphic-light);
+  min-height: 2.8rem; /* Ensure a decent height */
+}
+
+.login-form-card input[type="text"]:focus,
+.login-form-card input[type="password"]:focus,
+.login-form-card input[type="email"]:focus {
+  /* Stronger inset shadow and accent outline on focus */
+  box-shadow: inset calc(var(--shadow-distance) / 1.5) calc(var(--shadow-distance) / 1.5) calc(var(--shadow-distance) * 1.2) var(--neomorphic-dark),
+              inset calc(var(--shadow-distance) / -1.5) calc(var(--shadow-distance) / -1.5) calc(var(--shadow-distance) * 1.2) var(--neomorphic-light),
+              0 0 0 2px var(--accent-color-primary-btn); /* Using blue accent for focus */
+}
+
+.login-form-card .btn-submit-login {
+  /* This should use .btn and .btn-primary-action styles */
+  /* Or define it uniquely if needed, but better to compose */
+  background-color: var(--accent-color-success); /* Green for login success indication */
+  color: var(--neomorphic-light);
+  /* border: none; Inherited from .btn */
+  font-weight: 600;
+  width: 100%;
+  margin-top: var(--space-2);
+  /* box-shadow, padding, border-radius etc. from .btn */
+}
+.login-form-card .btn-submit-login:hover {
+  background-color: var(--accent-color-success-light);
+  transform: translateY(-2px); /* Inherited from .btn:hover */
+  color: var(--neomorphic-light);
+}
+.login-form-card .btn-submit-login:active {
+  /* Inset shadow from .btn:active */
+  background-color: var(--accent-color-success); /* Revert or slightly darker on active */
+}
+
+
+/* Utility and other global styles specific that you had */
+.logo {
+  height: 3em;
+  padding: 0;
+  will-change: filter;
+  transition: filter 0.3s ease-in-out;
+}
+.logo:hover {
+  /* Adjusted drop shadow color for light theme */
+  filter: drop-shadow(0 0 0.75em var(--accent-color-primary-btn-light)); /* Or var(--accent-color) */
+}
+
+.row {
+  display: flex;
+  gap: var(--space-3);
+}

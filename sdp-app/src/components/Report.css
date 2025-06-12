@@ -1,0 +1,227 @@
+/* src/components/Report/Report.css - (Migliorata Spaziatura) */
+
+/* Layout Base della Pagina Report */
+.report-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--primary-bg);
+  }
+  
+  .report-content-wrapper {
+    width: 100%;
+    max-width: 1600px; 
+    margin: 0 auto;
+    padding: 0 var(--space-6); /* Aggiunto padding laterale al wrapper principale */
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    overflow: hidden;
+    min-height: 0;
+  }
+  
+  /* Header Pagina Report */
+  .report-header-container {
+    flex-shrink: 0;
+    padding-top: var(--space-6); /* Solo padding sopra, laterale da wrapper */
+    margin-bottom: var(--space-6); /* AUMENTATO spazio sotto l'header */
+  }
+  .report-header {
+    display: flex;
+    flex-direction: row; 
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-4) var(--space-6); /* Padding interno più generoso */
+    border-radius: var(--rounded-xl);
+    background: var(--primary-bg);
+    box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+                calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+    gap: var(--space-4); /* Aumentato gap */
+  }
+  .report-header-title-group { display: flex; align-items: center; gap: var(--space-3); flex-grow: 1; }
+  .report-header-icon-bg { padding: var(--space-2); background-color: var(--primary-bg); border-radius: var(--rounded-base); display: inline-flex; align-items: center; justify-content: center; box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark), calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light); }
+  .report-header-icon { width: 1.5rem; height: 1.5rem; color: var(--accent-color); }
+  .report-header-title { font-size: var(--text-xl); font-weight: 700; color: var(--text-color); margin: 0; text-align: left; }
+  .report-header-subtitle { font-size: var(--text-xs); color: var(--text-color-muted); margin-top: var(--space-0-5); }
+  .report-header-back-button { width: auto; flex-shrink: 0; }
+  
+  
+  /* Sezione Pulsanti di Periodicità (NUOVA, come da CSS precedente) */
+  .periodicity-selector-section {
+    display: flex;
+    justify-content: center; 
+    margin-bottom: var(--space-6); /* AUMENTATO spazio sotto i toggle */
+    flex-shrink: 0; /* Non si restringe */
+  }
+  .periodicity-toggle {
+    display: inline-flex; 
+    border-radius: var(--rounded-full); 
+    overflow: hidden; 
+    gap:var(--space-4);
+    box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier) / 2) var(--neomorphic-dark),
+                calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier) / 2) var(--neomorphic-light);
+  }
+  .periodicity-toggle-btn {
+    padding: var(--space-2) var(--space-4); 
+    border-radius: 0; 
+    box-shadow: none; 
+    transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  }
+  .periodicity-toggle-btn:not(:last-child) { border-right: 1px solid var(--neomorphic-dark); }
+  .periodicity-toggle-btn.btn-primary-action { box-shadow: inset 2px 2px 4px rgba(0,0,0,0.15), inset -2px -2px 4px rgba(255,255,255,0.8); transform: none; }
+  .periodicity-toggle-btn.btn-primary-action:hover { background-color: var(--accent-color-primary-btn); transform: none; }
+  .periodicity-toggle-btn.btn-outline { background-color: var(--primary-bg); color: var(--text-color-muted); }
+  .periodicity-toggle-btn.btn-outline:hover { background-color: #e9ecef; color: var(--accent-color-primary-btn); transform: none; }
+  .periodicity-toggle-btn .btn-icon-sm { margin-right: var(--space-2); }
+  
+  
+  /* Sezione Filtri Superiori */
+  .report-filters-section {
+    background: var(--primary-bg);
+    padding: var(--space-6); /* AUMENTATO padding interno */
+    border-radius: var(--rounded-xl);
+    margin-bottom: var(--space-6); /* AUMENTATO spazio sotto i filtri */
+    box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+                calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+    flex-shrink: 0;
+  }
+  .report-period-title { /* Titolo "Reportistica Settimanale/Mensile" */
+    font-size: 1.35rem; /* var(--text-xl) * 0.9 circa */
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: var(--space-4); /* Spazio sotto il titolo del periodo */
+    text-align: left; /* O center se preferisci */
+  }
+  .filter-row {
+    display: flex;
+    gap: var(--space-6); /* AUMENTATO gap tra i gruppi di filtri in una riga */
+    margin-bottom: var(--space-4); /* AUMENTATO spazio tra le righe di filtri */
+    flex-wrap: wrap; 
+  }
+  .filter-row:last-child { margin-bottom: 0; }
+  .filter-group {
+    display: flex; flex-direction: column; gap: var(--space-2); /* Aumentato gap tra label e input */
+    flex: 1 1 220px; 
+    min-width: 200px; /* Aumentata min-width per i gruppi filtro */
+  }
+  .filter-group .form-label { margin-bottom: var(--space-1); font-size: var(--text-xs); }
+  .filter-group .form-select, .filter-group .form-input { margin: 0; min-height: 2.8rem; /* Ripristinata altezza standard input */ font-size: var(--text-sm); }
+  
+  .overall-status-group {
+    align-items: flex-start; 
+    justify-content: flex-start; 
+    flex-basis: auto; 
+    flex-grow: 0;
+    padding-top: calc(var(--text-xs) + var(--space-1) + var(--space-2)); /* Aggiustato per allineare i pallini */
+  }
+  .status-indicators { display: flex; gap: var(--space-3); align-items: center; }
+  .status-dot { width: 1.1rem; height: 1.1rem; border-radius: 50%; background-color: var(--neomorphic-dark); box-shadow: inset 1px 1px 2px rgba(0,0,0,0.1), inset -1px -1px 2px rgba(255,255,255,0.7); transition: background-color 0.3s ease; border: 2px solid var(--primary-bg); }
+  .status-dot.active-success { background-color: var(--accent-color-success); box-shadow: 0 0 8px var(--accent-color-success-light); }
+  .status-dot.active-warning { background-color: #f59e0b; box-shadow: 0 0 8px #fef3c7; }
+  .status-dot.active-danger { background-color: var(--accent-color); box-shadow: 0 0 8px var(--accent-color-light); }
+  
+  
+  /* Sezione Tabella Attività (Contenuto del Tab Report) */
+  .report-tab-content { /* Questo è il .tab-content-padding del JSX di ReportTabContent */
+      /* Il padding è già gestito da .tab-content-padding globale, 
+         ma se questo deve avere un padding diverso, specificalo.
+         Esempio: padding: var(--space-4); 
+      */
+  }
+  .report-tab-content .period-specific-filter {
+    display: flex;
+    flex-direction: column; /* Stack su mobile (anche se qui il target è desktop) */
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+    padding: var(--space-3);
+    background-color: var(--primary-bg); 
+    border-radius: var(--rounded-lg);
+    box-shadow: inset 2px 2px 5px var(--neomorphic-dark), 
+                inset -2px -2px 5px var(--neomorphic-light);
+    flex-shrink: 0; /* Non si restringe */
+  }
+  .report-tab-content .period-specific-filter .filter-group {
+    display: flex;
+    flex-direction: column; 
+    gap: var(--space-1);
+  }
+  .report-tab-content .period-specific-filter .form-label { margin-bottom: var(--space-1); }
+  .report-tab-content .period-specific-filter .form-select { margin-top: 0; width: 100%; }
+  
+  
+  .report-tasks-section { /* Contenitore per la tabella, se lo mantieni separato */
+    flex-grow: 1; min-height: 0; display: flex; flex-direction: column;
+    /* Rimosso margin e padding se .report-tab-content li gestisce già */
+    /* background, border-radius, box-shadow potrebbero essere ereditati da .tab-content-main o definiti qui se diversi */
+  }
+  .report-table-wrapper {
+    overflow: auto; flex-grow: 1; border-radius: var(--rounded-base);
+    background: var(--primary-bg);
+    box-shadow: inset calc(var(--shadow-distance) / 2) calc(var(--shadow-distance) / 2) var(--shadow-distance) var(--neomorphic-dark),
+                inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2) var(--shadow-distance) var(--neomorphic-light);
+    padding: var(--space-1);
+  }
+  .report-table { width: 100%; min-width: 1000px; /* Aumentato min-width per più colonne */ border-collapse: separate; border-spacing: 0; }
+  .report-table th, .report-table td { padding: var(--space-3); text-align: left; font-size: var(--text-sm); border-bottom: 1px solid var(--neomorphic-dark); vertical-align: middle; }
+  .report-table th { font-weight: 600; background-color: var(--primary-bg); position: sticky; top: 0; z-index: 1; }
+  .report-table tr:last-child td { border-bottom: none; }
+  .report-table tr.selected-row td { background-color: #cfe2f3 !important; }
+  .report-table tr:hover td:not(.report-table tr.selected-row td) { background-color: #e8edf2; }
+  .report-table .form-checkbox { margin: 0; transform: scale(0.9); }
+  .report-table .btn-sm { padding: var(--space-1) var(--space-2); font-size: var(--text-xs); min-width: 110px; }
+  .report-table .text-xs { font-size: var(--text-xs); }
+  .report-table .text-gray-500 { color: var(--text-color-muted); }
+  /* Badge di Stato per Task (Assumendo siano globali o da Settings.css) */
+  .status-badge { /* ... */ } 
+  
+  
+  /* Sezione Pulsanti Azioni Globali */
+  .report-global-actions {
+    display: flex; flex-wrap: wrap; gap: var(--space-4); /* AUMENTATO gap */
+    padding: var(--space-6); /* AUMENTATO padding */
+    margin-top: var(--space-6); /* AUMENTATO spazio sopra */
+    margin-bottom: var(--space-4); /* Spazio sotto */
+    border-radius: var(--rounded-xl); background: var(--primary-bg);
+    box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+                calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+    justify-content: center; flex-shrink: 0;
+  }
+  .report-global-actions .btn {
+    flex: 1 1 160px; /* Aumentata base per bottoni più larghi */
+    min-width: 140px; 
+  }
+  
+  /* Toast e Animazioni (Assumendo globali da styles.css o Settings.css) */
+  /* .app-toast { ... } */
+  /* .animate-spin-css { ... } */
+  /* .btn-disabled-visual { ... } */
+  
+  
+  /* Responsive (Principalmente per >1280px o affinamenti, le media query per mobile sono state rimosse) */
+  @media (min-width: 768px) { /* Questa si applica ancora dato che 1280px è > 768px */
+      .report-header { /* Già row, ma per confermare */
+          /* ... */
+      }
+      .periodicity-selector-section { /* Già centrato */
+          /* ... */
+      }
+      .filter-row {
+          /* flex-wrap: nowrap; Potresti voler evitare il wrap su desktop */
+      }
+      .report-tab-content .period-specific-filter {
+          flex-direction: row; 
+          align-items: flex-end;
+      }
+      .report-tab-content .period-specific-filter .filter-group {
+          flex-grow: 1;
+          max-width: 280px; /* Più spazio per i select di periodo */
+      }
+  }
+  
+  @media (min-width: 1600px) { /* Per schermi molto grandi */
+    .report-content-wrapper { max-width: 1800px; }
+    .filter-group { flex-basis: 250px; } /* Più spazio per i filtri globali */
+    .report-global-actions .btn { flex-basis: 180px; }
+  }

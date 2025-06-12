@@ -1,0 +1,943 @@
+  /* src/components/Settings/Settings.css - TEMA NEUMORFICO (Desktop First, Bottoni con Larghezza Naturale) */
+
+  :root {
+    /* Variabili Tema Neumorfico */
+    --primary-bg: #f0f2f5;
+    --neomorphic-light: #ffffff;
+    --neomorphic-dark: #d1d9e6;
+    --accent-color: #e30613;
+    --accent-color-light: #ff5a65;
+    --text-color: #333333;
+    --text-color-muted: #777777;
+    --shadow-distance: 6px;
+    --shadow-blur-multiplier: 1.5;
+    /* Variabili Specifiche */
+    --font-main: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier,
+      monospace;
+    --space-0-5: 0.125rem;
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+    --rounded-base: 12px;
+    --rounded-lg: 15px;
+    --rounded-xl: 20px;
+    --rounded-full: 50px;
+    --text-xs: 0.75rem;
+    --text-sm: 0.875rem;
+    --text-base: 1rem;
+    --text-xl: 1.5rem;
+    --accent-color-success: #28a745;
+    --accent-color-success-light: #34d399;
+    --accent-color-primary-btn: #007bff;
+    --accent-color-primary-btn-light: #3395ff;
+  }
+
+  /* ==========================================================================
+    ELEMENTI FORM BASE
+    ========================================================================== */
+  .form-label {
+    font-size: var(--text-xs);
+    display: block;
+    margin-bottom: var(--space-1);
+    color: var(--text-color-muted);
+    user-select: none;
+    font-weight: 600;
+  }
+  .form-input,
+  .form-select,
+  .form-textarea {
+    outline: none;
+    border: none;
+    display: block;
+    font-size: var(--text-sm);
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    color: var(--text-color);
+    background: var(--primary-bg);
+    border-radius: var(--rounded-base);
+    margin: var(--space-2) 0 var(--space-3) 0;
+    transition: box-shadow 0.2s ease-in-out;
+    box-shadow: inset calc(var(--shadow-distance) / 2)
+        calc(var(--shadow-distance) / 2) var(--shadow-distance)
+        var(--neomorphic-dark),
+      inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2)
+        var(--shadow-distance) var(--neomorphic-light);
+  }
+  .form-input,
+  .form-select {
+    min-height: 2.8rem;
+  }
+  .form-textarea {
+    line-height: 1.6;
+    min-height: 6rem;
+    resize: vertical;
+  }
+  .form-input:focus,
+  .form-select:focus,
+  .form-textarea:focus {
+    box-shadow: inset calc(var(--shadow-distance) / 1.5)
+        calc(var(--shadow-distance) / 1.5) calc(var(--shadow-distance) * 1.2)
+        var(--neomorphic-dark),
+      inset calc(var(--shadow-distance) / -1.5)
+        calc(var(--shadow-distance) / -1.5) calc(var(--shadow-distance) * 1.2)
+        var(--neomorphic-light),
+      0 0 0 2px var(--accent-color);
+  }
+  .form-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%23333333'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd' /%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right var(--space-3) center;
+    background-size: 1.25em;
+    padding-right: var(--space-8);
+  }
+  .form-select option {
+    background-color: var(--primary-bg);
+    color: var(--text-color);
+  }
+  .form-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: var(--rounded-base);
+    background: var(--primary-bg);
+    box-shadow: inset calc(var(--shadow-distance) / 3)
+        calc(var(--shadow-distance) / 3) calc(var(--shadow-distance) / 1.5)
+        var(--neomorphic-dark),
+      inset calc(var(--shadow-distance) / -3) calc(var(--shadow-distance) / -3)
+        calc(var(--shadow-distance) / 1.5) var(--neomorphic-light);
+    position: relative;
+    cursor: pointer;
+    outline: none;
+    margin-right: var(--space-2);
+    transition: box-shadow 0.2s ease;
+  }
+  .form-checkbox:checked {
+    box-shadow: var(--shadow-distance) var(--shadow-distance)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-dark),
+      calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-light);
+    background-color: var(--accent-color);
+  }
+  .form-checkbox:checked::before {
+    content: "✔";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--neomorphic-light);
+    font-size: 0.8rem;
+    font-weight: bold;
+  }
+  .form-checkbox:active {
+    box-shadow: inset calc(var(--shadow-distance) / 2)
+        calc(var(--shadow-distance) / 2) var(--shadow-distance)
+        var(--neomorphic-dark),
+      inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2)
+        var(--shadow-distance) var(--neomorphic-light);
+  }
+  .form-checkbox-sm {
+    width: 1rem;
+    height: 1rem;
+    margin-right: 0;
+  }
+  .form-checkbox-sm:checked::before {
+    font-size: 0.7rem;
+  }
+
+  /* ==========================================================================
+    BOTTONI BASE
+    ========================================================================== */
+  .btn {
+    border: none;
+    outline: none;
+    cursor: pointer;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--rounded-full);
+    background: var(--primary-bg);
+    color: var(--text-color);
+    box-shadow: var(--shadow-distance) var(--shadow-distance)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-dark),
+      calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-light);
+    transition: all 0.2s ease-in-out;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    user-select: none;
+    line-height: 1.5;
+    white-space: nowrap; /* <<--- IMPORTANTE: Impedisce al testo di andare a capo */
+    flex-shrink: 0; /* <<--- IMPORTANTE: Impedisce al bottone di restringersi troppo */
+  }
+  .btn:hover {
+    transform: translateY(-2px);
+  }
+  .btn:active {
+    transform: translateY(0);
+    box-shadow: inset calc(var(--shadow-distance) / 2)
+        calc(var(--shadow-distance) / 2) var(--shadow-distance)
+        var(--neomorphic-dark),
+      inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2)
+        var(--shadow-distance) var(--neomorphic-light);
+  }
+  .btn:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+  }
+ 
+  .btn-outline {
+    background: var(--primary-bg);
+    color: var(--text-color);
+  }
+  .btn-outline:hover {
+    color: var(--accent-color);
+  }
+  .btn-outline:active {
+    color: var(--accent-color);
+  }
+  .btn-icon-sm {
+    width: 0.75rem;
+    height: 0.75rem;
+    margin-right: var(--space-1);
+    flex-shrink: 0;
+  }
+  .btn-icon-md {
+    width: 1rem;
+    height: 1rem;
+    margin-right: var(--space-1);
+    flex-shrink: 0;
+  }
+  /* .w-full non è più il default, si applica selettivamente nel JSX per layout mobile specifici */
+
+  /* ==========================================================================
+    LAYOUT PAGINA SETTINGS (Desktop First, min 1280px)
+    ========================================================================== */
+  .settings-container {
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--primary-bg);
+  }
+  .settings-content-wrapper {
+    max-width: 1280px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* Header Pagina Settings */
+  .settings-header-container {
+    padding: var(--space-6) var(--space-6) 0;
+    margin-bottom: var(--space-6);
+    flex-shrink: 0;
+  }
+  .settings-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-6);
+    border-radius: var(--rounded-xl);
+    background: var(--primary-bg);
+    box-shadow: var(--shadow-distance) var(--shadow-distance)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-dark),
+      calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-light);
+    gap: var(--space-4);
+  }
+  .settings-header-title-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-grow: 1;
+  }
+  .settings-header-icon-bg {
+    padding: var(--space-2);
+    background-color: var(--primary-bg);
+    border-radius: var(--rounded-base);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-distance) var(--shadow-distance)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-dark),
+      calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-light);
+  }
+  .settings-header-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+    color: var(--accent-color);
+  }
+  .settings-header-title {
+    font-size: var(--text-xl);
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0;
+    text-align: left;
+  }
+  .settings-header-subtitle {
+    font-size: var(--text-xs);
+    color: var(--text-color-muted);
+    margin-top: var(--space-0-5);
+  }
+  .settings-header-actions-group {
+    display: flex;
+    flex-direction: row;
+    gap: var(--space-3);
+  } /* Per più bottoni nell'header */
+  .settings-header-back-button {
+    width: auto;
+    flex-shrink: 0;
+  }
+
+  /* --- NAVIGAZIONE TAB --- */
+  .tab-nav-container {
+    margin-bottom: var(--space-6);
+    padding: 0 var(--space-6);
+    flex-shrink: 0;
+  }
+  .tab-nav-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: var(--space-4);
+  }
+  .tab-button {
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--rounded-base);
+    background: var(--primary-bg);
+    border: none;
+    text-align: left;
+    box-shadow: calc(var(--shadow-distance) / 1.5)
+        calc(var(--shadow-distance) / 1.5)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier) / 1.5)
+        var(--neomorphic-dark),
+      calc(var(--shadow-distance) / -1.5) calc(var(--shadow-distance) / -1.5)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier) / 1.5)
+        var(--neomorphic-light);
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
+    color: var(--text-color-muted);
+    outline: none;
+  }
+  .tab-button:hover {
+    color: var(--accent-color);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-distance) var(--shadow-distance)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-dark),
+      calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-light);
+  }
+  .tab-button.active {
+    color: var(--accent-color);
+    font-weight: 700;
+    transform: translateY(0);
+    box-shadow: inset calc(var(--shadow-distance) / 2)
+        calc(var(--shadow-distance) / 2) var(--shadow-distance)
+        var(--neomorphic-dark),
+      inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2)
+        var(--shadow-distance) var(--neomorphic-light);
+  }
+  .tab-button:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+  }
+  .tab-button-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-1);
+  }
+  .tab-button-icon {
+    width: 1rem;
+    height: 1rem;
+    color: currentColor;
+  }
+  .tab-button-label {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: currentColor;
+    user-select: none;
+  }
+  .tab-button-description {
+    font-size: var(--text-xs);
+    color: currentColor;
+    opacity: 0.8;
+    user-select: none;
+  }
+  .tab-button.active .tab-button-description {
+    opacity: 1;
+  }
+
+  /* --- CONTENUTO TAB (Scroll e Layout Base) --- */
+  .tab-content-main {
+    border-radius: var(--rounded-xl);
+    background: var(--primary-bg);
+    box-shadow: var(--shadow-distance) var(--shadow-distance)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-dark),
+      calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-light);
+    flex-grow: 1;
+    overflow: hidden;
+    min-height: 0;
+    margin: 0 var(--space-6) var(--space-6);
+  }
+  .tab-content-padding {
+    padding: var(--space-6);
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .tab-content-padding::-webkit-scrollbar {
+    width: 10px;
+  }
+  .tab-content-padding::-webkit-scrollbar-track {
+    background: var(--primary-bg);
+    border-radius: var(--rounded-base);
+  }
+  .tab-content-padding::-webkit-scrollbar-thumb {
+    background-color: var(--neomorphic-dark);
+    border-radius: var(--rounded-base);
+    box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.1),
+      inset -1px -1px 2px rgba(255, 255, 255, 0.7);
+  }
+  .tab-content-padding::-webkit-scrollbar-thumb:hover {
+    background-color: #b0b8c5;
+  }
+  .tab-content-padding {
+    scrollbar-width: thin;
+    scrollbar-color: var(--neomorphic-dark) var(--primary-bg);
+  }
+  .tab-content-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+    flex-shrink: 0;
+  }
+  .tab-content-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+    color: var(--accent-color);
+  }
+  .tab-content-title {
+    font-size: var(--text-xl);
+    font-weight: 700;
+    color: var(--text-color);
+    text-align: left;
+  }
+
+  /* --- GRUPPI DI BOTTONI E FOOTER ALL'INTERNO DEI TAB --- */
+  .settings-button-group, /* Usato da .metadata-card-input-group, .permissions-header-actions, .logs-action-buttons */
+  .metadata-card-input-group,
+  .permissions-header-actions,
+  .config-file-actions {
+    display: flex;
+    flex-direction: row; /* Default in riga per desktop */
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+    align-items: center;
+  }
+  /* Stile specifico per .logs-action-buttons e i suoi figli */
+  .logs-action-buttons {
+    display: flex;
+    flex-direction: row;
+    gap: var(--space-3);
+    align-items: center;
+    /* flex-grow: 1; */ /* Prova a scommentare se vuoi che il GRUPPO di bottoni prenda più spazio */
+  }
+
+  .logs-action-buttons > .btn {
+    width: auto;
+    flex-grow: 1;      /* <<--- FAI CRESCERE I BOTTONI DENTRO QUESTO GRUPPO */
+    flex-basis: 0;     /* <<--- PER UNA DISTRIBUZIONE EQUA */
+    min-width: 0;      /* Permette di restringersi di più se necessario con nowrap+ellipsis */
+    /* white-space: nowrap; è già su .btn */
+    /* overflow: hidden; text-overflow: ellipsis; (opzionale) */
+  }
+  /* Comportamento dei bottoni dentro questi gruppi */
+  .settings-button-group > .btn,
+  .metadata-card-input-group > .btn,
+  .permissions-header-actions > .btn,
+  .config-file-actions > .btn, /* Se i bottoni sono figli diretti */
+
+
+  /* Se c'è un solo bottone in un gruppo, non farlo crescere eccessivamente */
+  .settings-button-group > .btn:only-child,
+  .metadata-card-input-group > .btn:only-child,
+  .permissions-header-actions > .btn:only-child,
+  .config-file-actions > .btn:only-child, /* Se c'è solo un bottone in config-file-actions */
+  .logs-action-buttons > .btn:only-child {
+    flex-grow: 0;
+    /* width: auto; è già impostato */
+  }
+
+  /* Footer dei tab */
+  /* Footer dei tab */
+  .metadata-save-footer,
+  .permissions-footer,
+  .config-file-actions,
+  .logs-actions { /* Questa è la classe genitore che ci interessa ora */
+    margin-top: auto; 
+    padding-top: var(--space-4);
+    display: flex;
+    align-items: center; 
+    gap: var(--space-4); /* Aumentato il gap generale per i footer per dare più spazio */
+    flex-shrink: 0;
+    flex-wrap: wrap; /* Permette agli elementi di andare a capo se non c'è spazio */
+  }
+  .metadata-save-footer { justify-content: flex-end; }
+  .permissions-footer { justify-content: space-between; }
+  .config-file-actions { justify-content: flex-start; }
+  .logs-actions { 
+    justify-content: space-between; /* Testo a sinistra, bottoni a destra */
+  }
+  /* Bottoni nei footer specifici non devono crescere di default */
+  .permissions-footer > .btn,
+
+  .metadata-save-footer > .btn {
+    width: auto;
+    flex-grow: 0;
+  }
+  .permissions-footer-count,
+  .logs-count-info {
+    margin-right: var(--space-4); /* Spazio tra testo e .logs-action-buttons */
+    flex-shrink: 0; /* Non si restringe */
+  }
+
+  /* --- CONTENUTI SPECIFICI DEI TAB --- */
+  /* (Stili per .metadata-card, .permissions-*, .config-file-*, .logs-* come prima,
+    assicurandosi che i gruppi di bottoni al loro interno (come .metadata-card-input-group)
+    siano stilizzati correttamente dalla sezione .settings-button-group sopra)
+  */
+  /* Metadata Tab */
+  .metadata-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+    margin-top: var(--space-4);
+  }
+  .metadata-card {
+    background: var(--primary-bg);
+    border-radius: var(--rounded-base);
+    padding: var(--space-4);
+    box-shadow: calc(var(--shadow-distance) / 1.5)
+        calc(var(--shadow-distance) / 1.5) var(--shadow-distance)
+        var(--neomorphic-dark),
+      calc(var(--shadow-distance) / -1.5) calc(var(--shadow-distance) / -1.5)
+        var(--shadow-distance) var(--neomorphic-light);
+  }
+  .metadata-card p {
+    font-size: var(--text-sm);
+    color: var(--text-color-muted);
+    margin-bottom: var(--space-2);
+  }
+  .metadata-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-2);
+  }
+  .metadata-card-icon-bg {
+    padding: var(--space-2);
+    border-radius: var(--rounded-base);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset calc(var(--shadow-distance) / 2.5)
+        calc(var(--shadow-distance) / 2.5) calc(var(--shadow-distance) / 1.5)
+        var(--neomorphic-dark),
+      inset calc(var(--shadow-distance) / -2.5)
+        calc(var(--shadow-distance) / -2.5) calc(var(--shadow-distance) / 1.5)
+        var(--neomorphic-light);
+  }
+  .metadata-card-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  .metadata-card-icon-blue {
+    color: var(--accent-color-primary-btn);
+  }
+  .metadata-card-icon-green {
+    color: var(--accent-color-success);
+  }
+  .metadata-card-title {
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0;
+    text-align: left;
+  }
+  .metadata-card-description {
+    font-size: var(--text-sm);
+    color: var(--text-color-muted);
+    margin-bottom: var(--space-3);
+  }
+
+  /* Permissions Tab */
+  .permissions-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-4);
+    gap: var(--space-3);
+    flex-shrink: 0;
+  }
+  .permissions-header-title-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .permissions-controls-bar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+  }
+  .permissions-controls-bar .search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex-grow: 1;
+  }
+  .permissions-controls-bar .search-input-icon {
+    position: absolute;
+    left: var(--space-3);
+    color: var(--text-color-muted);
+    pointer-events: none;
+    width: 1rem;
+    height: 1rem;
+  }
+  .permissions-controls-bar .form-input {
+    margin: 0;
+    padding-left: calc(var(--space-3) + var(--space-4) + var(--space-1));
+    width: 100%;
+  }
+  .permissions-controls-bar .form-select {
+    margin: 0;
+    min-width: 200px;
+    width: auto;
+  }
+  .permissions-access-to-cell {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+  }
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--text-color);
+    font-weight: normal;
+    cursor: pointer;
+    user-select: none;
+  }
+  .permissions-table-wrapper {
+    overflow-x: auto;
+    border-radius: var(--rounded-base);
+    background: var(--primary-bg);
+    box-shadow: var(--shadow-distance) var(--shadow-distance)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-dark),
+      calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-light);
+    padding: var(--space-1);
+    flex-grow: 1;
+    min-height: 150px;
+    overflow-y: auto;
+  }
+  .permissions-table {
+    width: 100%;
+    min-width: 700px;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .permissions-table th,
+  .permissions-table td {
+    padding: var(--space-3);
+    text-align: left;
+    font-size: var(--text-sm);
+    border-bottom: 1px solid var(--neomorphic-dark);
+  }
+  .permissions-table th {
+    font-weight: 600;
+    color: var(--text-color);
+    border-bottom-width: 2px;
+    background-color: var(--primary-bg);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  .permissions-table tr:last-child td {
+    border-bottom: none;
+  }
+  .permissions-table tr:hover td {
+    background-color: #e8edf2;
+  }
+  .permissions-footer-count {
+    font-size: var(--text-sm);
+    color: var(--text-color-muted);
+    margin-right: auto;
+  }
+  .permissions-footer-count span {
+    font-weight: 600;
+    color: var(--text-color);
+  }
+
+  /* Config File Tab */
+  .config-file-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-4);
+    gap: var(--space-3);
+    flex-shrink: 0;
+  }
+  .config-file-header-title-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  /* .config-file-actions usa .settings-button-group (con justify-content: flex-start) */
+  .config-file-editor-container {
+    border-radius: var(--rounded-base);
+    background: var(--primary-bg);
+    box-shadow: var(--shadow-distance) var(--shadow-distance)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-dark),
+      calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1)
+        calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
+        var(--neomorphic-light);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    min-height: 250px;
+  }
+  .config-file-editor-topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-2) var(--space-3);
+    background-color: var(--neomorphic-dark);
+    color: var(--neomorphic-light);
+    border-bottom: 1px solid #c0c7d2;
+    flex-shrink: 0;
+  }
+  .config-file-editor-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .config-file-editor-dots {
+    display: flex;
+    gap: var(--space-1);
+  }
+  .config-file-editor-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+  .config-file-editor-dot-red {
+    background-color: #ff5f57;
+  }
+  .config-file-editor-dot-yellow {
+    background-color: #febc2e;
+  }
+  .config-file-editor-dot-green {
+    background-color: #28c840;
+  }
+  .config-file-editor-filename {
+    font-family: var(--font-main);
+    font-size: var(--text-xs);
+    font-weight: 500;
+  }
+  .config-file-editor-last-modified {
+    font-size: var(--text-xs);
+    opacity: 0.7;
+  }
+  .config-file-editor-textarea {
+    width: 100%;
+    padding: var(--space-3);
+    background: var(--primary-bg);
+    color: var(--text-color);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    border: none;
+    border-radius: 0 0 var(--rounded-base) var(--rounded-base);
+    outline: none;
+    resize: vertical;
+    flex-grow: 1;
+  }
+  .config-file-autosave-text {
+    font-size: var(--text-xs);
+    color: var(--text-color-muted);
+    text-align: right;
+  }
+
+  /* Logs Tab */
+  .logs-controls {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+    margin-bottom: var(--space-4);
+  }
+  .logs-search-input {
+    flex-grow: 1;
+    min-width: 200px;
+  }
+  .logs-level-select {
+    min-width: 150px;
+    width: auto;
+  }
+  .logs-display-area {
+    background: var(--primary-bg);
+    border-radius: var(--rounded-base);
+    padding: var(--space-4);
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    box-shadow: inset calc(var(--shadow-distance) / 2)
+        calc(var(--shadow-distance) / 2) var(--shadow-distance)
+        var(--neomorphic-dark),
+      inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2)
+        var(--shadow-distance) var(--neomorphic-light);
+    border: none;
+    flex-grow: 1;
+    min-height: 200px;
+  }
+  .logs-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .log-entry {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid #e0e5ec;
+    display: flex;
+    gap: var(--space-3);
+    align-items: flex-start;
+    line-height: 1.4;
+  }
+  .log-entry:last-child {
+    border-bottom: none;
+  }
+  .log-timestamp {
+    color: var(--text-color-muted);
+    white-space: nowrap;
+    font-size: 0.8rem;
+  }
+  .log-level-badge {
+    padding: var(--space-0-5) var(--space-2);
+    border-radius: var(--rounded-base);
+    font-weight: 600;
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    white-space: nowrap;
+    box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1),
+      -1px -1px 2px rgba(255, 255, 255, 0.7);
+  }
+  .log-level-badge.log-level-info {
+    background-color: #e0f2fe;
+    color: #0c4a6e;
+  }
+  .log-level-badge.log-level-warning {
+    background-color: #fffbeb;
+    color: #78350f;
+  }
+  .log-level-badge.log-level-error {
+    background-color: #feeddd;
+    color: #7f1d1d;
+  }
+  .log-level-badge.log-level-debug {
+    background-color: #f3f4f6;
+    color: #374151;
+  }
+  .log-message {
+    flex-grow: 1;
+    word-break: break-word;
+  }
+  .log-entry.log-level-info .log-message {
+    color: #1e3a8a;
+  }
+  .log-entry.log-level-warning .log-message {
+    color: #9a3412;
+  }
+  .log-entry.log-level-error .log-message {
+    color: #991b1b;
+  }
+  .log-entry.log-level-debug .log-message {
+    color: var(--text-color-muted);
+  }
+  .logs-empty-message {
+    text-align: center;
+    color: var(--text-color-muted);
+    padding: var(--space-8) 0;
+  }
+  .logs-count-info {
+    font-size: var(--text-sm);
+    color: var(--text-color-muted);
+    margin-right: auto;
+  }
+
+  /* Animazione Spinner */
+  .animate-spin-css {
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Utility per visibilità (se non globali) */
+  .hidden {
+    display: none !important;
+  }
+  /* Non ci sono media query per schermi più piccoli perché il layout è desktop-first (min 1280px) */
+  /* Le classi .md:block ecc. non sono più necessarie se il default è desktop */
+  .config-file-editor-last-modified,
+  .config-file-autosave-text {
+    /* Sono visibili di default se non hanno la classe .hidden nel JSX */
+  }

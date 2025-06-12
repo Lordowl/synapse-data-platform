@@ -1,0 +1,172 @@
+/* src/components/Home/Home.css - NEUMORPHIC THEME */
+
+.home-page-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    padding: var(--space-6);
+    /* Background color will be inherited from .app-content (var(--primary-bg)) */
+  }
+  
+  .home-header h1 {
+    font-size: 2.5rem;
+    color: var(--text-color); /* Use neumorphic text color */
+    margin-bottom: var(--space-8);
+  }
+  
+  .home-button-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-6);
+    margin-top: var(--space-4);
+  }
+  
+  /*
+    Styles for buttons specific to the Home page.
+    They will use the global .btn class for the base neumorphic style.
+    Here, we define specific dimensions or minor variations if needed.
+  */
+  .home-button-container .btn { /* Applies to <button className="btn">...</button> or <Link className="btn">...</Link> */
+    width: 280px; /* Adjusted width, can be specific */
+    padding-top: var(--space-4);
+    padding-bottom: var(--space-4);
+    font-size: 1.1rem;
+    border-radius: var(--rounded-full); /* Ensuring consistent neumorphic rounding */
+    /*
+      It inherits base neumorphic styles from global .btn:
+      - background: var(--primary-bg);
+      - color: var(--text-color);
+      - box-shadow: for raised effect
+      - :hover, :active, :focus-visible states
+    */
+  }
+  
+  /* If you want Links to look like neumorphic buttons without using global .btn directly,
+     or if you need a distinct style for these specific links.
+     It's often better to apply the global .btn class to Links as well for consistency.
+     <Link to="/somepage" className="btn home-custom-link-btn">Go to Page</Link>
+     If you must have a separate .link-as-button:
+  */
+  .home-button-container .link-as-button {
+    display: inline-flex; /* For centering content inside */
+    align-items: center;
+    justify-content: center;
+    width: 280px; /* Consistent width with .home-button-container .btn */
+    padding: var(--space-4) var(--space-4); /* Use symmetrical padding if text varies */
+    font-size: 1.1rem;
+    font-weight: 600; /* Match .btn */
+    text-align: center;
+  
+    background: var(--primary-bg);
+    color: var(--text-color);
+    border: none; /* Neumorphism typically avoids borders for shadowed elements */
+    border-radius: var(--rounded-full); /* Neumorphic rounding */
+    box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+                calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
+    font-family: inherit;
+    outline: none;
+    text-decoration: none;
+    user-select: none;
+  }
+  
+  .home-button-container .link-as-button:hover {
+    transform: translateY(-2px);
+    color: var(--accent-color-primary-btn); /* Or var(--accent-color) for red */
+    /* The box-shadow might subtly change or intensify if desired, but translateY is key */
+  }
+  
+  .home-button-container .link-as-button:active {
+    transform: translateY(0);
+    box-shadow: inset calc(var(--shadow-distance) / 2) calc(var(--shadow-distance) / 2) var(--shadow-distance) var(--neomorphic-dark),
+                inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2) var(--shadow-distance) var(--neomorphic-light);
+    color: var(--accent-color-primary-btn); /* Maintain hover color or a slightly different active one */
+  }
+  
+  .home-button-container .link-as-button:focus-visible {
+    outline: 2px solid var(--accent-color-primary-btn); /* Use a theme color for focus */
+    outline-offset: 3px; /* More offset for neumorphic shapes */
+  }
+  
+  /* Example of a primary action button within home-button-container */
+  /* You could have a <Link className="btn btn-primary-action home-specific-style">Go Premium</Link> */
+  .home-button-container .btn.btn-primary-action {
+      /* It will inherit .btn and .btn-primary-action styles */
+      /* Add any home-specific overrides here if needed */
+      /* e.g., width: 300px; */
+  }
+  .home-page-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center; /* Centra verticalmente il contenuto se l'altezza è definita */
+    min-height: 80vh; /* Assicura che prenda almeno gran parte dello schermo, per centrare */
+    padding: var(--space-6);
+    text-align: center; /* Centra il testo nell'header */
+    background-color: var(--primary-bg); /* Usa lo sfondo neumorfico */
+  }
+  
+  .home-header {
+    margin-bottom: var(--space-8); /* Spazio maggiore tra header e bottoni */
+    display: flex; /* Per allineare logo e titolo se necessario, anche se qui li metto in colonna */
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .home-logo {
+    /* Dimensionamento del logo */
+    width: 100%; /* Prende la larghezza del contenitore .home-header (fino al max-width) */
+    max-width: 300px; /* <<--- IMPOSTA UNA LARGHEZZA MASSIMA RAGIONEVOLE PER IL LOGO */
+    /* L'altezza si adatterà automaticamente mantenendo le proporzioni */
+    height: auto;
+    margin-bottom: var(--space-4); /* Spazio tra il logo e il titolo "Control Center" */
+    object-fit: contain; /* Assicura che l'immagine sia contenuta e non deformata */
+  }
+  
+  .home-header h1 {
+    font-size: 2.8rem; /* Dimensione più grande per il titolo principale */
+    color: var(--text-color);
+    font-weight: 700; /* Più marcato */
+    /* Rimuovi text-align: center da qui se già su .home-page-wrapper o .home-header */
+  }
+  
+  .home-button-container {
+    display: flex;
+    flex-direction: column; /* Bottoni impilati su mobile */
+    gap: var(--space-4); /* Spazio tra i bottoni */
+    width: 100%;
+    max-width: 320px; /* Larghezza massima per il contenitore dei bottoni */
+  }
+  
+  .home-button-container .btn { /* Assicurati che la classe .btn sia definita globalmente o qui */
+    width: 100%; /* Bottoni a larghezza piena nel loro contenitore */
+    padding: var(--space-3) var(--space-4); /* Padding generoso */
+    font-size: var(--text-base); /* Dimensione font standard per i bottoni */
+    /* Stile neumorfico per i bottoni (assumendo .btn da styles.css o settings.css) */
+    /* Se .btn non è definito globalmente, copia gli stili qui */
+  }
+  
+  /* Per schermi più grandi, potresti voler mettere i bottoni in linea */
+  @media (min-width: 768px) {
+    .home-button-container {
+      flex-direction: row; /* Bottoni in linea */
+      justify-content: center;
+      max-width: none; /* Permetti al contenitore di espandersi di più */
+      gap: var(--space-6); /* Più spazio tra i bottoni in linea */
+    }
+    .home-button-container .btn {
+      width: auto; /* Larghezza automatica per i bottoni in linea */
+      min-width: 150px; /* Larghezza minima per i bottoni */
+    }
+    .home-logo {
+      max-width: 400px; /* Logo leggermente più grande su desktop */
+    }
+    .home-header h1 {
+      font-size: 3.5rem;
+    }
+  }
