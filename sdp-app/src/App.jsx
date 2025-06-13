@@ -20,7 +20,7 @@ function App() {
   useEffect(() => {
     const checkAuth = async () => {
       // Il nome della chiave è 'authToken' come nel tuo codice originale
-      const token = sessionStorage.getItem("accessToken");
+        const token = sessionStorage.getItem("accessToken");
       if (!token) {
         setIsAuthenticated(false);
         setIsLoading(false); // Finito di caricare
