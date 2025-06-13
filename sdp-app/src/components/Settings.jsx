@@ -622,49 +622,120 @@ function CreateUserModal({ isOpen, onClose, newUser, setNewUser, onCreate, error
     setNewUser(prev => ({ ...prev, [name]: value }));
   };
 
+  const generatePassword = () => {
+    // Semplice generatore di password lato client (meno sicuro di quello server-side,
+    // ma utile per pre-compilare il campo).
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()";
+    let password = "";
+    for (let i = 0; i < 12; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    // Aggiorna lo stato newUser con la password generata
+    setNewUser(prev => ({ ...prev, password: password }));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     onCreate();
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content">
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <h2>Crea Nuovo Utente</h2>
         <form onSubmit={handleSubmit}>
+          
           <div className="form-group">
             <label htmlFor="username">Username</label>
-            <input type="text" id="username" name="username" value={newUser.username} onChange={handleChange} required disabled={isCreating} />
+            <input
+              type="text"
+              id="username"
+              name="username"
+              value={newUser.username}
+              onChange={handleChange}
+              required
+              disabled={isCreating}
+              placeholder="es. m.rossi"
+            />
           </div>
+
           <div className="form-group">
             <label htmlFor="email">Email</label>
-            <input type="email" id="email" name="email" value={newUser.email} onChange={handleChange} required disabled={isCreating} />
+            <input
+              type="email"
+              id="email"
+              name="email"
+              value={newUser.email}
+              onChange={handleChange}
+              required
+              disabled={isCreating}
+              placeholder="es. mario.rossi@azienda.it"
+            />
           </div>
+
           <div className="form-group">
-            <label htmlFor="password">Password</label>
-            <input type="password" id="password" name="password" value={newUser.password} onChange={handleChange} required disabled={isCreating} />
+            <label htmlFor="password">Password (lasciare vuoto per generarla automaticamente)</label>
+            <div className="password-input-group">
+              <input
+                type="text" // 'text' per vedere la password generata
+                id="password"
+                name="password"
+                value={newUser.password}
+                onChange={handleChange}
+                disabled={isCreating}
+                placeholder="Opzionale"
+              />
+              <button
+                type="button"
+                onClick={generatePassword}
+                className="btn btn-outline"
+                style={{ flexShrink: 0 }} // Evita che il pulsante si restringa
+                disabled={isCreating}
+              >
+                Genera
+              </button>
+            </div>
           </div>
+
           <div className="form-group">
             <label htmlFor="role">Ruolo</label>
-            <select id="role" name="role" value={newUser.role} onChange={handleChange} disabled={isCreating}>
+            <select
+              id="role"
+              name="role"
+              value={newUser.role}
+              onChange={handleChange}
+              disabled={isCreating}
+            >
               <option value="user">User</option>
               <option value="admin">Admin</option>
             </select>
           </div>
 
+          {/* Mostra un eventuale errore di creazione dall'API */}
           {error && <p className="error-message">{error}</p>}
 
           <div className="modal-actions">
-            <button type="button" onClick={onClose} className="btn btn-outline" disabled={isCreating}>Annulla</button>
-            <button type="submit" className="btn" disabled={isCreating}>
-              {isCreating ? 'Creazione...' : 'Crea Utente'}
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn btn-outline"
+              disabled={isCreating}
+            >
+              Annulla
+            </button>
+            <button
+              type="submit"
+              className="btn"
+              disabled={isCreating}
+            >
+              {isCreating ? 'Creazione in corso...' : 'Crea Utente'}
             </button>
           </div>
         </form>
       </div>
     </div>
   );
-} 
+}
 // =====================================================
 // --- COMPONENTE PRINCIPALE SETTINGS (VERSIONE COMPLETA E MODIFICATA) ---
 // =====================================================

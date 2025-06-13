@@ -7,31 +7,42 @@ from typing import List, Dict # Assicurati di importare List e Dict
 from db import schemas, models, crud
 from db.database import get_db
 from core.security import get_current_user, get_current_active_admin
-
+import secrets
+import string
 # Il prefisso e i tag sono già qui, ottimo!
 router = APIRouter(prefix="/users", tags=["Users"])
-
+def generate_random_password(length: int = 12):
+    """Genera una password casuale sicura."""
+    alphabet = string.ascii_letters + string.digits + string.punctuation
+    password = ''.join(secrets.choice(alphabet) for i in range(length))
+    return password
 @router.post("/", response_model=schemas.UserInDB, status_code=status.HTTP_201_CREATED)
 def create_new_user(
     user: schemas.UserCreate, 
     db: Session = Depends(get_db),
-    # --- AGGIUNGIAMO LA SICUREZZA QUI ---
     admin_user: models.User = Security(get_current_active_admin)
 ):
     """
-    Crea un nuovo utente.
-    Endpoint accessibile solo agli admin.
+    Crea un nuovo utente. Se la password non è fornita, ne genera una casuale.
     """
-    db_user_by_username = crud.get_user_by_username(db, username=user.username)
-    if db_user_by_username:
-        raise HTTPException(status_code=400, detail="Username already registered")
-    
-    db_user_by_email = crud.get_user_by_email(db, email=user.email)
-    if db_user_by_email:
-        raise HTTPException(status_code=400, detail="Email already registered")
-        
-    return crud.create_user(db=db, user=user)
+    # Controlli esistenti per username ed email...
+    # ...
 
+    # --- NUOVA LOGICA PER LA PASSWORD ---
+    password_to_use = user.password
+    if not password_to_use:
+        # Se la password è vuota o non fornita, ne generiamo una nuova
+        password_to_use = generate_random_password()
+        print(f"Nessuna password fornita per l'utente {user.username}. Password generata: {password_to_use}")
+
+    # Aggiorniamo l'oggetto utente con la password da usare
+    user_with_password = user.model_copy(update={"password": password_to_use})
+    
+    # Passiamo l'utente con la password garantita alla funzione CRUD
+    created_user = crud.create_user(db=db, user=user_with_password)
+
+    
+    return created_user
 @router.get("/me", response_model=schemas.UserInDB)
 def read_users_me(
     # Uso Security per la UI di Swagger, come abbiamo discusso

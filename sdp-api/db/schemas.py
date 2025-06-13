@@ -13,7 +13,7 @@ class UserBase(BaseModel):
 # Schema per la creazione di un nuovo utente (dall'API)
 # Eredita da UserBase e aggiunge la password
 class UserCreate(UserBase):
-    password: str
+    password: Optional[str] = None 
     role: str = "user"
     permissions: Optional[List[str]] = []
 # Schema per la lettura dei dati di un utente dall'API
