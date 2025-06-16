@@ -2,8 +2,7 @@
 
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-// NON USIAMO PIÙ INVOKE
-// import { invoke } from "@tauri-apps/api/core";
+import { ToastContainer } from 'react-toastify';
 import apiClient from "./api/apiClient"; // IMPORTIAMO IL CLIENT API
 
 import Home from "./components/Home";
@@ -95,6 +94,18 @@ function App() {
           />
         </Routes>
       </div>
+      <ToastContainer
+        position="bottom-right" 
+        autoClose={4000}        
+        hideProgressBar={false} 
+        newestOnTop={false}     
+        closeOnClick            
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"           
+      />
     </div>
   );
 }

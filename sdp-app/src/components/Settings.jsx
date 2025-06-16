@@ -1,5 +1,6 @@
 // src/components/Settings/Settings.jsx
 import { useState, useMemo, useEffect } from "react";
+import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import apiClient from "../api/apiClient"; //
 import {
@@ -275,6 +276,7 @@ function PermissionsTabContent({
   onRemove,
   onSave,
   isSaving,
+  hasUnsavedChanges,
   loadingStates,
   // Nuove props per filtri e ricerca
   searchTerm,
@@ -501,23 +503,31 @@ function PermissionsTabContent({
           Utenti visualizzati: {filteredPermissions.length} (Totali:{" "}
           {permissions.length})
         </p>
-        <button
-          onClick={onSave}
-          className="btn btn-outline"
-          disabled={anyActionLoading}
-        >
-          {isSaving ? (
-            <>
-              <RefreshCw className="btn-icon-md animate-spin-css" />
-              Salvataggio...
-            </>
-          ) : (
-            <>
-              <Save className="btn-icon-md" />
-              Salva Permessi
-            </>
+
+        {/* --- ECCO LA MODIFICA PER L'INDICATORE --- */}
+        <div className="save-actions-wrapper">
+          {hasUnsavedChanges && (
+            <span className="unsaved-indicator">Modifiche non salvate</span>
           )}
-        </button>
+          <button
+            onClick={onSave}
+            className="btn btn-outline"
+            // Disabilita il pulsante se non ci sono modifiche da salvare
+            disabled={anyActionLoading || !hasUnsavedChanges}
+          >
+            {isSaving ? (
+              <>
+                <RefreshCw className="btn-icon-md animate-spin-css" />
+                Salvataggio...
+              </>
+            ) : (
+              <>
+                <Save className="btn-icon-md" />
+                Salva Permessi
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -614,24 +624,33 @@ function ConfigFileTabContent({
   );
 }
 
-function CreateUserModal({ isOpen, onClose, newUser, setNewUser, onCreate, error, isCreating }) {
+function CreateUserModal({
+  isOpen,
+  onClose,
+  newUser,
+  setNewUser,
+  onCreate,
+  error,
+  isCreating,
+}) {
   if (!isOpen) return null;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setNewUser(prev => ({ ...prev, [name]: value }));
+    setNewUser((prev) => ({ ...prev, [name]: value }));
   };
 
   const generatePassword = () => {
     // Semplice generatore di password lato client (meno sicuro di quello server-side,
     // ma utile per pre-compilare il campo).
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()";
+    const chars =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()";
     let password = "";
     for (let i = 0; i < 12; i++) {
       password += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     // Aggiorna lo stato newUser con la password generata
-    setNewUser(prev => ({ ...prev, password: password }));
+    setNewUser((prev) => ({ ...prev, password: password }));
   };
 
   const handleSubmit = (e) => {
@@ -644,7 +663,6 @@ function CreateUserModal({ isOpen, onClose, newUser, setNewUser, onCreate, error
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <h2>Crea Nuovo Utente</h2>
         <form onSubmit={handleSubmit}>
-          
           <div className="form-group">
             <label htmlFor="username">Username</label>
             <input
@@ -674,7 +692,9 @@ function CreateUserModal({ isOpen, onClose, newUser, setNewUser, onCreate, error
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Password (lasciare vuoto per generarla automaticamente)</label>
+            <label htmlFor="password">
+              Password (lasciare vuoto per generarla automaticamente)
+            </label>
             <div className="password-input-group">
               <input
                 type="text" // 'text' per vedere la password generata
@@ -723,12 +743,8 @@ function CreateUserModal({ isOpen, onClose, newUser, setNewUser, onCreate, error
             >
               Annulla
             </button>
-            <button
-              type="submit"
-              className="btn"
-              disabled={isCreating}
-            >
-              {isCreating ? 'Creazione in corso...' : 'Crea Utente'}
+            <button type="submit" className="btn" disabled={isCreating}>
+              {isCreating ? "Creazione in corso..." : "Crea Utente"}
             </button>
           </div>
         </form>
@@ -741,12 +757,12 @@ function CreateUserModal({ isOpen, onClose, newUser, setNewUser, onCreate, error
 // =====================================================
 function Settings() {
   const navigate = useNavigate();
-
   // --- STATI PRINCIPALI ---
   // Stato per l'utente loggato e per il caricamento dei suoi dati
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   // Stato per il tab attivo. Default su un tab accessibile a tutti.
   const [activeTab, setActiveTab] = useState("metadata_file");
 
@@ -816,16 +832,18 @@ function Settings() {
 
         // 2. SE l'utente è un admin, carica la lista degli altri utenti
         if (user && user.role === "admin") {
-          const permissionsResponse = await apiClient.get('/users/all'); 
+          const permissionsResponse = await apiClient.get("/users/all");
 
           // 3. Trasforma i dati dell'API nel formato che il componente si aspetta
-          const formattedPermissions = permissionsResponse.data.map(dbUser => ({
-            id: dbUser.id,
-            user: dbUser.email || dbUser.username,
-            role: dbUser.role,
-            accessTo: dbUser.permissions || [], // <<--- ORA USIAMO I PERMESSI REALI
-        }));
-        setPermissions(formattedPermissions);
+          const formattedPermissions = permissionsResponse.data.map(
+            (dbUser) => ({
+              id: dbUser.id,
+              user: dbUser.email || dbUser.username,
+              role: dbUser.role,
+              accessTo: dbUser.permissions || [], // <<--- ORA USIAMO I PERMESSI REALI
+            })
+          );
+          setPermissions(formattedPermissions);
         }
       } catch (error) {
         console.error("Errore nel caricamento dei dati iniziali:", error);
@@ -904,8 +922,8 @@ function Settings() {
     setCreateError("");
     try {
       // Chiamata API REALE per creare l'utente
-      const response = await apiClient.post('/users/', newUser);
-      
+      const response = await apiClient.post("/users/", newUser);
+
       // Formatta il nuovo utente per aggiungerlo alla lista visualizzata
       const createdUser = response.data;
       const formattedNewUser = {
@@ -914,15 +932,16 @@ function Settings() {
         role: createdUser.role,
         accessTo: createdUser.permissions || [],
       };
-      
+
       // Aggiunge il nuovo utente in cima alla lista esistente
-      setPermissions(prev => [formattedNewUser, ...prev]);
-      
-      alert('Utente creato con successo!');
+      setPermissions((prev) => [formattedNewUser, ...prev]);
+      toast.success("Utente creato con successo!");
       closeCreateModal(); // Chiude la modale
     } catch (error) {
       console.error("Errore nella creazione dell'utente:", error);
-      setCreateError(error.response?.data?.detail || "Impossibile creare l'utente.");
+      setCreateError(
+        error.response?.data?.detail || "Impossibile creare l'utente."
+      );
     } finally {
       setIsCreating(false);
     }
@@ -938,11 +957,12 @@ function Settings() {
     /* ... la tua logica ... */
   };
   const handlePermissionChange = (id, field, valueOrUpdater) => {
-    setPermissions(prevPermissions =>
-      prevPermissions.map(p => {
+    setHasUnsavedChanges(true);
+    setPermissions((prevPermissions) =>
+      prevPermissions.map((p) => {
         if (p.id === id) {
           // Se il valore è una funzione (come nel nostro caso per accessTo), la eseguiamo
-          if (typeof valueOrUpdater === 'function') {
+          if (typeof valueOrUpdater === "function") {
             return { ...p, [field]: valueOrUpdater(p[field]) };
           }
           // Altrimenti, è un valore semplice
@@ -955,31 +975,36 @@ function Settings() {
 
   const removePermission = async (id) => {
     // Cerchiamo l'utente da rimuovere per mostrare un messaggio di conferma più chiaro
-    const userToRemove = permissions.find(p => p.id === id);
+    const userToRemove = permissions.find((p) => p.id === id);
     if (!userToRemove) return;
 
-    if (window.confirm(`Sei sicuro di voler rimuovere l'utente "${userToRemove.user}"? L'azione è irreversibile.`)) {
-      setLoadingStates(prev => ({ ...prev, removingPermissionId: id }));
+    if (
+      window.confirm(
+        `Sei sicuro di voler rimuovere l'utente "${userToRemove.user}"? L'azione è irreversibile.`
+      )
+    ) {
+      setLoadingStates((prev) => ({ ...prev, removingPermissionId: id }));
       try {
         // Chiamata API REALE per cancellare l'utente
         await apiClient.delete(`/users/${id}`);
-        
+
         // Se la chiamata ha successo, aggiorniamo lo stato del frontend
-        setPermissions(prev => prev.filter(p => p.id !== id));
-        alert(`Utente "${userToRemove.user}" rimosso con successo.`); // Sostituire con Toast
+        setPermissions((prev) => prev.filter((p) => p.id !== id));
+        toast.success(`Utente "${userToRemove.user}" rimosso con successo.`);
       } catch (error) {
         console.error("Errore nella rimozione dell'utente:", error);
-        alert(error.response?.data?.detail || "Impossibile rimuovere l'utente.");
+        toast.error("Impossibile rimuovere l'utente.");
       } finally {
-        setLoadingStates(prev => ({ ...prev, removingPermissionId: null }));
+        setLoadingStates((prev) => ({ ...prev, removingPermissionId: null }));
       }
     }
   };
   const handleSavePermissions = async () => {
-    setLoadingStates(prev => ({ ...prev, savingPermissions: true }));
+    setHasUnsavedChanges(false);
+    setLoadingStates((prev) => ({ ...prev, savingPermissions: true }));
     try {
       // Usiamo Promise.all per inviare tutte le richieste di aggiornamento in parallelo
-      const updatePromises = permissions.map(perm => {
+      const updatePromises = permissions.map((perm) => {
         // Prepariamo i dati da inviare per l'aggiornamento
         const userDataToUpdate = {
           role: perm.role,
@@ -990,13 +1015,15 @@ function Settings() {
       });
 
       await Promise.all(updatePromises);
-      
-      alert("Permessi salvati con successo!"); // Sostituire con Toast
+
+      toast.success("Permessi salvati con successo!"); // Sostituire con Toast
     } catch (error) {
       console.error("Errore nel salvataggio dei permessi:", error);
-      alert(error.response?.data?.detail || "Impossibile salvare i permessi.");
+      toast.error(
+        error.response?.data?.detail || "Impossibile salvare i permessi."
+      );
     } finally {
-      setLoadingStates(prev => ({ ...prev, savingPermissions: false }));
+      setLoadingStates((prev) => ({ ...prev, savingPermissions: false }));
     }
   };
   const resetIniContent = async () => {
@@ -1047,10 +1074,11 @@ function Settings() {
           <PermissionsTabContent
             permissions={permissions}
             onPermissionChange={handlePermissionChange}
-            onAddNew={openCreateModal} 
+            onAddNew={openCreateModal}
             onRemove={removePermission}
             onSave={handleSavePermissions}
             isSaving={loadingStates.savingPermissions}
+            hasUnsavedChanges={hasUnsavedChanges}
             loadingStates={loadingStates}
             searchTerm={permissionSearchTerm}
             setSearchTerm={setPermissionSearchTerm}
@@ -1059,7 +1087,6 @@ function Settings() {
             accessFilter={permissionAccessFilter}
             setAccessFilter={setPermissionAccessFilter}
             availableRoles={AVAILABLE_ROLES_FOR_FILTER}
-            
           />
         );
       case "config":
@@ -1172,7 +1199,6 @@ function Settings() {
         isCreating={isCreating}
       />
     </div>
-    
   );
 }
 
