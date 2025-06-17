@@ -101,118 +101,69 @@ function MetadataFileTabContent({
 // --- Sotto-Componente per il Tab Log Applicativi ---
 function LogsTabContent({
   logEntries,
-  onRefreshLogs,
-  onClearLogs,
-  onDownloadLogs,
-  loadingStates,
+  // Le prossime props potrebbero non servire più o dovranno essere collegate
+  // a nuovi endpoint del backend (es. per scaricare i log reali)
+  // onRefreshLogs, 
+  // onClearLogs,
+  // onDownloadLogs,
+  // loadingStates,
 }) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [logLevelFilter, setLogLevelFilter] = useState("all");
 
   const filteredLogs = useMemo(
     () =>
       logEntries
-        .filter(
-          (log) =>
-            (log.message?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              new Date(log.timestamp)
-                .toLocaleString()
-                .toLowerCase()
-                .includes(searchTerm.toLowerCase())) &&
-            (logLevelFilter === "all" ||
-              log.level?.toLowerCase() === logLevelFilter)
+        .filter(log =>
+            (log.action?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             log.username?.toLowerCase().includes(searchTerm.toLowerCase()))
         )
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
-    [logEntries, searchTerm, logLevelFilter]
+    [logEntries, searchTerm]
   );
-
-  const getLogLevelClass = (level) => {
-    if (!level || typeof level !== "string") return "log-level-debug";
-    switch (level.toLowerCase()) {
-      case "error":
-        return "log-level-error";
-      case "warning":
-        return "log-level-warning";
-      case "info":
-        return "log-level-info";
-      default:
-        return "log-level-debug";
-    }
-  };
-
-  const anyLogActionLoading =
-    loadingStates.refreshingLogs ||
-    loadingStates.clearingLogs ||
-    loadingStates.downloadingLogs;
 
   return (
     <div className="tab-content-padding">
       <div className="tab-content-header">
         <ListChecks className="tab-content-icon" />
-        <h2 className="tab-content-title">Log Applicativi</h2>
+        <h2 className="tab-content-title">Registro Attività (Audit Log)</h2>
       </div>
       <div className="logs-controls">
         <input
           type="text"
-          placeholder="Cerca nei log..."
+          placeholder="Cerca per azione o utente..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="form-input logs-search-input"
-          disabled={anyLogActionLoading}
         />
-        <select
-          value={logLevelFilter}
-          onChange={(e) => setLogLevelFilter(e.target.value)}
-          className="form-select logs-level-select"
-          disabled={anyLogActionLoading}
-        >
-          <option value="all">Tutti i Livelli</option>
-          <option value="info">Info</option>
-          <option value="warning">Warning</option>
-          <option value="error">Error</option>
-          <option value="debug">Debug</option>
-        </select>
-        <button
-          onClick={onRefreshLogs}
-          className="btn btn-outline"
-          disabled={anyLogActionLoading}
-        >
-          {loadingStates.refreshingLogs ? (
-            <>
-              <RefreshCw className="btn-icon-md animate-spin-css" />
-              Aggiornando...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="btn-icon-md" />
-              Aggiorna
-            </>
-          )}
-        </button>
+        {/* Il filtro per 'level' non serve più, lo rimuoviamo */}
       </div>
       <div className="logs-display-area">
         {filteredLogs.length > 0 ? (
-          <ul className="logs-list">
-            {filteredLogs.map((log, index) => (
-              <li
-                key={log.id || index}
-                className={`log-entry ${getLogLevelClass(log.level)}`}
-              >
-                <span className="log-timestamp">
-                  {new Date(log.timestamp).toLocaleString()}
-                </span>
-                <span
-                  className={`log-level-badge ${getLogLevelClass(log.level)}`}
-                >
-                  {log.level?.toUpperCase() || "N/D"}
-                </span>
-                <span className="log-message">{log.message || ""}</span>
-              </li>
-            ))}
-          </ul>
+          <table className="users-table"> {/* Riusiamo lo stile della tabella permessi */}
+            <thead>
+              <tr>
+                <th>Data e Ora</th>
+                <th>Utente</th>
+                <th>Azione</th>
+                <th style={{ width: '50%' }}>Dettagli</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredLogs.map(log => (
+                <tr key={log.id}>
+                  <td>{new Date(log.timestamp).toLocaleString('it-IT')}</td>
+                  <td>{log.username || 'Sistema'}</td>
+                  <td><span className="action-badge">{log.action}</span></td>
+                  <td>
+                    <pre className="details-pre">{JSON.stringify(log.details, null, 2)}</pre>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         ) : (
           <p className="logs-empty-message">
-            Nessun log da visualizzare o corrispondente ai filtri.
+            Nessun registro attività da visualizzare.
           </p>
         )}
       </div>
@@ -220,47 +171,11 @@ function LogsTabContent({
         <p className="logs-count-info">
           Visualizzati: {filteredLogs.length} (Totali: {logEntries.length})
         </p>
-        <div className="logs-action-buttons">
-          <button
-            onClick={onDownloadLogs}
-            className="btn btn-outline"
-            disabled={anyLogActionLoading}
-          >
-            {loadingStates.downloadingLogs ? (
-              <>
-                <RefreshCw className="btn-icon-md animate-spin-css" />
-                Download...
-              </>
-            ) : (
-              <>
-                <Download className="btn-icon-md" />
-                Scarica Log
-              </>
-            )}
-          </button>
-          <button
-            onClick={onClearLogs}
-            className="btn btn-outline"
-            disabled={anyLogActionLoading}
-          >
-            {loadingStates.clearingLogs ? (
-              <>
-                <RefreshCw className="btn-icon-md animate-spin-css" />
-                Pulizia...
-              </>
-            ) : (
-              <>
-                <Trash2 className="btn-icon-md" />
-                Pulisci Log
-              </>
-            )}
-          </button>
-        </div>
+        {/* I pulsanti di download/pulizia andranno collegati a nuovi endpoint */}
       </div>
     </div>
   );
 }
-
 // --- Sotto-Componente per il Tab Permessi (MODIFICATO) ---
 const ALL_ACCESS_MODULES = [
   // Definisci i moduli a cui si può dare accesso
@@ -774,20 +689,7 @@ function Settings() {
   const [iniContent, setIniContent] = useState(
     `[Database]\nhost=localhost\nport=5432\n\n[SharePoint]\nsite_url=https://company.sharepoint.com\n\n[Scripts]\npath=/scripts/auto.ps1`
   );
-  const [logEntries, setLogEntries] = useState([
-    {
-      id: "l1",
-      timestamp: new Date(Date.now() - 50000).toISOString(),
-      level: "INFO",
-      message: "App init.",
-    },
-    {
-      id: "l2",
-      timestamp: new Date().toISOString(),
-      level: "ERROR",
-      message: "DB Timeout.",
-    },
-  ]);
+  const [logEntries, setLogEntries] = useState([]);
 
   // Stati per i filtri dei permessi
   const [permissionSearchTerm, setPermissionSearchTerm] = useState("");
@@ -825,34 +727,54 @@ function Settings() {
     const fetchInitialData = async () => {
       setAuthLoading(true);
       try {
-        // 1. Recupera l'utente corrente (come prima)
+        // La chiamata a /users/me è fondamentale, la lasciamo qui
         const userResponse = await apiClient.get("/users/me");
         const user = userResponse.data;
         setCurrentUser(user);
-
-        // 2. SE l'utente è un admin, carica la lista degli altri utenti
+  
         if (user && user.role === "admin") {
-          const permissionsResponse = await apiClient.get("/users/all");
-
-          // 3. Trasforma i dati dell'API nel formato che il componente si aspetta
-          const formattedPermissions = permissionsResponse.data.map(
-            (dbUser) => ({
+          // Usiamo Promise.allSettled invece di Promise.all
+          // Promise.all si ferma al primo errore.
+          // Promise.allSettled esegue tutte le promise e ci dà il risultato di ciascuna.
+          const results = await Promise.allSettled([
+            apiClient.get('/users/all'),
+            apiClient.get('/audit/logs')
+          ]);
+  
+          const permissionsResult = results[0];
+          const auditLogsResult = results[1];
+  
+          // Gestiamo i permessi
+          if (permissionsResult.status === 'fulfilled') {
+            const formattedPermissions = permissionsResult.value.data.map(dbUser => ({
               id: dbUser.id,
               user: dbUser.email || dbUser.username,
               role: dbUser.role,
-              accessTo: dbUser.permissions || [], // <<--- ORA USIAMO I PERMESSI REALI
-            })
-          );
-          setPermissions(formattedPermissions);
+              accessTo: dbUser.permissions || [],
+            }));
+            setPermissions(formattedPermissions);
+          } else {
+            console.error("Fallito il caricamento dei permessi:", permissionsResult.reason);
+            toast.error("Impossibile caricare la lista utenti.");
+          }
+  
+          // Gestiamo i log di audit
+          if (auditLogsResult.status === 'fulfilled') {
+            setLogEntries(auditLogsResult.value.data);
+          } else {
+            console.error("Fallito il caricamento dei log di audit:", auditLogsResult.reason);
+            toast.error("Impossibile caricare il registro attività.");
+          }
         }
       } catch (error) {
-        console.error("Errore nel caricamento dei dati iniziali:", error);
+        // Questo catch ora si attiverà solo se la prima chiamata a /users/me fallisce
+        console.error("Errore di autenticazione:", error);
         navigate("/login");
       } finally {
         setAuthLoading(false);
       }
     };
-
+  
     fetchInitialData();
   }, [navigate]);
 

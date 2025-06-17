@@ -1,5 +1,5 @@
 # my_fastapi_backend/db/schemas.py
-
+from datetime import datetime
 from pydantic import BaseModel, EmailStr
 from typing import Optional,List
 
@@ -43,3 +43,19 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     permissions: Optional[List[str]] = None
     is_active: Optional[bool] = None
+
+class AuditLogBase(BaseModel):
+    action: str
+    details: Optional[dict] = None
+
+class AuditLogCreate(AuditLogBase):
+    user_id: Optional[int] = None
+
+class AuditLogInDB(AuditLogBase):
+    id: int
+    timestamp: datetime
+    user_id: Optional[int] = None
+    username: Optional[str] = None # Campo extra che aggiungeremo per comodità
+
+    class Config:
+        from_attributes = True
