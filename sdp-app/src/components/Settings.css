@@ -1023,3 +1023,140 @@
     color: white;
     border-color: #27ae60;
   }
+
+  .logs-controls-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr; /* Layout a 3 colonne */
+    gap: 20px;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+  }
+  
+  .date-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .action-buttons-group {
+    display: flex;
+    justify-content: flex-end; /* Allinea i pulsanti a destra */
+    gap: 10px;
+  }
+  /* src/components/Settings/Settings.css */
+
+/* --- Stile Generale Tabelle --- */
+.users-table { /* Riusiamo questa classe per entrambe le tabelle */
+  width: 100%;
+  border-collapse: collapse; /* Rimuove gli spazi tra le celle */
+  margin-top: 20px;
+  font-size: 0.9em;
+  border-radius: 8px;
+  overflow: hidden; /* Per arrotondare gli angoli */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.users-table th, .users-table td {
+  padding: 12px 15px;
+  text-align: left;
+}
+
+.users-table thead tr {
+  background-color: #f8f9fa; /* Un grigio molto chiaro per l'header */
+  color: #495057;
+  text-transform: uppercase;
+  font-size: 0.8em;
+  letter-spacing: 0.05em;
+}
+
+.users-table tbody tr {
+  border-bottom: 1px solid #f1f3f5;
+  background-color: #fff;
+}
+
+.users-table tbody tr:last-of-type {
+  border-bottom: none;
+}
+
+.users-table tbody tr:hover {
+  background-color: #f1f8ff; /* Un azzurrino leggero al passaggio del mouse */
+}
+
+/* --- Stile per i Badge (Ruoli e Azioni) --- */
+.role-badge, .action-badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.8em;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: white;
+}
+
+.role-admin {
+  background-color: #dc3545; /* Rosso per admin */
+}
+
+.role-user {
+  background-color: #007bff; /* Blu per user */
+}
+
+.role-manager { /* Esempio per altri ruoli */
+  background-color: #28a745; /* Verde per manager */
+}
+
+.action-badge {
+  background-color: #6c757d; /* Grigio per le azioni */
+  color: #fff;
+}
+
+
+/* --- Stile per la Tabella dei Log --- */
+.date-primary {
+  font-weight: 500;
+}
+.date-secondary {
+  font-size: 0.9em;
+  color: #6c757d;
+}
+
+.details-pre {
+  background-color: #e9ecef;
+  padding: 10px;
+  border-radius: 4px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.85em;
+  white-space: pre-wrap; /* Va a capo se il testo è lungo */
+  word-break: break-all;
+  max-height: 150px; /* Limita l'altezza e aggiunge scroll se necessario */
+  overflow-y: auto;
+}
+
+/* --- Stile per la Cella Azioni --- */
+.actions-cell {
+  text-align: center !important;
+  width: 120px; /* Larghezza fissa per la cella azioni */
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 50%;
+  color: #6c757d;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.btn-icon:hover {
+  background-color: #e9ecef;
+  color: #dc3545; /* Cambia colore al passaggio del mouse */
+}
+
+.btn-icon:disabled {
+  color: #ced4da;
+  cursor: not-allowed;
+  background-color: transparent;
+}

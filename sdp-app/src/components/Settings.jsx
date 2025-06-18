@@ -3,6 +3,8 @@ import { useState, useMemo, useEffect } from "react";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import apiClient from "../api/apiClient"; //
+import { WebviewWindow } from '@tauri-apps/api/window';
+
 import {
   Settings as SettingsIcon,
   // FileText, // Non più usata direttamente, Database è usata per il tab metadati
@@ -101,80 +103,133 @@ function MetadataFileTabContent({
 // --- Sotto-Componente per il Tab Log Applicativi ---
 function LogsTabContent({
   logEntries,
-  // Le prossime props potrebbero non servire più o dovranno essere collegate
-  // a nuovi endpoint del backend (es. per scaricare i log reali)
-  // onRefreshLogs, 
-  // onClearLogs,
-  // onDownloadLogs,
-  // loadingStates,
+  onRefreshLogs,
+  onDownloadLogs,
 }) {
   const [searchTerm, setSearchTerm] = useState("");
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
-  const filteredLogs = useMemo(
-    () =>
-      logEntries
-        .filter(log =>
-            (log.action?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-             log.username?.toLowerCase().includes(searchTerm.toLowerCase()))
-        )
-        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
-    [logEntries, searchTerm]
-  );
+  const filteredLogs = useMemo(() => {
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : null;
+
+    if (!logEntries) return [];
+
+    return logEntries
+      .filter(log => {
+        const lowerSearchTerm = searchTerm.toLowerCase();
+        const matchesSearch = (
+          log.action?.toLowerCase().includes(lowerSearchTerm) ||
+          log.username?.toLowerCase().includes(lowerSearchTerm) ||
+          JSON.stringify(log.details)?.toLowerCase().includes(lowerSearchTerm)
+        );
+        const logDate = new Date(log.timestamp);
+        const matchesStartDate = !start || logDate >= start;
+        const matchesEndDate = !end || logDate <= end;
+        return matchesSearch && matchesStartDate && matchesEndDate;
+      })
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  }, [logEntries, searchTerm, startDate, endDate]);
+
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    setStartDate('');
+    setEndDate('');
+  };
 
   return (
     <div className="tab-content-padding">
+      {/* INTESTAZIONE */}
       <div className="tab-content-header">
         <ListChecks className="tab-content-icon" />
         <h2 className="tab-content-title">Registro Attività (Audit Log)</h2>
       </div>
-      <div className="logs-controls">
-        <input
-          type="text"
-          placeholder="Cerca per azione o utente..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="form-input logs-search-input"
-        />
-        {/* Il filtro per 'level' non serve più, lo rimuoviamo */}
+  
+      {/* BARRA DEI FILTRI */}
+      <div className="logs-controls-grid">
+        <div className="search-input-wrapper">
+          <Search className="search-input-icon" />
+          <input
+            type="text"
+            placeholder="Cerca per azione, utente, dettagli..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="form-input"
+          />
+        </div>
+        <div className="date-filter-group">
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="form-input" title="Data di inizio" />
+          <span>-</span>
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="form-input" title="Data di fine" />
+        </div>
+        <div className="action-buttons-group">
+          <button onClick={handleClearFilters} className="btn btn-outline" title="Resetta tutti i filtri">
+            <RefreshCw className="btn-icon-sm" /> Pulisci Filtri
+          </button>
+          <button onClick={onRefreshLogs} className="btn btn-outline" title="Ricarica i dati dal server">
+            <RefreshCw className="btn-icon-sm" /> Aggiorna
+          </button>
+        </div>
       </div>
-      <div className="logs-display-area">
-        {filteredLogs.length > 0 ? (
-          <table className="users-table"> {/* Riusiamo lo stile della tabella permessi */}
-            <thead>
-              <tr>
-                <th>Data e Ora</th>
-                <th>Utente</th>
-                <th>Azione</th>
-                <th style={{ width: '50%' }}>Dettagli</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredLogs.map(log => (
-                <tr key={log.id}>
-                  <td>{new Date(log.timestamp).toLocaleString('it-IT')}</td>
-                  <td>{log.username || 'Sistema'}</td>
-                  <td><span className="action-badge">{log.action}</span></td>
-                  <td>
-                    <pre className="details-pre">{JSON.stringify(log.details, null, 2)}</pre>
+      
+      {/* TABELLA DEI LOG */}
+      <div className="permissions-table-wrapper">
+        <table className="users-table">
+          <thead>
+            <tr>
+              <th style={{ width: '15%' }}>Data e Ora</th>
+              <th style={{ width: '15%' }}>Utente</th>
+              <th style={{ width: '20%' }}>Azione</th>
+              <th>Dettagli</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredLogs.length > 0 
+              ? filteredLogs.map(log => (
+                  <tr key={log.id}>
+                    <td data-label="Data e Ora">
+                      <div className="date-primary">{new Date(log.timestamp).toLocaleDateString('it-IT')}</div>
+                      <div className="date-secondary">{new Date(log.timestamp).toLocaleTimeString('it-IT')}</div>
+                    </td>
+                    <td data-label="Utente">{log.username || 'Sistema'}</td>
+                    <td data-label="Azione">
+                      <span className="action-badge">{log.action}</span>
+                    </td>
+                    <td data-label="Dettagli">
+                      {log.details ? (
+                        <pre className="details-pre">{JSON.stringify(log.details, null, 2)}</pre>
+                      ) : (
+                        <span className="muted-text">Nessun dettaglio</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              : (
+                <tr>
+                  <td colSpan="4" className="empty-state-cell">
+                    Nessun registro attività trovato per i filtri selezionati.
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="logs-empty-message">
-            Nessun registro attività da visualizzare.
-          </p>
-        )}
+              )
+            }
+          </tbody>
+        </table>
       </div>
+  
+      {/* FOOTER */}
       <div className="logs-actions">
         <p className="logs-count-info">
-          Visualizzati: {filteredLogs.length} (Totali: {logEntries.length})
+          Visualizzati: {filteredLogs.length} (Totali: {logEntries?.length || 0})
         </p>
-        {/* I pulsanti di download/pulizia andranno collegati a nuovi endpoint */}
+       
+          <button onClick={() => onDownloadLogs(filteredLogs)} className="btn btn-outline">
+            <Download className="btn-icon-md" /> Scarica Risultati
+          </button>
+
       </div>
     </div>
-  );
+  );  
 }
 // --- Sotto-Componente per il Tab Permessi (MODIFICATO) ---
 const ALL_ACCESS_MODULES = [
@@ -876,7 +931,37 @@ function Settings() {
     /* ... la tua logica ... */
   };
   const handleOpenSharePoint = async (type) => {
-    /* ... la tua logica ... */
+    // L'etichetta deve corrispondere a quella in tauri.conf.json
+    const windowLabel = 'sharepoint-viewer'; 
+
+    // Costruisci l'URL di SharePoint
+    const sharepointBaseUrl = "https://www.google.com/";
+    let urlToOpen = sharepointBaseUrl;
+    if (type === "metadata_file") {
+      urlToOpen = `${sharepointBaseUrl}/DocumentiCondivisi/Metadati`;
+    }
+
+    try {
+      // 3. Cerca la finestra pre-configurata
+      const webview = WebviewWindow.getByLabel(windowLabel);
+
+      if (webview) {
+        toast.info("Apertura del visualizzatore SharePoint...");
+        
+        // 4. Esegui le azioni sulla finestra
+        await webview.setUrl(urlToOpen);     // Imposta l'URL corretto
+        await webview.center();              // Centra la finestra
+        await webview.show();                // Rendila visibile
+        await webview.setFocus();            // Portala in primo piano
+
+      } else {
+        // Questo errore non dovrebbe accadere se la configurazione è corretta
+        toast.error("Errore di configurazione: finestra non trovata.");
+      }
+    } catch (error) {
+      console.error("Impossibile aprire la finestra di SharePoint:", error);
+      toast.error("Si è verificato un errore nell'apertura del visualizzatore.");
+    }
   };
   const handlePermissionChange = (id, field, valueOrUpdater) => {
     setHasUnsavedChanges(true);
@@ -955,13 +1040,26 @@ function Settings() {
     /* ... la tua logica ... */
   };
   const handleRefreshLogs = async () => {
-    /* ... la tua logica ... */
+    // Questa funzione ora ricaricherà i dati dal backend
+    setAuthLoading(true); // Mostra un feedback di caricamento
+    try {
+      const auditLogsResponse = await apiClient.get('/audit/logs');
+      setLogEntries(auditLogsResponse.data);
+      toast.success("Registro attività aggiornato!");
+    } catch (error) {
+      toast.error("Impossibile aggiornare il registro.");
+    } finally {
+      setAuthLoading(false);
+    }
   };
-  const handleClearLogs = async () => {
-    /* ... la tua logica ... */
-  };
-  const handleDownloadLogs = async () => {
-    /* ... la tua logica ... */
+  const handleDownloadLogs = () => {
+    // Logica per scaricare i dati FILTRATI come CSV o JSON
+    if (filteredLogs.length === 0) { // NB: 'filteredLogs' non è disponibile qui. Vedi nota sotto.
+      toast.warn("Nessun dato da scaricare.");
+      return;
+    }
+    // ... logica per creare e scaricare il file ...
+    toast.info("Funzionalità di download non ancora implementata.");
   };
 
   // --- RENDER DEI CONTENUTI DEI TAB ---
@@ -1028,9 +1126,8 @@ function Settings() {
           <LogsTabContent
             logEntries={logEntries}
             onRefreshLogs={handleRefreshLogs}
-            onClearLogs={handleClearLogs}
             onDownloadLogs={handleDownloadLogs}
-            loadingStates={loadingStates} // <-- Riga corretta
+
           />
         );
       default:

@@ -14,11 +14,14 @@ Thumbs.db
 # ==================================
 # BACKEND - sdp-api (Python/FastAPI)
 # ==================================
-sdp-api/venv/
+sdp-api/.venv/
 sdp-api/__pycache__/
 sdp-api/*.pyc
 sdp-api/.env
 sdp-api/database.db
+sdp-api/dist
+sdp-api/build
+sdp-api/sdp-api.egg-info
 
 # ===================================
 # FRONTEND - sdp-app (Tauri/React)

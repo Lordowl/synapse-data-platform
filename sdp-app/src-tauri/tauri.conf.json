@@ -11,12 +11,22 @@
   },
   "app": {
     "windows": [
-      {
+      {"label": "main",
         "title": "Synapse Data Platform",
         "width": 1280,
         "height": 720,
         "minWidth": 1280,
         "minHeight": 720
+      },
+      {
+        "label": "sharepoint-viewer",
+        "url": "about:blank",
+        "title": "Visualizzatore SharePoint",
+        "width": 1100,
+        "height": 800,
+        "decorations": true,
+        "visible": false,
+        "center": true
       }
     ],
     "security": {
