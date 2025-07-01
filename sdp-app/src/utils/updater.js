@@ -1,17 +1,17 @@
-import { checkUpdate, installUpdate } from '@tauri-apps/api/updater'
-import { relaunch } from '@tauri-apps/api/process'
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from '@tauri-apps/plugin-process';
 
 export async function autoUpdate() {
   try {
-    const update = await checkUpdate()
-    if (update.shouldUpdate) {
-      console.log("🔄 Aggiornamento disponibile, installazione in corso...")
-      await installUpdate()
-      await relaunch()
+    const update = await check();
+    if (update) {
+      console.log("🔄 Aggiornamento disponibile, installazione in corso...");
+      await update.downloadAndInstall();
+      await relaunch();
     } else {
-      console.log("✅ Nessun aggiornamento disponibile.")
+      console.log("✅ Nessun aggiornamento disponibile.");
     }
   } catch (error) {
-    console.error("❌ Errore durante l'aggiornamento:", error)
+    console.error("❌ Errore durante l'aggiornamento:", error);
   }
 }

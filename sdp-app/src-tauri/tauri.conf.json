@@ -2,22 +2,14 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Synapse Data Platform",
   "version": "0.1.0",
-  "identifier": "com.synapse.app",
+  "identifier": "com.synapse.dataplatform",
   "build": {
-    "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist"
+    "beforeDevCommand": "npm run dev",
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420"
   },
-  "tauri": {
-    "updater": {
-      "active": true,
-      "dialog": true,
-      "endpoints": [
-        "https://TUO_DOMINIO_O_STORAGE/latest.json"
-      ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGNzBCNjUzMDE2RTkxNEEKUldSS2tXNEJVN1p3ZjlucHZMRTBPMUZlNVlaT01paEUvNWNwOWhqZncvbFpRa1JQQmJJeTJWRzMK"
-    },
+  "app": {
     "windows": [
       {
         "label": "main",
@@ -25,8 +17,10 @@
         "width": 1280,
         "height": 720,
         "minWidth": 1280,
-        "minHeight": 720
+        "minHeight": 720,
+        "devtools": true
       },
+      
       {
         "label": "sharepoint-viewer",
         "url": "about:blank",
@@ -35,22 +29,33 @@
         "height": 800,
         "decorations": true,
         "visible": false,
-        "center": true
+        "center": true,
+        "devtools": true
       }
     ],
     "security": {
       "csp": null
-    },
-    "bundle": {
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
       "active": true,
-      "targets": "all",
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ]
+      "dialog": true,
+      "endpoints": [
+        "https://raw.githubusercontent.com/Lordowl/synapse-data-updates/main/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGNzBCNjUzMDE2RTkxNEEKUldSS2tXNEJVN1p3ZjlucHZMRTBPMUZlNVlaT01paEUvNWNwOWhqZncvbFpRa1JQQmJJeTJWRzMK"
     }
   }
 }

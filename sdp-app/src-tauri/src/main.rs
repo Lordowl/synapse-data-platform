@@ -9,11 +9,18 @@
 // Non è necessario importare `command` se non hai altri comandi
 // use tauri::command;
 
-use tauri::generate_context;
+use tauri::{generate_context, WindowEvent};
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
+        .on_window_event(|_window, event| {
+            if let WindowEvent::CloseRequested { .. } = event {
+                std::process::exit(0);
+            }
+        })
         .run(generate_context!())
-        .expect("Errore nell'avvio dell'app");
+       .expect("Errore nell'avvio dell'app");
 }

@@ -4,14 +4,34 @@ from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 # Importa i moduli del nostro progetto
-from db import models
-from db.database import engine
+from db import models,crud
+from db.database import engine , SessionLocal
 from api import auth, users, tasks, audit, flows
 
 # Questo comando crea le tabelle nel database (se non esistono già)
 # quando l'applicazione si avvia. Includerà la nuova tabella 'audit_logs'.
 models.Base.metadata.create_all(bind=engine)
-
+def create_default_admin_if_not_exists():
+    db = SessionLocal() # Crea una sessione di DB
+    try:
+        # Controlla se esiste già un utente con username 'admin'
+        admin_user = crud.get_user_by_username(db, username="admin")
+        if not admin_user:
+            print("--- Creazione utente admin di default (admin/admin) ---")
+            default_admin_data = schemas.UserCreate(
+                username="admin",
+                password="admin", # Usa una password semplice per il default
+                email="admin@example.com",
+                role="admin",
+                permissions=[]
+            )
+            crud.create_user(db, user=default_admin_data)
+            print("--- Utente admin di default creato con successo. ---")
+        else:
+            print("--- Utente admin già presente. Nessuna azione richiesta. ---")
+    finally:
+        db.close()
+create_default_admin_if_not_exists() # Chiudi sempre la sessione
 app = FastAPI(
     title="Synapse Data Platform API",
     description="API per la Synapse Data Platform.",
@@ -20,9 +40,11 @@ app = FastAPI(
 
 # Configurazione CORS per permettere al frontend di comunicare
 origins = [
+    "*",
     "http://localhost:1420",
     "tauri://localhost",
-    "https://tauri.localhost" 
+    "https://tauri.localhost" ,
+    "http://tauri.localhost",  
 ]
 
 app.add_middleware(
