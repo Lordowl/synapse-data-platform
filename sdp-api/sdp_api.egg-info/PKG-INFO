@@ -1,4 +1,15 @@
 Metadata-Version: 2.1
 Name: sdp-api
 Version: 0.1.0
+Summary: Synapse Data Platform API
+Home-page: https://github.com/Lordowl/synapse-data-platform
+Author: Your Name
+Author-email: your.email@example.com
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
 Requires-Python: >=3.11.8
+
+API per la Synapse Data Platform.

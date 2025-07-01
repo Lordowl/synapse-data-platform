@@ -1,2 +1,2 @@
 [console_scripts]
-start-api = nome_tuo_backend.main:app
+sdp-api = main:main
