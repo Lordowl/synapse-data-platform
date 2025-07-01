@@ -1,68 +1,101 @@
-# my_fastapi_backend/api/tasks.py
+# sdp-api/api/tasks.py
 
 import subprocess
 import sys
-from fastapi import APIRouter, Depends, HTTPException, status
 import json
+from pathlib import Path # <-- IMPORT MANCANTE
 
-# Importiamo la dependency per assicurarci che solo un admin possa eseguire questo task
+from fastapi import APIRouter, Depends, HTTPException, status, Security # <-- AGGIUNTO Security
+
+# Importiamo la dependency di sicurezza e i modelli
 from core.security import get_current_active_admin
+from db import models # <-- IMPORT MANCANTE
 
+# Definiamo il router con il prefisso, così non dobbiamo ripeterlo
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
-@router.post("/run-script", dependencies=[Depends(get_current_active_admin)])
-def run_python_script(argument: str):
+@router.post("/run-script")
+def run_python_script(
+    argument: str,
+    # Proteggiamo l'endpoint passando la dependency come parametro
+    admin_user: models.User = Security(get_current_active_admin)
+):
     """
-    Esegue lo script `sample_script.py` in un sottoprocesso.
-    Questo endpoint è protetto e richiede privilegi di amministratore.
-    
-    - **argument**: L'argomento da passare allo script.
+    Esegue uno script di esempio con un argomento.
+    Protetto e accessibile solo agli admin.
     """
-    script_path = "scripts/sample_script.py"
+    script_path = "scripts/sample_script.py" # Assumendo che esista
     
     try:
-        # sys.executable garantisce che usiamo lo stesso interprete Python
-        # dell'ambiente virtuale in cui FastAPI è in esecuzione.
-        # Questo è FONDAMENTALE per la coerenza delle dipendenze.
         process = subprocess.run(
             [sys.executable, script_path, argument],
-            capture_output=True,  # Cattura stdout e stderr
-            text=True,            # Decodifica output e error come testo (UTF-8)
-            check=True,           # Lancia un'eccezione se lo script esce con un codice di errore (es. sys.exit(1))
-            timeout=30            # Imposta un timeout di 30 secondi
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+            encoding="utf-8"
         )
         
-        # Tentiamo di parsare l'ultima riga dell'output come JSON
-        # perché il nostro script è progettato per stampare il risultato JSON alla fine.
-        try:
-            # Cerchiamo l'ultima riga che inizia con '{' per trovare il nostro JSON
-            json_output = [line for line in process.stdout.strip().split('\n') if line.startswith('{')][-1]
-            result_data = json.loads(json_output)
-        except (json.JSONDecodeError, IndexError):
-            # Se il parsing fallisce, restituisci l'output grezzo
-            result_data = {
-                "warning": "Impossibile parsare l'output JSON dello script.",
-                "raw_output": process.stdout
-            }
-
         return {
-            "message": "Script eseguito con successo.",
-            "script_result": result_data,
-            "full_log": process.stdout # Possiamo anche restituire l'intero log
+            "message": "Script di esempio eseguito con successo.",
+            "output": process.stdout
         }
         
     except subprocess.CalledProcessError as e:
-        # Questo errore viene lanciato se `check=True` e lo script ha un errore
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail={
-                "message": "Errore durante l'esecuzione dello script.",
-                "stderr": e.stderr
-            }
+            detail={"message": "Errore durante l'esecuzione dello script.", "stderr": e.stderr}
         )
     except subprocess.TimeoutExpired:
-        # Questo errore viene lanciato se lo script impiega più di `timeout` secondi
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="L'esecuzione dello script ha superato il tempo limite di 30 secondi."
+            detail="L'esecuzione dello script ha superato il tempo limite."
         )
+
+# --- ENDPOINT CORRETTO PER AGGIORNARE I FLUSSI ---
+@router.post("/update-flows-from-excel", response_model=dict)
+def trigger_update_flows_from_excel(
+    # La dependency di sicurezza va qui come parametro della funzione
+    admin_user: models.User = Security(get_current_active_admin)
+):
+    """
+    Esegue lo script Python per leggere il file Excel e generare il file flows.json aggiornato.
+    Questo endpoint è protetto e accessibile solo agli admin.
+    """
+    # Usiamo pathlib per un percorso più robusto
+    script_path = Path(__file__).parent.parent / "scripts" / "generate_flows_from_excel.py"
+    
+    if not script_path.is_file():
+        raise HTTPException(status_code=500, detail=f"Script non trovato: {script_path}")
+
+    print(f"--- Richiesto aggiornamento flussi da {admin_user.username}. Avvio script... ---")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script_path)],
+            capture_output=True,
+            text=True,
+            check=True,
+            encoding="utf-8",
+            timeout=120
+        )
+        
+        print("--- Script completato con successo ---")
+        print("Output dello script:\n", result.stdout)
+        if result.stderr:
+            print("Avvisi/Errori minori dallo script:\n", result.stderr)
+
+        return {"message": "Lista flussi aggiornata con successo dal file Excel.", "output": result.stdout}
+
+    except subprocess.CalledProcessError as e:
+        print(f"!!! ERRORE: Lo script ha fallito con codice {e.returncode} !!!\n{e.stderr}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"L'aggiornamento dei flussi è fallito. Dettagli: {e.stderr}"
+        )
+    except subprocess.TimeoutExpired:
+        print("!!! ERRORE: Lo script ha superato il tempo limite !!!")
+        raise HTTPException(status_code=504, detail="Timeout durante l'aggiornamento dei flussi.")
+    except Exception as e:
+        print(f"!!! ERRORE SCONOSCIUTO: {e} !!!")
+        raise HTTPException(status_code=500, detail=str(e))

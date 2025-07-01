@@ -1,164 +1,16 @@
 // src/components/Ingest/Ingest.jsx
 import React, { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from 'react-toastify';
+import apiClient from "../api/apiClient";
 import {
-  Play,
-  Filter,
-  ListChecks,
-  ChevronDown,
-  ChevronUp,
-  ChevronsUpDown,
-  RefreshCw,
-  Trash2,
-  Download,
-  Layers,
-  TerminalSquare,
-  PlayCircle,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  Search,
+  Play, Filter, ListChecks, ChevronDown, ChevronUp, ChevronsUpDown,
+  RefreshCw, Trash2, Download, Layers, TerminalSquare, PlayCircle,
+  CheckCircle, XCircle, AlertTriangle, Search,
 } from "lucide-react";
 import "./Ingest.css";
 
-// --- Dati di Esempio ---
-const today = new Date();
-const yesterday = new Date(today);
-yesterday.setDate(today.getDate() - 1);
-const twoDaysAgo = new Date(today);
-twoDaysAgo.setDate(today.getDate() - 2);
 
-const initialFlows = [
-  {
-    id: "flow1",
-    name: "Sincronizzazione Clienti ERP",
-    package: "ERP Connector",
-    year: 2023,
-    type: "ERP",
-    lastRun: today.toISOString(),
-    lastWeekExecution: 27,
-    result: "Success",
-    duration: "5m 30s",
-  }, // Esempio: Settimana 27
-  {
-    id: "flow2",
-    name: "Aggiornamento Inventario SharePoint",
-    package: "SharePoint Sync",
-    year: 2023,
-    type: "SharePoint",
-    lastRun: yesterday.toISOString(),
-    lastWeekExecution: null,
-    result: "Failed",
-    duration: "2m 10s",
-  }, // Null se non applicabile
-  {
-    id: "flow3",
-    name: "Caricamento Dati Vendite da CSV",
-    package: "CSV Importer",
-    year: 2022,
-    type: "CSV",
-    lastRun: twoDaysAgo.toISOString(),
-    lastWeekExecution: 28,
-    result: "Success",
-    duration: "12m 00s",
-  }, // Esempio: Settimana 28
-  {
-    id: "flow4",
-    name: "Notifiche Scadenze Contratti",
-    package: "DB Utilities",
-    year: 2023,
-    type: "Database",
-    lastRun: null,
-    lastWeekExecution: 27,
-    result: "Warning",
-    duration: "1m 05s",
-  },
-  {
-    id: "flow5",
-    name: "Backup Quotidiano Database Utenti",
-    package: "DB Utilities",
-    year: 2022,
-    type: "Database",
-    lastRun: new Date(
-      new Date().setDate(new Date().getDate() - 7)
-    ).toISOString(),
-    lastWeekExecution: 26,
-    result: "Success",
-    duration: "7m 45s",
-  }, // Esempio: Settimana 26
-];
-const initialLogs = [
-  {
-    id: "log1",
-    timestamp: new Date(Date.now() - 10000).toISOString(),
-    flowId: "flow1",
-    message: "Esecuzione flusso 'Sincronizzazione Clienti ERP' avviata.",
-    level: "INFO",
-    details: "Parametri di avvio: { settimana: '27', forzatura: false }",
-  },
-  {
-    id: "log2",
-    timestamp: new Date(Date.now() - 8000).toISOString(),
-    flowId: "flow1",
-    message: "Connessione a ERP riuscita.",
-    level: "INFO",
-  },
-  {
-    id: "log3",
-    timestamp: new Date(Date.now() - 7000).toISOString(),
-    flowId: "flow1",
-    message: "Flusso 'Sincronizzazione Clienti ERP' completato con successo.",
-    level: "SUCCESS",
-    details: "Record processati: 1530, Record falliti: 0",
-  }, // <<--- Livello SUCCESS per test colore
-  {
-    id: "log4",
-    timestamp: new Date(Date.now() - 5000).toISOString(),
-    flowId: "flow2",
-    message: "Esecuzione flusso 'Aggiornamento Inventario SharePoint' avviata.",
-    level: "INFO",
-  },
-  {
-    id: "log5",
-    timestamp: new Date(Date.now() - 3000).toISOString(),
-    flowId: "flow2",
-    message: "Errore: Impossibile trovare la lista 'Prodotti Vecchi'.",
-    level: "ERROR",
-    details:
-      "SharePoint API ha risposto con 404 Not Found. Endpoint: /sites/miosito/lists/Prodotti Vecchi",
-  },
-  {
-    id: "log6",
-    timestamp: new Date().toISOString(),
-    flowId: "flow2",
-    message:
-      "Flusso 'Aggiornamento Inventario SharePoint' terminato con fallimento.",
-    level: "ERROR",
-  },
-  {
-    id: "log7",
-    timestamp: new Date().toISOString(),
-    flowId: "flow3",
-    message: "Backup iniziato.",
-    level: "INFO",
-    details: "Backup del database secondario. Nessun errore previsto.",
-  },
-  {
-    id: "log8",
-    timestamp: new Date(Date.now() + 2000).toISOString(),
-    flowId: "flow3",
-    message: "Attenzione: Spazio su disco < 10%.",
-    level: "WARNING",
-    details: "Spazio disponibile: 8%. Consigliata pulizia.",
-  },
-  {
-    id: "log9",
-    timestamp: new Date(Date.now() + 4000).toISOString(),
-    flowId: "flow3",
-    message: "Backup completato.",
-    level: "SUCCESS",
-  },
-];
 // --- Funzioni Helper ---
 const getStatusBadgeColor = (status) => {
   if (!status) return "bg-gray-100 text-gray-700";
@@ -191,48 +43,47 @@ const getLogLevelClass = (level) => {
 
 // --- Sotto-Componente per il Tab Esecuzione Flussi ---
 function ExecutionTabContent({
+  // Dati da visualizzare (già filtrati e ordinati)
+  filteredAndSortedFlows,
+  
+  // Dati e funzioni per la selezione
   selectedFlows,
   handleSelectFlow,
   handleSelectAllFlows,
-  searchTerm,
-  setSearchTerm,
-  typeFilter,
-  setTypeFilter,
-  statusFilter,
-  setStatusFilter,
+  
+  // Dati e funzioni per l'esecuzione
+  isExecuting,
+  handleExecuteSelectedFlows,
+
+  // Dati e funzioni per i parametri generali
+  generalParams,
+  handleGeneralParamChange,
+  
+  // Dati e funzioni per l'ordinamento della tabella
   sortConfig,
   requestSort,
   getSortIcon,
-  filteredAndSortedFlows,
-  flowTypes,
-  flowStatuses,
-  isExecuting,
-  generalParams,
-  handleGeneralParamChange,
-  handleExecuteSelectedFlows, // Aggiunta prop
 }) {
   const weekOptions = [
     { value: "27", label: "Settimana 27" },
     { value: "28", label: "Settimana 28" },
   ];
+
+  // Funzione helper per il colore delle righe (rimane qui perché è solo di visualizzazione)
   const getRowColorByResult = (resultStatus) => {
     if (!resultStatus) return "row-color-default";
     switch (resultStatus.toLowerCase()) {
-      case "success":
-        return "row-color-success";
-      case "failed":
-        return "row-color-failed";
-      case "warning":
-        return "row-color-warning";
-      case "running":
-        return "row-color-running";
-      default:
-        return "row-color-default";
+      case "success": return "row-color-success";
+      case "failed": return "row-color-failed";
+      case "warning": return "row-color-warning";
+      case "running": return "row-color-running";
+      default: return "row-color-default";
     }
   };
 
   return (
     <div className="tab-content-padding">
+      {/* SEZIONE SUPERIORE CON IL PULSANTE DI ESECUZIONE */}
       <div className="ingest-section-header execution-tab-header">
         <div className="ingest-section-header-title-group">
           <Filter className="ingest-section-icon" />
@@ -240,59 +91,20 @@ function ExecutionTabContent({
         </div>
         <button
           onClick={handleExecuteSelectedFlows}
-          className={`btn ${
-            isExecuting ? "btn-disabled-visual" : "btn-primary"
-          } execution-tab-run-button`}
+          className={`btn ${isExecuting ? "btn-disabled-visual" : "btn-primary"} execution-tab-run-button`}
           disabled={selectedFlows.size === 0 || isExecuting}
         >
           {isExecuting ? (
-            <>
-              <RefreshCw className="btn-icon-md animate-spin-css" />
-              Esecuzione...
-            </>
+            <><RefreshCw className="btn-icon-md animate-spin-css" /> Esecuzione...</>
           ) : (
-            <>
-              <Play className="btn-icon-md" />
-              Esegui ({selectedFlows.size})
-            </>
+            <><Play className="btn-icon-md" /> Esegui ({selectedFlows.size})</>
           )}
         </button>
       </div>
-      <div className="ingest-filters-bar">
-        <input
-          type="text"
-          placeholder="Cerca per ID, Descrizione, Package..."
-          className="form-input"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          disabled={isExecuting}
-        />
-        <select
-          className="form-select"
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          disabled={isExecuting}
-        >
-          {flowTypes.map((type) => (
-            <option key={type} value={type}>
-              {type === "all" ? "Tutti i Package" : type}
-            </option>
-          ))}
-        </select>
-        <select
-          className="form-select"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          disabled={isExecuting}
-        >
-          {flowStatuses.map((status) => (
-            <option key={status} value={status}>
-              {status === "all" ? "Tutti i Risultati" : status}
-            </option>
-          ))}
-        </select>
-      </div>
 
+      {/* LA BARRA DEI FILTRI È STATA SPOSTATA FUORI DA QUESTO COMPONENTE */}
+
+      {/* TABELLA CHE MOSTRA I DATI GIÀ PRONTI */}
       <div className="ingest-table-wrapper">
         <table className="ingest-table">
           <thead>
@@ -302,55 +114,21 @@ function ExecutionTabContent({
                   type="checkbox"
                   className="form-checkbox"
                   onChange={handleSelectAllFlows}
-                  checked={
-                    filteredAndSortedFlows.length > 0 &&
-                    selectedFlows.size === filteredAndSortedFlows.length
-                  }
-                  ref={(el) => {
-                    if (el) {
-                      el.indeterminate =
-                        selectedFlows.size > 0 &&
-                        selectedFlows.size < filteredAndSortedFlows.length;
-                    }
-                  }}
+                  checked={filteredAndSortedFlows.length > 0 && selectedFlows.size === filteredAndSortedFlows.length}
+                  ref={(el) => { if (el) { el.indeterminate = selectedFlows.size > 0 && selectedFlows.size < filteredAndSortedFlows.length; }}}
                   disabled={filteredAndSortedFlows.length === 0 || isExecuting}
                 />
               </th>
-              <th onClick={() => !isExecuting && requestSort("id")}>
-                ID {getSortIcon("id")}
-              </th>
-              <th onClick={() => !isExecuting && requestSort("name")}>
-                Descrizione {getSortIcon("name")}
-              </th>
-              <th onClick={() => !isExecuting && requestSort("package")}>
-                Package {getSortIcon("package")}
-              </th>
-              <th onClick={() => !isExecuting && requestSort("year")}>
-                Anno {getSortIcon("year")}
-              </th>
-              <th onClick={() => !isExecuting && requestSort("lastRun")}>
-                Ultima Esecuzione {getSortIcon("lastRun")}
-              </th>
-              <th
-                onClick={() => !isExecuting && requestSort("lastWeekExecution")}
-              >
-                Ultima Sett. Esec. {getSortIcon("lastWeekExecution")}
-              </th>
-              <th onClick={() => !isExecuting && requestSort("result")}>
-                Risultato {getSortIcon("result")}
-              </th>
+              <th onClick={() => !isExecuting && requestSort("name")}>Nome Flusso {getSortIcon("name")}</th>
+              <th onClick={() => !isExecuting && requestSort("package")}>Package {getSortIcon("package")}</th>
+              <th onClick={() => !isExecuting && requestSort("id")}>ID Univoco {getSortIcon("id")}</th>
+              <th onClick={() => !isExecuting && requestSort("lastRun")}>Ultima Esecuzione {getSortIcon("lastRun")}</th>
+              <th onClick={() => !isExecuting && requestSort("result")}>Risultato {getSortIcon("result")}</th>
             </tr>
           </thead>
           <tbody>
             {filteredAndSortedFlows.map((flow) => (
-              <tr
-                key={flow.id}
-                className={`${
-                  selectedFlows.has(flow.id) ? "selected-row" : ""
-                } ${
-                  isExecuting ? "disabled-row-visual" : ""
-                } ${getRowColorByResult(flow.result)}`}
-              >
+              <tr key={flow.id} className={`${selectedFlows.has(flow.id) ? "selected-row" : ""} ${getRowColorByResult(flow.result)}`}>
                 <td>
                   <input
                     type="checkbox"
@@ -360,29 +138,12 @@ function ExecutionTabContent({
                     disabled={isExecuting}
                   />
                 </td>
-                <td>{flow.id}</td>
-                <td>{flow.name}</td>
-                <td>{flow.package}</td>
-                <td>{flow.year}</td>
-                <td>
-                  {flow.lastRun
-                    ? new Date(flow.lastRun).toLocaleString()
-                    : "N/A"}
-                </td>
-                <td>
-                  {typeof flow.lastWeekExecution === "number"
-                    ? `W${flow.lastWeekExecution}`
-                    : flow.lastWeekExecution === null ||
-                      flow.lastWeekExecution === undefined
-                    ? "N/A"
-                    : flow.lastWeekExecution}
-                </td>
-                <td>
-                  <span
-                    className={`status-badge ${getStatusBadgeColor(
-                      flow.result
-                    )}`}
-                  >
+                <td data-label="Nome Flusso">{flow.name}</td>
+                <td data-label="Package">{flow.package}</td>
+                <td data-label="ID Univoco"><span className="muted-text">{flow.id}</span></td>
+                <td data-label="Ultima Esecuzione">{flow.lastRun ? new Date(flow.lastRun).toLocaleString('it-IT') : "N/A"}</td>
+                <td data-label="Risultato">
+                  <span className={`status-badge ${getStatusBadgeColor(flow.result)}`}>
                     {flow.result || "N/A"}
                   </span>
                 </td>
@@ -390,34 +151,28 @@ function ExecutionTabContent({
             ))}
             {filteredAndSortedFlows.length === 0 && (
               <tr>
-                <td colSpan="8" className="text-center muted-text">
-                  Nessun flusso dati trovato.
+                <td colSpan="6" className="text-center muted-text">
+                  Nessun flusso dati trovato per i filtri selezionati.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {/* SEZIONE PARAMETRI GENERALI */}
       <div className="general-params-section">
         <h3 className="general-params-title">Parametri Generali Esecuzione</h3>
         <div className="param-input-group">
-          <label htmlFor="week-select" className="param-label">
-            Settimana di Riferimento:
-          </label>
+          <label htmlFor="week-select" className="param-label">Settimana di Riferimento:</label>
           <select
             id="week-select"
             className="form-select form-select-sm"
             value={generalParams.selectedWeek}
-            onChange={(e) =>
-              handleGeneralParamChange("selectedWeek", e.target.value)
-            }
+            onChange={(e) => handleGeneralParamChange("selectedWeek", e.target.value)}
             disabled={isExecuting}
           >
-            {weekOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
+            {weekOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
           </select>
         </div>
       </div>
@@ -664,57 +419,110 @@ function LogsTabContent({
 // --- Componente Principale Ingest ---
 function Ingest() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("execution");
-
-  const [flowsData, setFlowsData] = useState(initialFlows);
+    const [activeTab, setActiveTab] = useState("execution");
+  const [isLoading, setIsLoading] = useState(true);
+  const [flowsData, setFlowsData] = useState([]); // Inizia vuoto
+  const [logsData, setLogsData] = useState([]);   // Inizia vuoto
+  const [isUpdatingFlows, setIsUpdatingFlows] = useState(false);
+  // Stati per filtri e interazioni
   const [selectedFlows, setSelectedFlows] = useState(new Set());
   const [searchTerm, setSearchTerm] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [packageFilter, setpackageFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [sortConfig, setSortConfig] = useState({
-    key: "lastRun",
-    direction: "descending",
-  });
+  const [sortConfig, setSortConfig] = useState({ key: "id", direction: "ascending" });
 
   const [generalParams, setGeneralParams] = useState({ selectedWeek: "27" });
-
-  const [logsData, setLogsData] = useState(initialLogs);
   const [logSearchTerm, setLogSearchTerm] = useState("");
   const [logLevelFilter, setLogLevelFilter] = useState("all");
 
   const [isExecutingFlows, setIsExecutingFlows] = useState(false);
-  const [toast, setToast] = useState({
-    message: "",
-    type: "info",
-    visible: false,
-  });
 
   const [isRefreshingLogs, setIsRefreshingLogs] = useState(false);
   const [isClearingLogs, setIsClearingLogs] = useState(false);
   const [isDownloadingLogs, setIsDownloadingLogs] = useState(false);
 
-  useEffect(() => {
-    if (toast.visible) {
-      const timer = setTimeout(() => {
-        setToast((prev) => ({ ...prev, visible: false }));
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast.visible]);
+  // in src/components/Ingest/Ingest.jsx
 
-  const showToast = (message, type = "info") => {
-    setToast({ message, type, visible: true });
+useEffect(() => {
+  const fetchInitialData = async () => {
+    setIsLoading(true); // Inizia a mostrare lo spinner
+    
+    try {
+      // ==========================================================
+      // ---    STEP 1: AGGIORNAMENTO AUTOMATICO DALL'EXCEL     ---
+      // ==========================================================
+      // Prima di caricare i dati, diciamo al backend di rigenerare il JSON dall'Excel.
+      // Usiamo await per bloccare l'esecuzione finché non è completo.
+      console.log("-> Avvio aggiornamento automatico flussi da Excel...");
+      await apiClient.post('/tasks/update-flows-from-excel');
+      console.log("-> Aggiornamento da Excel completato sul backend.");
+      toast.info("Fonte dati aggiornata dall'Excel.");
+
+
+      // ==========================================================
+      // --- STEP 2: CARICAMENTO DEI DATI AGGIORNATI E STORICO ---
+      // ==========================================================
+      // Ora che il file flows.json è aggiornato, procediamo a caricarlo.
+      console.log("-> Caricamento flussi e storico...");
+      const [flowsResponse, historyResponse] = await Promise.all([
+        apiClient.get('/flows'),
+        apiClient.get('/flows/history')
+      ]);
+
+      const staticFlows = flowsResponse.data;
+      const historyMap = historyResponse.data;
+
+      if (!Array.isArray(staticFlows)) {
+        throw new Error("La risposta dei flussi non è valida.");
+      }
+
+      // ==========================================================
+      // ---          STEP 3: UNIONE E VISUALIZZAZIONE          ---
+      // ==========================================================
+      console.log("-> Unione dati per la visualizzazione...");
+      const combinedFlows = staticFlows.map(flow => {
+        const flowId = `${flow.ID}-${flow.SEQ || '0'}`;
+        const executionHistory = historyMap[flowId] || {};
+
+        return {
+          id: flowId,
+          name: flow['Filename out'],
+          package: flow['Package'],
+          
+          year: new Date().getFullYear(),
+          lastRun: executionHistory.lastRun || null,
+          result: executionHistory.result || 'N/A',
+          duration: executionHistory.duration || null,
+          lastWeekExecution: null,
+        };
+      });
+
+      console.log("Dati combinati pronti:", combinedFlows);
+      setFlowsData(combinedFlows);
+      toast.success("Dati caricati e pronti.");
+      
+    } catch (error) {
+      // Questo 'catch' catturerà qualsiasi errore in tutta la catena
+      console.error("Errore nel processo di caricamento e aggiornamento:", error);
+      toast.error(error.response?.data?.detail || "Un'operazione è fallita durante il caricamento.");
+    } finally {
+      // In ogni caso, il caricamento è terminato
+      setIsLoading(false);
+    }
   };
 
-  const flowTypes = useMemo(
-    () => ["all", ...new Set(flowsData.map((f) => f.type))],
-    [flowsData]
-  );
+  fetchInitialData();
+}, []); // L'array vuoto [] assicura che venga eseguito solo una volta all'apertura
+
+  const flowPackages= useMemo(
+  () => ["all", ...new Set(flowsData.map((f) => f.package).filter(Boolean))], // Usa .package
+  [flowsData]
+);
   const flowStatuses = useMemo(
     () => ["all", ...new Set(flowsData.map((f) => f.result || "N/A"))],
     [flowsData]
   );
-
+  
   const handleSelectFlow = (flowId) => {
     setSelectedFlows((prev) => {
       const nS = new Set(prev);
@@ -739,50 +547,69 @@ function Ingest() {
   };
 
   const filteredFlows = useMemo(() => {
-    return flowsData.filter(
-      (flow) =>
-        ((flow.id?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-          (flow.name?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-          (flow.package?.toLowerCase() || "").includes(
-            searchTerm.toLowerCase()
-          )) &&
-        (typeFilter === "all" || flow.type === typeFilter) &&
-        (statusFilter === "all" || (flow.result || "N/A") === statusFilter)
+     console.log("--- Ricalcolo filteredFlows ---");
+  console.log("Stato attuale dei filtri:", { searchTerm, packageFilter, statusFilter });
+  console.log("Dati di input (flowsData):", flowsData);
+  return flowsData.filter(flow =>
+      (flow.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+       flow.package?.toLowerCase().includes(searchTerm.toLowerCase())) &&
+      (packageFilter === 'all' || flow.package === packageFilter) && // Usa packageFilter
+      (statusFilter === 'all' || (flow.result || 'N/A') === statusFilter)
     );
-  }, [flowsData, searchTerm, typeFilter, statusFilter]);
+  }, [flowsData, searchTerm, packageFilter, statusFilter])
 
-  const filteredAndSortedFlows = useMemo(() => {
-    let sortableFlows = [...filteredFlows];
-    if (sortConfig.key) {
-      const statusOrder = { 'Failed': 1, 'Warning': 2, 'Running': 3, 'Success': 4 };
-      sortableFlows.sort((a, b) => {
-        let aValue = a[sortConfig.key]; 
-        let bValue = b[sortConfig.key];
+  // in src/components/Ingest/Ingest.jsx
+
+const filteredAndSortedFlows = useMemo(() => {
+  let sortableFlows = [...filteredFlows];
+
+  if (sortConfig.key) {
+    sortableFlows.sort((a, b) => {
+      // Estraiamo i valori da ordinare
+      const aValue = a[sortConfig.key];
+      const bValue = b[sortConfig.key];
+
+      // --- NUOVA CONDIZIONE SPECIFICA PER L'ORDINAMENTO NUMERICO DELL'ID ---
+      if (sortConfig.key === 'id') {
+        // Estraiamo la parte numerica dall'ID (es. da "17-1" prendiamo 17)
+        // Usiamo parseInt per convertire la stringa in un numero.
+        const numA = parseInt(a.originalId, 10) || 0;
+        const numB = parseInt(b.originalId, 10) || 0;
         
-        if (sortConfig.key === 'year') { 
-            aValue = parseInt(aValue, 10) || 0; 
-            bValue = parseInt(bValue, 10) || 0; 
-        } else if (sortConfig.key === 'result') { 
-            aValue = statusOrder[aValue] || 5; 
-            bValue = statusOrder[bValue] || 5; 
-        } else if (sortConfig.key === 'lastRun') { // 'lastWeekExecution' non è più una data qui
-            aValue = aValue ? new Date(aValue).getTime() : 0; 
-            bValue = bValue ? new Date(bValue).getTime() : 0; 
-        } else if (sortConfig.key === 'lastWeekExecution') { // <<--- NUOVA LOGICA PER ORDINARE PER NUMERO SETTIMANA
-            aValue = typeof aValue === 'number' ? aValue : Infinity; // Tratta non-numeri come "ultimi"
-            bValue = typeof bValue === 'number' ? bValue : Infinity;
-        } else if (typeof aValue === 'string' && typeof bValue === 'string') { 
-            aValue = aValue.toLowerCase();
-            bValue = bValue.toLowerCase();
+        // Se gli ID principali sono diversi, ordiniamo per quelli
+        if (numA !== numB) {
+            return numA - numB;
         }
-  
-        if (aValue < bValue) return sortConfig.direction === 'ascending' ? -1 : 1;
-        if (aValue > bValue) return sortConfig.direction === 'ascending' ? 1 : -1;
-        return 0;
-      });
+        
+        // Se gli ID principali sono uguali, ordiniamo per la sequenza (SEQ)
+        const seqA = parseInt(a.originalSeq, 10) || 0;
+        const seqB = parseInt(b.originalSeq, 10) || 0;
+        return seqA - seqB;
+      }
+      
+      // --- Logica esistente per gli altri tipi di dato ---
+
+      // 1. Per le date (es. 'lastRun')
+      if (sortConfig.key === 'lastRun') {
+        const dateA = aValue ? new Date(aValue).getTime() : 0;
+        const dateB = bValue ? new Date(bValue).getTime() : 0;
+        return dateA - dateB;
+      }
+      
+      // 2. Per tutte le altre stringhe
+      const strA = (aValue || '').toString().toLowerCase();
+      const strB = (bValue || '').toString().toLowerCase();
+      return strA.localeCompare(strB); // localeCompare è leggermente meglio per le stringhe
+    });
+
+    // Applica la direzione (ascendente o discendente)
+    if (sortConfig.direction === 'descending') {
+      sortableFlows.reverse();
     }
-    return sortableFlows;
-  }, [filteredFlows, sortConfig]);
+  }
+
+  return sortableFlows;
+}, [filteredFlows, sortConfig]);
 
   const requestSort = (key) => {
     let dir = "ascending";
@@ -925,18 +752,6 @@ function Ingest() {
     setIsDownloadingLogs(false);
   };
 
-  const getToastIcon = (type) => {
-    switch (type) {
-      case "success":
-        return <CheckCircle size={20} className="toast-svg-icon" />;
-      case "error":
-        return <XCircle size={20} className="toast-svg-icon" />;
-      case "warning":
-        return <AlertTriangle size={20} className="toast-svg-icon" />;
-      default:
-        return <ListChecks size={20} className="toast-svg-icon" />;
-    }
-  };
 
   const TABS = [
     {
@@ -954,78 +769,77 @@ function Ingest() {
   ];
 
   const renderActiveTabContent = () => {
-    const isAnyLogActionLoading =
-      isRefreshingLogs || isClearingLogs || isDownloadingLogs;
-    switch (activeTab) {
-      case "execution":
-        return (
-          <ExecutionTabContent
-            {...{
-              flows: flowsData,
-              selectedFlows,
-              handleSelectFlow,
-              handleSelectAllFlows,
-              searchTerm,
-              setSearchTerm,
-              typeFilter,
-              setTypeFilter,
-              statusFilter,
-              setStatusFilter,
-              sortConfig,
-              requestSort,
-              getSortIcon,
-              filteredAndSortedFlows,
-              flowTypes,
-              flowStatuses,
-              isExecuting: isExecutingFlows,
-              generalParams,
-              handleGeneralParamChange,
-              handleExecuteSelectedFlows,
-            }}
-          />
-        );
-      case "logs":
-        return (
-          <LogsTabContent
-            logs={logsData}
-            flows={flowsData} // Necessaria per visualizzare il nome del flusso
-            logSearchTerm={logSearchTerm}
-            setLogSearchTerm={setLogSearchTerm}
-            logLevelFilter={logLevelFilter}
-            setLogLevelFilter={setLogLevelFilter}
-            handleRefreshLogs={handleRefreshLogs}
-            handleClearLogs={handleClearLogs}
-            handleDownloadLogs={handleDownloadLogs}
-            filteredLogs={filteredLogs} // Passa i log già filtrati
-            isRefreshingLogs={isRefreshingLogs} // Stati specifici per i bottoni
-            isClearingLogs={isClearingLogs}
-            isDownloadingLogs={isDownloadingLogs}
-            // isAnyLogActionLoading è calcolata internamente a LogsTabContent ora
-          />
-        );
-      default:
-        return null;
-    }
-  };
+  // --- 1. CONTROLLO DELLO STATO DI CARICAMENTO ---
+  // Se stiamo caricando i dati iniziali dei flussi, mostriamo un messaggio
+  // e non renderizziamo nessuno dei due tab.
+ if (isLoading) {
+    return (
+      <div className="tab-content-padding loading-container">
+        <RefreshCw className="animate-spin-css" />
+        <p>Caricamento flussi dal backend...</p>
+      </div>
+    );
+  }
+
+  // --- 2. SWITCH PER DECIDERE QUALE TAB MOSTRARE ---
+  // Una volta terminato il caricamento, decidiamo quale componente renderizzare
+  // in base allo stato 'activeTab'.
+  switch (activeTab) {
+    case "execution":
+      // Se la tab attiva è "execution", renderizziamo il componente ExecutionTabContent
+      return (
+        <ExecutionTabContent
+          // Gli passiamo tutte le props di cui ha bisogno per funzionare
+          selectedFlows={selectedFlows}
+          handleSelectFlow={handleSelectFlow}
+          handleSelectAllFlows={handleSelectAllFlows}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          sortConfig={sortConfig}
+          requestSort={requestSort}
+          getSortIcon={getSortIcon}
+          filteredAndSortedFlows={filteredAndSortedFlows}
+          flowPackages={flowPackages}
+          flowStatuses={flowStatuses}
+          isExecuting={isExecutingFlows}
+          generalParams={generalParams}
+          handleGeneralParamChange={handleGeneralParamChange}
+          handleExecuteSelectedFlows={handleExecuteSelectedFlows}
+        />
+      );
+    case "logs":
+      // Se la tab attiva è "logs", renderizziamo il componente LogsTabContent
+      return (
+        <LogsTabContent
+          // Gli passiamo tutte le props di cui ha bisogno
+          logs={logsData}
+          flows={flowsData} 
+          logSearchTerm={logSearchTerm}
+          setLogSearchTerm={setLogSearchTerm}
+          logLevelFilter={logLevelFilter}
+          setLogLevelFilter={setLogLevelFilter}
+          handleRefreshLogs={handleRefreshLogs}
+          handleClearLogs={handleClearLogs}
+          handleDownloadLogs={handleDownloadLogs}
+          filteredLogs={filteredLogs} 
+          isRefreshingLogs={isRefreshingLogs}
+          isClearingLogs={isClearingLogs}
+          isDownloadingLogs={isDownloadingLogs}
+        />
+      );
+    default:
+      // Se per qualche motivo activeTab non corrisponde a nessun caso, non mostriamo nulla.
+      return null;
+  }
+};
 
   const isAnyCriticalLoadingOverall =
     isExecutingFlows || isRefreshingLogs || isClearingLogs || isDownloadingLogs;
 
-  return (
+   return (
     <div className="ingest-container">
-      {toast.visible && (
-        <div className={`app-toast toast-${toast.type}`}>
-          <div className="toast-icon">{getToastIcon(toast.type)}</div>
-          <span className="toast-message">{toast.message}</span>
-          <button
-            className="toast-close-btn"
-            onClick={() => setToast((prev) => ({ ...prev, visible: false }))}
-            aria-label="Chiudi notifica"
-          >
-            ×
-          </button>
-        </div>
-      )}
       <div className="ingest-content-wrapper">
         <header className="ingest-header-container">
           <div className="ingest-header">
@@ -1048,10 +862,10 @@ function Ingest() {
               >
                 ← Indietro
               </button>
-              {/* Il pulsante Esegui è stato spostato nel ExecutionTabContent */}
             </div>
           </div>
         </header>
+
         <nav className="tab-nav-container">
           <div className="tab-nav-grid">
             {TABS.map((tab) => {
@@ -1060,9 +874,7 @@ function Ingest() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`tab-button ${
-                    activeTab === tab.id ? "active" : ""
-                  }`}
+                  className={`tab-button ${activeTab === tab.id ? "active" : ""}`}
                   disabled={isAnyCriticalLoadingOverall && activeTab !== tab.id}
                 >
                   <div className="tab-button-header">
@@ -1075,9 +887,51 @@ function Ingest() {
             })}
           </div>
         </nav>
-        <main className="tab-content-main">{renderActiveTabContent()}</main>
+
+        {/* ========================================================= */}
+        {/* ---       BARRA DEI FILTRI SPOSTATA QUI                 --- */}
+        {/* ========================================================= */}
+        {/* Mostra i filtri solo se non stiamo caricando e se siamo nel tab "execution" */}
+        {!isLoading && activeTab === 'execution' && (
+          <div className="ingest-filters-bar">
+            <input
+              type="text"
+              placeholder="Cerca per Nome o Package..."
+              className="form-input"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              disabled={isExecutingFlows}
+            />
+            <select
+              className="form-select"
+              value={packageFilter}
+              onChange={(e) => setpackageFilter(e.target.value)}
+              disabled={isExecutingFlows}
+            >
+              <option value="all">Tutti i Package</option>
+              {flowPackages.filter(pkg => pkg !== 'all').map((pkg) => (
+                <option key={pkg} value={pkg}>{pkg}</option>
+              ))}
+            </select>
+            <select
+              className="form-select"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              disabled={isExecutingFlows}
+            >
+              <option value="all">Tutti i Risultati</option>
+              {flowStatuses.filter(status => status !== 'all').map((status) => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        
+        <main className="tab-content-main">
+          {renderActiveTabContent()}
+        </main>
       </div>
     </div>
   );
 }
-export default Ingest;
+export default Ingest;  

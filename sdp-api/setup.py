@@ -14,6 +14,7 @@ setup(
        'passlib',
        'pydantic-settings',
         'python-multipart',
+        'bcrypt'
         # aggiungi altre dipendenze qui
     ],
     entry_points={

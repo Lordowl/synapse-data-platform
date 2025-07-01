@@ -1,272 +1,269 @@
-/* src/components/Ingest/Ingest.css - TEMA NEUMORFICO CON TAB (Pulito e con Tabella Log) */
+/* src/components/Ingest/Ingest.css - TEMA NEUMORFICO - Layout Allineato */
 
 /* ==========================================================================
-   LAYOUT BASE DELLA PAGINA INGEST
+   1. LAYOUT BASE E CONTENITORE PRINCIPALE
    ========================================================================== */
-   .ingest-container {
+.ingest-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%; 
+  overflow: hidden; 
+  background: var(--primary-bg);
+}
+
+.ingest-content-wrapper {
+  width: 100%;
+  max-width: 1400px; 
+  margin: 0 auto;
+  /* Padding orizzontale centralizzato qui per allineare tutti i figli */
+  padding: 0 var(--space-4); 
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+  
+/* ==========================================================================
+   2. HEADER PRINCIPALE
+   ========================================================================== */
+.ingest-header-container {
+  flex-shrink: 0;
+  padding-top: var(--space-4); /* Solo padding verticale */
+  margin-bottom: var(--space-4);
+}
+.ingest-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap; 
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--rounded-xl);
+  background: var(--primary-bg);
+  box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+              calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+}
+.ingest-header-title-group { display: flex; align-items: center; gap: var(--space-3); flex-grow: 1; }
+.ingest-header-icon-bg { padding: var(--space-2); background-color: var(--primary-bg); border-radius: var(--rounded-base); display: inline-flex; box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark), calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light); }
+.ingest-header-icon { width: 1.5rem; height: 1.5rem; color: var(--accent-color); }
+.ingest-header-title { font-size: var(--text-xl); font-weight: 700; color: var(--text-color); margin: 0; }
+.ingest-header-subtitle { font-size: var(--text-xs); color: var(--text-color-muted); margin-top: var(--space-0-5); }
+.ingest-header-actions-group { display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0; }
+  
+/* ==========================================================================
+   3. NAVIGAZIONE A TAB
+   ========================================================================== */
+.ingest-content-wrapper .tab-nav-container {
+  padding: 0;
+  margin-bottom: var(--space-4);
+}
+/* Stili per .tab-nav-grid, .tab-button, etc. sono assunti globali/da altri file CSS */
+  
+/* ==========================================================================
+   4. BARRA DEI FILTRI
+   ========================================================================== */
+.ingest-filters-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) 0; /* Solo padding verticale */
+  border-bottom: 1px solid var(--neomorphic-dark);
+  margin-bottom: var(--space-4); /* Spazio prima del contenuto main */
+  flex-shrink: 0;
+}
+.ingest-filters-bar .form-input {
+  flex: 1 1 300px;
+}
+.ingest-filters-bar .form-select {
+  flex: 0 1 200px;
+}
+  
+/* ==========================================================================
+   5. CONTENUTO PRINCIPALE DEI TAB
+   ========================================================================== */
+.ingest-content-wrapper .tab-content-main { 
+  flex-grow: 1; 
+  overflow: hidden; 
+  padding:0;
+  min-height: 0; 
+  margin: 0; /* Rimosso margin orizzontale */
+  border-radius: var(--rounded-xl); 
+  background: var(--primary-bg); 
+  box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark), 
+              calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light); 
+  display: flex;
+}
+.tab-content-padding { 
+  padding: var(--space-4); 
+  height: 100%; 
+  display: flex; 
+  flex-direction: column; 
+  overflow-y: auto; 
+  gap: var(--space-4); 
+  width: 100%;
+}
+/* Scrollbar per il contenuto del tab */
+.tab-content-padding::-webkit-scrollbar { width: 10px; }
+.tab-content-padding::-webkit-scrollbar-track { background: var(--primary-bg); border-radius: var(--rounded-base); }
+.tab-content-padding::-webkit-scrollbar-thumb { background-color: var(--neomorphic-dark); border-radius: var(--rounded-base); }
+.tab-content-padding::-webkit-scrollbar-thumb:hover { background-color: #b0b8c5; }
+.tab-content-padding { scrollbar-width: thin; scrollbar-color: var(--neomorphic-dark) var(--primary-bg); }
+
+/* Stili comuni per le intestazioni di sezione all'interno dei tab */
+.ingest-section-header { 
+  display: flex; 
+  align-items: center; 
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3); 
+  flex-shrink: 0; 
+}
+.ingest-section-header-title-group { display: flex; align-items: center; gap: var(--space-3); }
+.ingest-section-icon { width: 1.25rem; height: 1.25rem; color: var(--accent-color); }
+.ingest-section-title { font-size: 1.35rem; font-weight: 600; color: var(--text-color); }
+.execution-tab-run-button { padding: var(--space-2) var(--space-3); font-size: var(--text-sm); margin-left: auto; flex-shrink: 0; }
+  
+/* ==========================================================================
+   6. TABELLA FLUSSI (Tab Esecuzione)
+   ========================================================================== */
+.ingest-table-wrapper { 
+  overflow: auto; 
+  flex-grow: 1; 
+  min-height: 250px; 
+  border-radius: var(--rounded-base); 
+  background: var(--primary-bg); 
+  box-shadow: inset calc(var(--shadow-distance) / 2) calc(var(--shadow-distance) / 2) var(--shadow-distance) var(--neomorphic-dark), 
+              inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2) var(--shadow-distance) var(--neomorphic-light); 
+  padding: var(--space-1); 
+}
+.ingest-table { 
+  width: 100%; 
+  min-width: 900px; 
+  border-collapse: separate; 
+  border-spacing: 0; 
+   table-layout: fixed;
+}
+.ingest-table th, .ingest-table td { 
+  padding: var(--space-3); 
+  text-align: left; 
+  font-size: var(--text-sm); 
+  border-bottom: 1px solid var(--neomorphic-dark); 
+  vertical-align: middle;
+  
+  /* --- NUOVE REGOLE PER GESTIRE IL TESTO LUNGO --- */
+  white-space: nowrap;      /* Impedisce al testo di andare a capo */
+  overflow: hidden;         /* Nasconde il testo che straborda */
+  text-overflow: ellipsis;  /* Aggiunge "..." alla fine del testo tagliato */
+}
+.ingest-table th { 
+  font-weight: 600; 
+  color: var(--text-color); 
+  cursor: pointer; 
+  user-select: none; 
+  white-space: nowrap; 
+  background-color: var(--primary-bg); 
+  position: sticky; 
+  top: 0; 
+  z-index: 1; 
+}
+.ingest-table th .inline-icon { width: 0.8rem; height: 0.8rem; margin-left: var(--space-1); opacity: 0.7; vertical-align: middle; display: inline-block; }
+.ingest-table th:hover .inline-icon { opacity: 1; }
+.ingest-table tr:last-child td { border-bottom: none; }
+.ingest-table tr.selected-row td { background-color: rgba(186, 230, 253, 0.5) !important; }
+.ingest-table tr:not(.selected-row):hover td { background-color: #e8edf2; }
+.ingest-table .form-checkbox { margin: 0 auto; display: block; }
+.status-badge { padding: var(--space-1) var(--space-2); border-radius: var(--rounded-full); font-size: var(--text-xs); font-weight: 600; text-transform: capitalize; white-space: nowrap; }
+/* Colonna 1: Checkbox */
+.ingest-table th:nth-child(1),
+.ingest-table td:nth-child(1) {
+  width: 50px;
+  text-align: center;
+}
+
+/* Colonna 2: Nome Flusso (la più importante) */
+.ingest-table th:nth-child(2),
+.ingest-table td:nth-child(2) {
+  /* Questa colonna si prenderà lo spazio rimanente, ma con dei limiti */
+  width: 40%; /* Larghezza di base suggerita */
+  min-width: 250px; /* Non diventare più stretta di così */
+  max-width: 500px; /* Non diventare più larga di così */
+}
+
+/* Colonna 3: Tipo */
+.ingest-table th:nth-child(3),
+.ingest-table td:nth-child(3) {
+  width: 20%;
+  min-width: 150px;
+}
+
+/* Colonna 4: ID Univoco */
+.ingest-table th:nth-child(4),
+.ingest-table td:nth-child(4) {
+  width: 15%;
+  min-width: 120px;
+}
+
+/* Colonna 5: Ultima Esecuzione */
+.ingest-table th:nth-child(5),
+.ingest-table td:nth-child(5) {
+  width: 15%;
+  min-width: 180px;
+}
+
+/* Colonna 6: Risultato (badge) */
+.ingest-table th:nth-child(6),
+.ingest-table td:nth-child(6) {
+  width: 10%;
+  min-width: 120px;
+  text-align: center; /* Centriamo il badge per un aspetto migliore */
+}
+
+/* Ripristiniamo il wrapping solo per la colonna del nome, se necessario */
+.ingest-table td:nth-child(2) {
+  white-space: normal; /* Permettiamo al nome del flusso di andare a capo */
+}
+/* ==========================================================================
+   7. SEZIONE PARAMETRI GENERALI
+   ========================================================================== */
+.general-params-section { 
+  padding: var(--space-3);
+  margin-top: var(--space-4);
+  background-color: var(--primary-bg); 
+  border-radius: var(--rounded-base); 
+  box-shadow: inset calc(var(--shadow-distance) / 2.5) calc(var(--shadow-distance) / 2.5) calc(var(--shadow-distance) / 1.5) var(--neomorphic-dark), 
+              inset calc(var(--shadow-distance) / -2.5) calc(var(--shadow-distance) / -2.5) calc(var(--shadow-distance) / 1.5) var(--neomorphic-light); 
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.general-params-title { font-size: var(--text-base); font-weight: 600; color: var(--text-color); margin: 0; }
+.general-params-section .param-input-group { display: flex; align-items: center; gap: var(--space-2); flex-grow: 1; }
+.general-params-section .param-label { font-size: var(--text-sm); color: var(--text-color-muted); white-space: nowrap; }
+.general-params-section .form-select { margin: 0; min-width: 200px; }
+
+/* ==========================================================================
+   8. SEZIONE LOG (Tab Log) - Qui puoi aggiungere gli stili specifici per i log
+   ========================================================================== */
+/* ... */
+
+/* ==========================================================================
+   9. UTILITY E ANIMAZIONI
+   ========================================================================== */
+.loading-container {
     display: flex;
-    flex-direction: column;
-    width: 100%;
-    height: 100%; 
-    overflow: hidden; 
-    background: var(--primary-bg);
-  }
-  
-  .ingest-content-wrapper {
-    width: 100%;
-    max-width: 1400px; 
-    margin: 0 auto;
-    padding: 0; 
-    display: flex;
-    flex-direction: column;
-    flex-grow: 1;
-    overflow: hidden;
-    min-height: 0;
-  }
-  
-  /* ==========================================================================
-     HEADER PRINCIPALE DELLA PAGINA INGEST
-     ========================================================================== */
-  .ingest-header-container {
-    flex-shrink: 0;
-    padding: var(--space-4) var(--space-4) 0;
-    margin-bottom: var(--space-4);
-  }
-  .ingest-header {
-    display: flex;
-    flex-direction: column; 
-    align-items: stretch; 
-    justify-content: space-between;
-    padding: var(--space-4);
-    border-radius: var(--rounded-xl);
-    background: var(--primary-bg);
-    box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
-                calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
-    gap: var(--space-3);
-  }
-  .ingest-header-title-group { display: flex; align-items: center; gap: var(--space-3); }
-  .ingest-header-icon-bg { padding: var(--space-2); background-color: var(--primary-bg); border-radius: var(--rounded-base); display: inline-flex; align-items: center; justify-content: center; box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark), calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light); }
-  .ingest-header-icon { width: 1.5rem; height: 1.5rem; color: var(--accent-color); }
-  .ingest-header-title { font-size: var(--text-xl); font-weight: 700; color: var(--text-color); margin: 0; }
-  .ingest-header-subtitle { font-size: var(--text-xs); color: var(--text-color-muted); margin-top: var(--space-0-5); }
-  .ingest-header-actions-group { display: flex; flex-direction: column; width: 100%; gap: var(--space-2); }
-  .ingest-header-back-button, .ingest-header-execute-button { width: 100%; }
-  .ingest-header-actions-group .ingest-header-execute-button.btn-primary:hover { color: var(--accent-color); }
-  .ingest-header-actions-group .ingest-header-execute-button.btn-primary:hover .btn-icon-md { color: var(--accent-color); }
-  
-  /* ==========================================================================
-     STILI TAB (Assunti globali, ma con conferme per layout interno)
-     ========================================================================== */
-  .tab-nav-container { padding: 0 var(--space-4); margin-bottom: var(--space-4); flex-shrink: 0; }
-  /* .tab-nav-grid, .tab-button, etc. sono assunti globali/da Settings.css */
-  
-  .tab-content-main { flex-grow: 1; overflow: hidden; min-height: 0; margin: 0 var(--space-4) var(--space-4); border-radius: var(--rounded-xl); background: var(--primary-bg); box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark), calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light); }
-  .tab-content-padding { padding: var(--space-4); height: 100%; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; gap: var(--space-4); }
-  /* Scrollbar per .tab-content-padding */
-  .tab-content-padding::-webkit-scrollbar { width: 10px; }
-  .tab-content-padding::-webkit-scrollbar-track { background: var(--primary-bg); border-radius: var(--rounded-base); }
-  .tab-content-padding::-webkit-scrollbar-thumb { background-color: var(--neomorphic-dark); border-radius: var(--rounded-base); box-shadow: inset 1px 1px 2px rgba(0,0,0,0.1), inset -1px -1px 2px rgba(255,255,255,0.7); }
-  .tab-content-padding::-webkit-scrollbar-thumb:hover { background-color: #b0b8c5; }
-  .tab-content-padding { scrollbar-width: thin; scrollbar-color: var(--neomorphic-dark) var(--primary-bg); }
-  
-  /* ==========================================================================
-     CONTENUTO SPECIFICO DEI TAB DI INGEST
-     ========================================================================== */
-  .ingest-section-header { display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0; }
-  .ingest-section-icon { width: 1.25rem; height: 1.25rem; color: var(--accent-color); }
-  .ingest-section-title { font-size: 1.35rem; font-weight: 600; color: var(--text-color); }
-  
-  /* Header specifico del Tab Esecuzione con Pulsante Esegui */
-  .execution-tab-header {
-    justify-content: space-between;
-    flex-wrap: wrap; 
-  }
-  .execution-tab-header .ingest-section-header-title-group { display: flex; align-items: center; gap: var(--space-3); }
-  .execution-tab-run-button { padding: var(--space-2) var(--space-3); font-size: var(--text-sm); margin-left: auto; flex-shrink: 0; }
-  
-  /* Filtri e Parametri Generali (Tab Esecuzione) */
-  .ingest-filters-bar { display: flex; flex-direction: column; gap: var(--space-3); flex-shrink: 0; }
-  .ingest-filters-bar .form-input, .ingest-filters-bar .form-select { margin: 0; }
-  .general-params-section { padding: var(--space-3) var(--space-2); background-color: var(--primary-bg); border-radius: var(--rounded-base); box-shadow: inset calc(var(--shadow-distance) / 2.5) calc(var(--shadow-distance) / 2.5) calc(var(--shadow-distance) / 1.5) var(--neomorphic-dark), inset calc(var(--shadow-distance) / -2.5) calc(var(--shadow-distance) / -2.5) calc(var(--shadow-distance) / 1.5) var(--neomorphic-light); display: flex; flex-direction: column; gap: var(--space-3); flex-shrink: 0; }
-  .general-params-title { font-size: var(--text-base); font-weight: 600; color: var(--text-color); margin-bottom: var(--space-2); }
-  .general-params-section .param-input-group { display: flex; align-items: center; gap: var(--space-2); }
-  .general-params-section .param-label { font-size: var(--text-sm); color: var(--text-color-muted); white-space: nowrap; flex-shrink: 0; min-width: 150px; }
-  .general-params-section .form-select { margin: 0; flex-grow: 1; }
-  
-  /* Tabella Flussi (Tab Esecuzione) */
-  .ingest-table-wrapper { overflow: auto; flex-grow: 1; min-height: 250px; border-radius: var(--rounded-base); background: var(--primary-bg); box-shadow: inset calc(var(--shadow-distance) / 2) calc(var(--shadow-distance) / 2) var(--shadow-distance) var(--neomorphic-dark), inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2) var(--shadow-distance) var(--neomorphic-light); padding: var(--space-1); position: relative; }
-  .ingest-table { width: 100%; min-width: 900px; border-collapse: separate; border-spacing: 0; }
-  .ingest-table th, .ingest-table td { padding: var(--space-3); text-align: left; font-size: var(--text-sm); border-bottom: 1px solid var(--neomorphic-dark); vertical-align: middle; }
-  .ingest-table th { font-weight: 600; color: var(--text-color); border-bottom-width: 2px; cursor: pointer; user-select: none; white-space: nowrap; background-color: var(--primary-bg); position: sticky; top: 0; z-index: 1; }
-  .ingest-table th .inline-icon { width: 0.8rem; height: 0.8rem; margin-left: var(--space-1); opacity: 0.7; }
-  .ingest-table th:hover .inline-icon { opacity: 1; }
-  .ingest-table tr:last-child td { border-bottom: none; }
-  .ingest-table tr.selected-row td { background-color: #cfe2f3 !important; }
-  .ingest-table tr:not(.selected-row):not([class*="row-color-"]):hover td { background-color: #e8edf2; }
-  .ingest-table .form-checkbox { margin: 0 auto; display: block; }
-  .status-badge { padding: var(--space-1) var(--space-2); border-radius: var(--rounded-full); font-size: var(--text-xs); font-weight: 600; text-transform: capitalize; white-space: nowrap; }
-  .muted-text { color: var(--text-color-muted); font-style: italic; }
-  .text-center { text-align: center; }
-  /* Colorazione righe tabella flussi */
-  .ingest-table tbody tr.row-color-success td { background-color: #e6fffa; }
-  .ingest-table tbody tr.row-color-success:hover td { background-color: #c9f7f0; }
-  .ingest-table tbody tr.row-color-failed td { background-color: #fee2e2; }
-  .ingest-table tbody tr.row-color-failed:hover td { background-color: #fecaca; }
-  .ingest-table tbody tr.row-color-warning td { background-color: #fffbeb; }
-  .ingest-table tbody tr.row-color-warning:hover td { background-color: #fef3c7; }
-  .ingest-table tbody tr.row-color-running td { background-color: #e0f2fe; }
-  .ingest-table tbody tr.row-color-running:hover td { background-color: #bae6fd; }
-  .ingest-table tbody tr.row-color-default td { background-color: transparent; }
-  .disabled-row-visual td { opacity: 0.6; pointer-events: none; background-color: #f9fafb !important; }
-  .disabled-row-visual .form-checkbox { cursor: not-allowed; }
-  
-  /* Controlli Log e Tabella Log (Tab Log) */
-  .ingest-log-controls { display: flex; flex-direction: column; gap: var(--space-3); flex-shrink: 0; }
-  .ingest-log-controls .form-input, .ingest-log-controls .form-select { margin: 0; }
-  .ingest-log-controls .btn { width: 100%; }
-  
-  .ingest-log-table-wrapper { overflow: auto; flex-grow: 1; min-height: 200px; border-radius: var(--rounded-base); background: var(--primary-bg); box-shadow: inset calc(var(--shadow-distance) / 2) calc(var(--shadow-distance) / 2) var(--shadow-distance) var(--neomorphic-dark), inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2) var(--shadow-distance) var(--neomorphic-light); padding: var(--space-1); }
-  .ingest-log-table { width: 100%; min-width: 800px; border-collapse: separate; border-spacing: 0; font-family: var(--font-mono); font-size: var(--text-sm); }
-  .ingest-log-table th, .ingest-log-table td { padding: var(--space-2) var(--space-3); text-align: left; border-bottom: 1px solid var(--neomorphic-dark); vertical-align: top; }
-  .ingest-log-table th { font-weight: 600; color: var(--text-color); background-color: var(--primary-bg); position: sticky; top: 0; z-index: 1; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1); }
-  .ingest-log-table tr.log-table-row:last-child td { border-bottom: none; } /* Solo se è l'ultima riga effettiva, non una riga di dettaglio */
-  .ingest-log-table tr.log-table-row:hover td { background-color: #e8edf2; }
-  /* Colorazione righe log basata sul livello */
-  .ingest-log-table tbody tr.log-row-success td { background-color: rgba(230, 255, 250, 0.7); }
-  .ingest-log-table tbody tr.log-row-success:hover td { background-color: rgba(201, 247, 240, 0.9); }
-  .ingest-log-table tbody tr.log-row-error td { background-color: rgba(254, 226, 226, 0.7); }
-  .ingest-log-table tbody tr.log-row-error:hover td { background-color: rgba(254, 202, 202, 0.9); }
-  .ingest-log-table tbody tr.log-row-warning td { background-color: rgba(255, 251, 235, 0.7); }
-  .ingest-log-table tbody tr.log-row-warning:hover td { background-color: rgba(254, 243, 199, 0.9); }
-  .ingest-log-table tbody tr.log-row-info td { background-color: rgba(224, 242, 254, 0.6); }
-  .ingest-log-table tbody tr.log-row-info:hover td { background-color: rgba(186, 230, 253, 0.8); }
-  .ingest-log-table tbody tr.log-row-debug td { background-color: rgba(243, 244, 246, 0.6); }
-  .ingest-log-table tbody tr.log-row-debug:hover td { background-color: rgba(229, 231, 235, 0.8); }
-  .ingest-log-table tbody tr.log-row-default td { background-color: transparent; }
-  /* Stili per la riga dei dettagli espansi */
-  .log-details-row td { background-color: #e9ecef; padding: var(--space-3); border-bottom: 1px solid var(--neomorphic-dark); }
-  .log-details-row:last-of-type td { border-bottom: none; }
-  .log-details-content { white-space: pre-wrap; word-break: break-all; font-size: var(--text-xs); color: var(--text-color-muted); background-color: var(--primary-bg); padding: var(--space-2); border-radius: var(--rounded-sm); max-height: 200px; overflow-y: auto; box-shadow: inset 2px 2px 4px var(--neomorphic-dark), inset -2px -2px 4px var(--neomorphic-light); }
-  .log-message-cell { max-width: 400px; word-break: break-word; }
-  .log-details-action-cell { text-align: center; width: 100px; /* Ridotto per solo icona */ }
-  .log-details-btn { padding: var(--space-1); /* Molto piccolo per solo icona */ font-size: var(--text-xs); min-width: auto; box-shadow: none; border: 1px solid transparent; /* Bordo invisibile per allineamento, diventa visibile su hover */ }
-  .log-details-btn:hover { background-color: var(--neomorphic-dark); color: var(--neomorphic-light); border-color: var(--neomorphic-dark); }
-  .log-details-btn svg { margin-right: 0; }
-  .ingest-logs-empty-message { padding: var(--space-8) 0; }
-  /* Stili log-level-badge e log-flow-name (usati nella tabella log) */
-  .log-level-badge { padding: var(--space-0-5) var(--space-2); border-radius: var(--rounded-base); font-weight: 600; font-size: var(--text-xs); text-transform: uppercase; white-space: nowrap; box-shadow: 1px 1px 2px rgba(0,0,0,0.1), -1px -1px 2px rgba(255,255,255,0.7); }
-  .log-level-badge.log-level-info { background-color: #e0f2fe; color: #0c4a6e; }
-  .log-level-badge.log-level-warning { background-color: #fffbeb; color: #78350f; }
-  .log-level-badge.log-level-error { background-color: #feeddd; color: #7f1d1d; }
-  .log-level-badge.log-level-debug { background-color: #f3f4f6; color: #374151; }
-  .log-flow-name { color: var(--accent-color); opacity: 0.8; }
-  
-  /* Azioni Log (Tab Log) */
-  .ingest-log-actions { margin-top: auto; padding-top: var(--space-3); display: flex; flex-direction: column; justify-content: space-between; align-items: stretch; gap: var(--space-3); flex-shrink: 0; }
-  .ingest-log-actions .logs-count-info { color: var(--text-color-muted); font-size: var(--text-sm); text-align: center; }
-  .ingest-log-actions { display: flex; flex-direction: column; gap: var(--space-2); }
-  .ingest-log-actions .btn { width: 100%; }
-  
-  /* ==========================================================================
-     ANIMAZIONI E UTILITY (Toast, Spin, etc.)
-     ========================================================================== */
-  .animate-spin-css { animation: spin 1s linear infinite; }
-  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-  .btn-disabled-visual { opacity: 0.7; cursor: wait; }
-  /* Stili Toast (come definiti precedentemente) */
-  .app-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: var(--space-3) var(--space-4); border-radius: var(--rounded-base); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15); color: var(--neomorphic-light); font-size: var(--text-sm); font-weight: 500; z-index: 9999; display: flex; align-items: center; gap: var(--space-3); min-width: 280px; max-width: 90%; opacity: 0; animation: toast-slide-in-out 3s forwards; transition: opacity 0.3s ease; }
-  .app-toast.toast-success { background-color: var(--accent-color-success); }
-  .app-toast.toast-error { background-color: var(--accent-color); }
-  .app-toast.toast-warning { background-color: #f59e0b; color: var(--text-color); }
-  .app-toast.toast-info { background-color: var(--accent-color-primary-btn); }
-  .toast-icon { display: flex; align-items: center; flex-shrink: 0; }
-  .toast-icon svg { color: currentColor; }
-  .toast-message { flex-grow: 1; line-height: 1.4; }
-  .toast-close-btn { background: none; border: none; color: currentColor; font-size: 1.5rem; line-height: 1; padding: 0 var(--space-1); margin-left: var(--space-2); cursor: pointer; opacity: 0.7; transition: opacity 0.2s ease; }
-  .toast-close-btn:hover { opacity: 1; }
-  @keyframes toast-slide-in-out { 0% { opacity: 0; transform: translateX(-50%) translateY(30px); } 15% { opacity: 1; transform: translateX(-50%) translateY(0); } 85% { opacity: 1; transform: translateX(-50%) translateY(0); } 100% { opacity: 0; transform: translateX(-50%) translateY(30px); } }
-  
-  /* ==========================================================================
-     RESPONSIVE (Desktop First - min 1280px, poi adattamenti minori per mobile se proprio necessario)
-     ========================================================================== */
-  
-  /* Layout di base per >=768px, che è anche il nostro layout per >=1280px dato che non ci sono media query intermedie specifiche */
-  @media (min-width: 768px) {
-    .ingest-header-container { padding: var(--space-6) var(--space-6) 0; }
-    .ingest-header { flex-direction: row; align-items: center; }
-    .ingest-header-title-group { flex-grow: 1; }
-    .ingest-header-actions-group { flex-direction: row; width: auto; gap: var(--space-3); flex-shrink: 0; }
-    .ingest-header-back-button, .ingest-header-execute-button { width: auto; }
-  
-    .ingest-filters-bar { flex-direction: row; align-items: center; }
-    .ingest-filters-bar .form-input { flex-grow: 1; }
-    .ingest-filters-bar .form-select { min-width: 180px; width: auto; } /* Larghezza auto con min per i select */
-    
-    .general-params-section { flex-direction: row; align-items: center; flex-wrap: wrap; }
-    .general-params-section .form-select { min-width: 200px; /* Esempio se vuoi più spazio per il dropdown settimana */ }
-  
-    .ingest-log-controls { flex-direction: row; align-items: center; }
-    .ingest-log-controls .form-input { flex-grow: 1; }
-    .ingest-log-controls .btn { width: auto; }
-    .ingest-log-actions { flex-direction: row; align-items: center; }
-    .ingest-log-actions .logs-count-info { text-align: left; margin-right: auto; }
-    .ingest-log-actions { flex-direction: row; gap: var(--space-3); /* Sovrascrive il gap di .settings-button-group per desktop */ }
-    .ingest-log-actions > .btn { width: auto; flex-grow: 0; /* Non si espandono */ }
-  
-    .tab-nav-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-  }
-  .logs-actions { /* Questa è la classe genitore che ci interessa ora */
-    margin-top: auto; 
-    padding-top: var(--space-4);
-    display: flex;
-    align-items: center; 
-    gap: var(--space-4); /* Aumentato il gap generale per i footer per dare più spazio */
-    flex-shrink: 0;
-    flex-wrap: wrap; /* Permette agli elementi di andare a capo se non c'è spazio */
-    justify-content:space-in-between;
-  }
-  .logs-action-buttons {
-    display: flex;
-    flex-direction: row;
-    gap: var(--space-3);
+    justify-content: center;
     align-items: center;
-    /* flex-grow: 1; */ /* Prova a scommentare se vuoi che il GRUPPO di bottoni prenda più spazio */
-  }
-  /* Per schermi molto grandi, se vuoi più padding */
-  @media (min-width: 1024px) { /* Questa era precedentemente usata per altri scopi, ora è per schermi più grandi di 768px */
-    .tab-content-padding { padding: var(--space-6); }
-    /* .ingest-filters-bar .form-select { min-width: 180px; } (già in 768px) */
-    .tab-nav-grid { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
-  }
-  
-  
-  /* Adattamenti per schermi più piccoli del minimo di 1280px (ESEMPIO, se servisse uno stacking forzato) */
-  /* Queste regole entrerebbero in gioco solo se lo schermo fosse *davvero* stretto,
-     ma dato il min-width: 1280px per l'app, potrebbero non essere mai attivate o necessarie.
-     Le includo per completezza se il requisito di 1280px non fosse rigido. */
-  @media (max-width: 767px) { 
-    .ingest-header { flex-direction: column; align-items: stretch; }
-    .ingest-header-actions-group { width: 100%; }
-    .ingest-header-back-button, .ingest-header-execute-button { width: 100%; }
-  
-    .execution-tab-header { flex-direction: column; align-items: flex-start; gap: var(--space-3); }
-    .execution-tab-run-button { width: 100%; margin-left: 0; }
-    
-    .ingest-filters-bar { flex-direction: column; align-items: stretch; }
-    .ingest-filters-bar > * { width: 100%; }
-  
-    .general-params-section { flex-direction: column; align-items: stretch; }
-    .general-params-section .param-input-group { flex-direction: column; align-items: stretch; }
-    .general-params-section .param-label { min-width: auto; margin-bottom: var(--space-1); }
-    .general-params-section .form-select { width: 100%; }
-  
-    .ingest-log-controls { flex-direction: column; align-items: stretch; }
-    .ingest-log-controls > * { width: 100%; }
-    
-    .ingest-log-actions { flex-direction: column; align-items: stretch; }
-    .ingest-log-actions .logs-count-info { text-align: center; margin-right: 0; margin-bottom: var(--space-2); }
-    .ingest-log-actions .logs-action-buttons { flex-direction: column; width: 100%; }
-    .ingest-log-actions .logs-action-buttons > .btn { width: 100%; }
-  
-    .tab-nav-grid { grid-template-columns: 1fr; } /* Tab impilati */
-  } 
+    gap: var(--space-3);
+    color: var(--text-color-muted);
+    height: 100%;
+}
+.muted-text { color: var(--text-color-muted); font-style: italic; }
+.text-center { text-align: center; }
+.animate-spin-css { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.btn-disabled-visual { opacity: 0.7; cursor: wait; }

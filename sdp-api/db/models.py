@@ -23,3 +23,11 @@ class AuditLog(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     action = Column(String, index=True, nullable=False)
     details = Column(JSON, nullable=True)
+class FlowExecutionHistory(Base):
+    __tablename__ = "flow_execution_history"
+    id = Column(Integer, primary_key=True)
+    flow_id_str = Column(String, index=True) # L'ID del flusso eseguito (es. "17-1")
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    status = Column(String) # Es. "Success", "Failed", "Warning"
+    duration_seconds = Column(Integer)
+    details = Column(JSON, nullable=True) # Dettagli extr

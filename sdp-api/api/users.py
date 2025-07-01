@@ -30,7 +30,7 @@ def create_new_user(
     if db_user_by_email:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    created_user = crud.create_user(db=db, user_data=user)
+    created_user = crud.create_user(db=db, user=user)
 
     # Registra l'azione di creazione nell'audit log
     record_audit_log(

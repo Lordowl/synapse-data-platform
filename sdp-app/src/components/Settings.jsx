@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect } from "react";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import apiClient from "../api/apiClient"; //
-import { WebviewWindow } from '@tauri-apps/api/window';
+
 
 import {
   Settings as SettingsIcon,
@@ -931,37 +931,7 @@ function Settings() {
     /* ... la tua logica ... */
   };
   const handleOpenSharePoint = async (type) => {
-    // L'etichetta deve corrispondere a quella in tauri.conf.json
-    const windowLabel = 'sharepoint-viewer'; 
-
-    // Costruisci l'URL di SharePoint
-    const sharepointBaseUrl = "https://www.google.com/";
-    let urlToOpen = sharepointBaseUrl;
-    if (type === "metadata_file") {
-      urlToOpen = `${sharepointBaseUrl}/DocumentiCondivisi/Metadati`;
-    }
-
-    try {
-      // 3. Cerca la finestra pre-configurata
-      const webview = WebviewWindow.getByLabel(windowLabel);
-
-      if (webview) {
-        toast.info("Apertura del visualizzatore SharePoint...");
-        
-        // 4. Esegui le azioni sulla finestra
-        await webview.setUrl(urlToOpen);     // Imposta l'URL corretto
-        await webview.center();              // Centra la finestra
-        await webview.show();                // Rendila visibile
-        await webview.setFocus();            // Portala in primo piano
-
-      } else {
-        // Questo errore non dovrebbe accadere se la configurazione è corretta
-        toast.error("Errore di configurazione: finestra non trovata.");
-      }
-    } catch (error) {
-      console.error("Impossibile aprire la finestra di SharePoint:", error);
-      toast.error("Si è verificato un errore nell'apertura del visualizzatore.");
-    }
+   console.log("premuto handleopen")
   };
   const handlePermissionChange = (id, field, valueOrUpdater) => {
     setHasUnsavedChanges(true);
