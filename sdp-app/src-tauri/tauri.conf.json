@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Synapse Data Platform",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "identifier": "com.synapse.dataplatform",
   "build": {
     "beforeBuildCommand": "npm run build",
@@ -53,7 +53,7 @@
       "active": true,
       "dialog": true,
       "endpoints": [
-        "https://raw.githubusercontent.com/Lordowl/synapse-data-updates/main/latest.json"
+       "https://github.com/Lordowl/synapse-data-updates//latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGNzBCNjUzMDE2RTkxNEEKUldSS2tXNEJVN1p3ZjlucHZMRTBPMUZlNVlaT01paEUvNWNwOWhqZncvbFpRa1JQQmJJeTJWRzMK"
     }
