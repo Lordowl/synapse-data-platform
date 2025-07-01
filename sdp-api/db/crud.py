@@ -72,3 +72,17 @@ def delete_user(db: Session, user_id: int):
     db.delete(db_user)
     db.commit()
     return db_user
+def create_execution_log(db: Session, flow_id_str: str, status: str, duration_seconds: int = 0, details: dict = None):
+    """
+    Crea un nuovo record nello storico delle esecuzioni dei flussi.
+    """
+    # Crea un'istanza del modello SQLAlchemy direttamente
+    db_log = models.FlowExecutionHistory(
+        flow_id_str=flow_id_str,
+        status=status,
+        duration_seconds=duration_seconds,
+        details=details
+    )
+    db.add(db_log)
+    
+    return db_log

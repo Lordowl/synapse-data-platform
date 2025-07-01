@@ -3,11 +3,13 @@ import json
 import os
 from pathlib import Path
 from fastapi import APIRouter, Depends, Security, HTTPException
-from typing import List
+from pydantic import BaseModel 
+from typing import List, Dict, Optional
 from sqlalchemy.orm import Session 
 from sqlalchemy import func, desc
 from db.database import get_db 
 from db import models
+import datetime
 from core.security import get_current_active_admin
 
 router = APIRouter()
@@ -51,4 +53,31 @@ def get_flows_history(db: Session = Depends(get_db)):
         return history_map
     except Exception as e:
         print(f"Errore nel recuperare lo storico dei flussi: {e}")
-        return {} # Restituisce un dizionario vuoto in caso di errore
+        return {} # Restituisce un dizionario vuoto in caso di erroreà
+# Schema Pydantic per la risposta dei log
+# Versione CORRETTA (con la configurazione aggiunta)
+class FlowExecutionLog(BaseModel):
+    id: int
+    timestamp: datetime
+    flow_id_str: str
+    status: str
+    duration_seconds: int
+    details: Optional[Dict]
+    
+    # --- AGGIUNGI QUESTA PARTE ---
+    class Config:
+        # Questa riga dice a Pydantic: "Permetti l'uso di tipi di dato non-standard."
+        arbitrary_types_allowed = True
+        
+        # Questa riga (opzionale ma consigliata) dice: "Puoi creare questo modello
+        # anche leggendo da un oggetto di database (ORM), non solo da un dizionario."
+        from_attributes = True
+@router.get("/logs", response_model=List[FlowExecutionLog])
+def get_execution_logs(
+    db: Session = Depends(get_db),
+    admin_user: models.User = Security(get_current_active_admin),
+    limit: int = 200 # Limita il numero di log restituiti
+):
+    """Restituisce gli ultimi N log di esecuzione dei flussi."""
+    logs = db.query(models.FlowExecutionHistory).order_by(models.FlowExecutionHistory.id.desc()).limit(limit).all()
+    return logs

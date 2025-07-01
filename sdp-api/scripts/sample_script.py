@@ -1,44 +1,36 @@
-# my_fastapi_backend/scripts/sample_script.py
-
-import sys
+import argparse
 import time
-import json
 
-def run_task(argument: str):
-    """
-    Simula un'operazione che richiede tempo e produce un risultato.
-    """
-    print(f"INFO: Script avviato alle {time.ctime()} con l'argomento: '{argument}'.")
+def main(flow_id, package, week):
+    print(f"--- Esecuzione dello script generico ---")
+    print(f"  - ID Flusso ricevuto: {flow_id}")
+    print(f"  - Package ricevuto: {package}")
+    print(f"  - Settimana ricevuta: {week}")
     
-    # Simula del lavoro
-    for i in range(5):
-        print(f"INFO: Lavoro in corso... step {i+1}/5")
-        time.sleep(1)
-        
-    # Prepara un output in formato JSON
-    result = {
-        "status": "success",
-        "input_argument": argument,
-        "completion_time": time.ctime(),
-        "message": "Il task è stato completato con successo!"
-    }
+    # Qui metti la tua logica reale...
+    # Esempio:
+    print("  - Sto processando i dati...")
+    time.sleep(2) # Simula lavoro
     
-    # Scrive il risultato su stdout in formato JSON, così può essere catturato facilmente.
-    print(json.dumps(result))
+    # Puoi anche simulare un fallimento per testare
+    # import sys
+    # if 'fail' in package.lower():
+    #     print("ERRORE: Questo è un errore simulato.", file=sys.stderr)
+    #     sys.exit(1)
 
-    print("INFO: Script terminato.")
+    print(f"--- Esecuzione per il flusso {flow_id} completata. ---")
 
 if __name__ == "__main__":
-    # Lo script viene eseguito solo se chiamato direttamente
-    # e si aspetta esattamente un argomento.
-    if len(sys.argv) != 2:
-        error_message = {
-            "status": "error",
-            "message": "Errore: lo script richiede esattamente un argomento."
-        }
-        print(json.dumps(error_message), file=sys.stderr) # Scrivi l'errore su stderr
-        sys.exit(1) # Esce con un codice di errore
+    # 1. Crea un parser per gli argomenti
+    parser = argparse.ArgumentParser(description="Script di esecuzione generico per flussi.")
     
-    # Prende l'argomento dalla riga di comando
-    arg = sys.argv[1]
-    run_task(arg)
+    # 2. Definisci gli argomenti che ti aspetti di ricevere
+    parser.add_argument("--flow-id", required=True, help="L'ID univoco del flusso.")
+    parser.add_argument("--package", required=True, help="Il package del flusso.")
+    parser.add_argument("--week", help="La settimana di riferimento per l'esecuzione.")
+    
+    # 3. Parsa gli argomenti passati dalla riga di comando
+    args = parser.parse_args()
+    
+    # 4. Chiama la tua funzione principale con gli argomenti parsati
+    main(flow_id=args.flow_id, package=args.package, week=args.week)

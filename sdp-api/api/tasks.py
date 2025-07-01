@@ -2,11 +2,17 @@
 
 import subprocess
 import sys
-import json
-from pydantic import BaseModel
-from pathlib import Path 
+import time
+from pathlib import Path
 from typing import List, Dict
 
+from fastapi import APIRouter, Depends, Security, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from db import crud, models
+from db.database import get_db
+from core.security import get_current_active_admin
 from fastapi import APIRouter, Depends, HTTPException, status, Security # <-- AGGIUNTO Security
 
 # Importiamo la dependency di sicurezza e i modelli
@@ -16,6 +22,17 @@ class UpdateRequest(BaseModel):
     file_path: str
 class FilePathRequest(BaseModel):
     file_path: str
+# Schema per i dati di un singolo flusso che ci aspettiamo dal frontend
+class FlowPayload(BaseModel):
+    id: str
+    name: str
+    package: str
+    # Aggiungi altri campi se li invii dal frontend e ti servono nel backend
+
+# Schema per l'intera richiesta di esecuzione
+class ExecutionRequest(BaseModel):
+    flows: List[FlowPayload]
+    params: Dict
 # Definiamo il router con il prefisso, così non dobbiamo ripeterlo
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -128,3 +145,88 @@ def trigger_update_flows_from_excel(
         # Per qualsiasi altro errore imprevisto durante l'esecuzione
         print(f"!!! ERRORE SCONOSCIUTO durante l'esecuzione del sottoprocesso: {e} !!!")
         raise HTTPException(status_code=500, detail=f"Errore imprevisto del server: {e}")
+@router.post("/execute-flows", response_model=Dict)
+def execute_selected_flows(
+    request: ExecutionRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Security(get_current_active_admin)
+):
+    """
+    Per ogni flusso selezionato, esegue lo script 'sample_script.py'
+    passando i dettagli del flusso come argomenti.
+    """
+    print(f"Ricevuta richiesta di esecuzione da {current_user.username} per {len(request.flows)} flussi.")
+    
+    # Percorso dello script generico da eseguire
+    script_path = Path(__file__).parent.parent / "scripts" / "sample_script.py"
+    if not script_path.is_file():
+        raise HTTPException(status_code=500, detail="Script di esecuzione non trovato.")
+
+    execution_results = []
+    for flow in request.flows:
+        print(f"--- PREPARAZIONE FLUSSO: {flow.name} (ID: {flow.id}) ---")
+        start_time = time.time()
+        
+        status = "Failed" # Default in caso di problemi
+        script_output = ""
+        script_error = ""
+        
+        try:
+            # --- COSTRUZIONE DEGLI ARGOMENTI PER LO SCRIPT ---
+            # Il primo argomento è sempre lo script stesso.
+            # Poi aggiungiamo gli argomenti che ci interessano.
+            command_args = [
+                sys.executable,
+                str(script_path),
+                "--flow-id", str(flow.id),
+                "--package", str(flow.package),
+                "--week", str(request.params.get("week", ""))
+                # Aggiungi altri parametri se necessario
+            ]
+            
+            print(f"Esecuzione comando: {' '.join(command_args)}")
+
+            # --- ESECUZIONE DELLO SCRIPT ---
+            result = subprocess.run(
+                command_args, 
+                capture_output=True, 
+                text=True, 
+                check=True, 
+                timeout=300,
+                encoding="utf-8"
+            )
+            
+            status = "Success"
+            script_output = result.stdout
+            if result.stderr:
+                script_output += f"\n--- stderr ---\n{result.stderr}"
+
+        except subprocess.CalledProcessError as e:
+            status = "Failed"
+            script_error = e.stderr
+            print(f"!!! ERRORE nello script per il flusso {flow.id}: {script_error}")
+        
+        except Exception as e:
+            status = "Failed"
+            script_error = f"Errore imprevisto nell'API: {str(e)}"
+            print(f"!!! ERRORE API per il flusso {flow.id}: {script_error}")
+
+        # --- REGISTRAZIONE DEL RISULTATO ---
+        end_time = time.time()
+        duration = int(end_time - start_time)
+        
+        crud.create_execution_log(
+            db=db,
+            flow_id_str=flow.id,
+            status=status,
+            duration_seconds=duration,
+            details={
+                "executed_by": current_user.username, 
+                "params": request.params,
+                "output": script_output,
+                "error": script_error
+            }
+        )
+        execution_results.append({"id": flow.id, "status": status})
+
+    return {"status": "success", "message": "Esecuzione dei flussi richiesta.", "results": execution_results}

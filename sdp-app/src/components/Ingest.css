@@ -7,7 +7,7 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100%; 
+  height: 100vh; 
   overflow: hidden; 
   background: var(--primary-bg);
 }
@@ -20,7 +20,6 @@
   padding: 0 var(--space-4); 
   display: flex;
   flex-direction: column;
-  flex-grow: 1;
   overflow: hidden;
   min-height: 0;
 }
@@ -45,7 +44,7 @@
   box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
               calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
 }
-.ingest-header-title-group { display: flex; align-items: center; gap: var(--space-3); flex-grow: 1; }
+.ingest-header-title-group { display: flex; align-items: center; gap: var(--space-3);  }
 .ingest-header-icon-bg { padding: var(--space-2); background-color: var(--primary-bg); border-radius: var(--rounded-base); display: inline-flex; box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark), calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light); }
 .ingest-header-icon { width: 1.5rem; height: 1.5rem; color: var(--accent-color); }
 .ingest-header-title { font-size: var(--text-xl); font-weight: 700; color: var(--text-color); margin: 0; }
@@ -85,7 +84,6 @@
    5. CONTENUTO PRINCIPALE DEI TAB
    ========================================================================== */
 .ingest-content-wrapper .tab-content-main { 
-  flex-grow: 1; 
   overflow: hidden; 
   padding:0;
   min-height: 0; 
@@ -98,7 +96,6 @@
 }
 .tab-content-padding { 
   padding: var(--space-4); 
-  height: 100%; 
   display: flex; 
   flex-direction: column; 
   overflow-y: auto; 
@@ -127,37 +124,39 @@
 .execution-tab-run-button { padding: var(--space-2) var(--space-3); font-size: var(--text-sm); margin-left: auto; flex-shrink: 0; }
   
 /* ==========================================================================
-   6. TABELLA FLUSSI (Tab Esecuzione)
+   6. TABELLA FLUSSI (Tab Esecuzione) - VERSIONE CORRETTA
    ========================================================================== */
 .ingest-table-wrapper { 
   overflow: auto; 
-  flex-grow: 1; 
-  min-height: 250px; 
+  min-height: 0;
   border-radius: var(--rounded-base); 
   background: var(--primary-bg); 
   box-shadow: inset calc(var(--shadow-distance) / 2) calc(var(--shadow-distance) / 2) var(--shadow-distance) var(--neomorphic-dark), 
               inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2) var(--shadow-distance) var(--neomorphic-light); 
   padding: var(--space-1); 
 }
+
 .ingest-table { 
   width: 100%; 
   min-width: 900px; 
   border-collapse: separate; 
   border-spacing: 0; 
-   table-layout: fixed;
+  table-layout: fixed; /* Importante per il controllo delle larghezze */
 }
-.ingest-table th, .ingest-table td { 
+
+/* STILI BASE PER TUTTE LE CELLE */
+.ingest-table th, 
+.ingest-table td { 
   padding: var(--space-3); 
   text-align: left; 
   font-size: var(--text-sm); 
   border-bottom: 1px solid var(--neomorphic-dark); 
   vertical-align: middle;
   
-  /* --- NUOVE REGOLE PER GESTIRE IL TESTO LUNGO --- */
-  white-space: nowrap;      /* Impedisce al testo di andare a capo */
-  overflow: hidden;         /* Nasconde il testo che straborda */
-  text-overflow: ellipsis;  /* Aggiunge "..." alla fine del testo tagliato */
+  /* Gestione del testo che straborda - SOLO per celle che non devono andare a capo */
+  overflow: hidden;
 }
+
 .ingest-table th { 
   font-weight: 600; 
   color: var(--text-color); 
@@ -169,82 +168,135 @@
   top: 0; 
   z-index: 1; 
 }
-.ingest-table th .inline-icon { width: 0.8rem; height: 0.8rem; margin-left: var(--space-1); opacity: 0.7; vertical-align: middle; display: inline-block; }
-.ingest-table th:hover .inline-icon { opacity: 1; }
-.ingest-table tr:last-child td { border-bottom: none; }
-.ingest-table tr.selected-row td { background-color: rgba(186, 230, 253, 0.5) !important; }
-.ingest-table tr:not(.selected-row):hover td { background-color: #e8edf2; }
-.ingest-table .form-checkbox { margin: 0 auto; display: block; }
-.status-badge { padding: var(--space-1) var(--space-2); border-radius: var(--rounded-full); font-size: var(--text-xs); font-weight: 600; text-transform: capitalize; white-space: nowrap; }
+
+.ingest-table th .inline-icon { 
+  width: 0.8rem; 
+  height: 0.8rem; 
+  margin-left: var(--space-1); 
+  opacity: 0.7; 
+  vertical-align: middle; 
+  display: inline-block; 
+}
+
+.ingest-table th:hover .inline-icon { 
+  opacity: 1; 
+}
+
+.ingest-table tr:last-child td { 
+  border-bottom: none; 
+}
+
+.ingest-table tr.selected-row td { 
+  background-color: rgba(186, 230, 253, 0.5) !important; 
+}
+
+.ingest-table tr:not(.selected-row):hover td { 
+  background-color: #e8edf2; 
+}
+
+.ingest-table .form-checkbox { 
+  margin: 0 auto; 
+  display: block; 
+}
+
+.status-badge { 
+  padding: var(--space-1) var(--space-2); 
+  border-radius: var(--rounded-full); 
+  font-size: var(--text-xs); 
+  font-weight: 600; 
+  text-transform: capitalize; 
+  white-space: nowrap; 
+}
+
+/* ==========================================================================
+   DEFINIZIONE DELLE LARGHEZZE DELLE COLONNE
+   ========================================================================== */
+
 /* Colonna 1: Checkbox */
 .ingest-table th:nth-child(1),
 .ingest-table td:nth-child(1) {
   width: 50px;
   text-align: center;
+  white-space: nowrap;
 }
 
-/* Colonna 2: Nome Flusso (la più importante) */
+/* Colonna 2: Nome Flusso (può andare a capo) */
 .ingest-table th:nth-child(2),
 .ingest-table td:nth-child(2) {
-  /* Questa colonna si prenderà lo spazio rimanente, ma con dei limiti */
-  width: 40%; /* Larghezza di base suggerita */
-  min-width: 250px; /* Non diventare più stretta di così */
-  max-width: 500px; /* Non diventare più larga di così */
+  width: 35%;
+  min-width: 200px;
 }
 
-/* Colonna 3: Tipo */
+/* Solo per la colonna del nome permettiamo il text wrapping */
+.ingest-table td:nth-child(2) {
+  white-space: normal;
+  word-wrap: break-word;
+  line-height: 1.4;
+}
+
+/* Colonna 3: Package */
 .ingest-table th:nth-child(3),
 .ingest-table td:nth-child(3) {
   width: 20%;
-  min-width: 150px;
+  min-width: 120px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Colonna 4: ID Univoco */
 .ingest-table th:nth-child(4),
 .ingest-table td:nth-child(4) {
   width: 15%;
-  min-width: 120px;
+  min-width: 100px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Colonna 5: Ultima Esecuzione */
 .ingest-table th:nth-child(5),
 .ingest-table td:nth-child(5) {
-  width: 15%;
-  min-width: 180px;
+  width: 20%;
+  min-width: 150px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Colonna 6: Risultato (badge) */
 .ingest-table th:nth-child(6),
 .ingest-table td:nth-child(6) {
   width: 10%;
-  min-width: 120px;
-  text-align: center; /* Centriamo il badge per un aspetto migliore */
+  min-width: 100px;
+  text-align: center;
+  white-space: nowrap;
 }
 
-/* Ripristiniamo il wrapping solo per la colonna del nome, se necessario */
-.ingest-table td:nth-child(2) {
-  white-space: normal; /* Permettiamo al nome del flusso di andare a capo */
-}
 /* ==========================================================================
-   7. SEZIONE PARAMETRI GENERALI
+   STILI AGGIUNTIVI PER MIGLIORARE LA LEGGIBILITÀ
    ========================================================================== */
-.general-params-section { 
-  padding: var(--space-3);
-  margin-top: var(--space-4);
-  background-color: var(--primary-bg); 
-  border-radius: var(--rounded-base); 
-  box-shadow: inset calc(var(--shadow-distance) / 2.5) calc(var(--shadow-distance) / 2.5) calc(var(--shadow-distance) / 1.5) var(--neomorphic-dark), 
-              inset calc(var(--shadow-distance) / -2.5) calc(var(--shadow-distance) / -2.5) calc(var(--shadow-distance) / 1.5) var(--neomorphic-light); 
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  flex-shrink: 0;
-  flex-wrap: wrap;
+
+/* Tooltip per celle con testo troncato (opzionale) */
+.ingest-table td[title] {
+  cursor: help;
 }
-.general-params-title { font-size: var(--text-base); font-weight: 600; color: var(--text-color); margin: 0; }
-.general-params-section .param-input-group { display: flex; align-items: center; gap: var(--space-2); flex-grow: 1; }
-.general-params-section .param-label { font-size: var(--text-sm); color: var(--text-color-muted); white-space: nowrap; }
-.general-params-section .form-select { margin: 0; min-width: 200px; }
+
+/* Stile per celle con testo muted */
+.ingest-table .muted-text {
+  color: var(--text-color-muted);
+  font-style: italic;
+}
+
+/* Responsive: su schermi piccoli, riduci padding */
+@media (max-width: 768px) {
+  .ingest-table th, 
+  .ingest-table td {
+    padding: var(--space-2);
+    font-size: var(--text-xs);
+  }
+  
+  .ingest-table {
+    min-width: 800px; /* Riduci leggermente la larghezza minima */
+  }
+}
 
 /* ==========================================================================
    8. SEZIONE LOG (Tab Log) - Qui puoi aggiungere gli stili specifici per i log

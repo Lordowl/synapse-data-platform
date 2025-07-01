@@ -8,6 +8,51 @@ from db import models,crud
 from db.database import engine , SessionLocal
 from api import auth, users, tasks, audit, flows
 
+import sys
+import subprocess
+import os
+import requests
+from fastapi import FastAPI
+
+GITHUB_REPO_API = "https://api.github.com/repos/Lordowl//synapse-data-platform/releases/latest"
+
+def get_latest_version():
+    try:
+        r = requests.get(GITHUB_REPO_API)
+        r.raise_for_status()
+        data = r.json()
+        return data["tag_name"]
+    except Exception as e:
+        print(f"[Updater] Errore nel recupero versione: {e}")
+        return None
+
+def get_current_version():
+    try:
+        import tuo_modulo
+        return tuo_modulo.__version__
+    except Exception as e:
+        print(f"[Updater] Errore nel recupero versione locale: {e}")
+        return None
+
+def upgrade_package():
+    print("[Updater] Aggiornamento pacchetto...")
+    subprocess.check_call([
+    sys.executable, "-m", "pip", "install", "--upgrade",
+    f"git+https://github.com/tuo_user/tuo_repo.git@{latest_version}#subdirectory=sdp-api"
+])
+    print("[Updater] Aggiornamento completato, riavvio server...")
+    # Riavvia il processo python corrente con gli stessi argomenti
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+
+def check_and_update():
+    latest = get_latest_version()
+    current = get_current_version()
+    print(f"[Updater] Versione attuale: {current}, ultima versione: {latest}")
+    if latest is not None and current is not None and latest != current:
+        upgrade_package()
+
+# Controlla e aggiorna prima di avviare FastAPI
+check_and_update()
 # Questo comando crea le tabelle nel database (se non esistono già)
 # quando l'applicazione si avvia. Includerà la nuova tabella 'audit_logs'.
 models.Base.metadata.create_all(bind=engine)

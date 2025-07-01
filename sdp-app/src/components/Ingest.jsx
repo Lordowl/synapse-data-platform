@@ -511,431 +511,437 @@ useEffect(() => {
       toast.error(error.response?.data?.detail || "Un'operazione è fallita durante il caricamento.");
     } finally {
       // In ogni caso, il caricamento è terminato
-      setIsLoading(false);
-    }
-  };
+        setIsLoading(false);
+      }
+    };
 
-  fetchInitialData();
-}, []); // L'array vuoto [] assicura che venga eseguito solo una volta all'apertura
+    fetchInitialData();
+  }, []); // L'array vuoto [] assicura che venga eseguito solo una volta all'apertura
 
-  const flowPackages= useMemo(
-  () => ["all", ...new Set(flowsData.map((f) => f.package).filter(Boolean))], // Usa .package
-  [flowsData]
-);
-  const flowStatuses = useMemo(
-    () => ["all", ...new Set(flowsData.map((f) => f.result || "N/A"))],
+    const flowPackages= useMemo(
+    () => ["all", ...new Set(flowsData.map((f) => f.package).filter(Boolean))], // Usa .package
     [flowsData]
   );
-  
-  const handleSelectFlow = (flowId) => {
-    setSelectedFlows((prev) => {
-      const nS = new Set(prev);
-      if (nS.has(flowId)) {
-        nS.delete(flowId);
-      } else {
-        nS.add(flowId);
-      }
-      return nS;
-    });
-  };
-  const handleSelectAllFlows = (e) => {
-    if (e.target.checked) {
-      setSelectedFlows(new Set(filteredAndSortedFlows.map((f) => f.id)));
-    } else {
-      setSelectedFlows(new Set());
-    }
-  };
-
-  const handleGeneralParamChange = (paramName, value) => {
-    setGeneralParams((prev) => ({ ...prev, [paramName]: value }));
-  };
-
-  const filteredFlows = useMemo(() => {
-     console.log("--- Ricalcolo filteredFlows ---");
-  console.log("Stato attuale dei filtri:", { searchTerm, packageFilter, statusFilter });
-  console.log("Dati di input (flowsData):", flowsData);
-  return flowsData.filter(flow =>
-      (flow.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-       flow.package?.toLowerCase().includes(searchTerm.toLowerCase())) &&
-      (packageFilter === 'all' || flow.package === packageFilter) && // Usa packageFilter
-      (statusFilter === 'all' || (flow.result || 'N/A') === statusFilter)
+    const flowStatuses = useMemo(
+      () => ["all", ...new Set(flowsData.map((f) => f.result || "N/A"))],
+      [flowsData]
     );
-  }, [flowsData, searchTerm, packageFilter, statusFilter])
+    
+    const handleSelectFlow = (flowId) => {
+      setSelectedFlows((prev) => {
+        const nS = new Set(prev);
+        if (nS.has(flowId)) {
+          nS.delete(flowId);
+        } else {
+          nS.add(flowId);
+        }
+        return nS;
+      });
+    };
+    const handleSelectAllFlows = (e) => {
+      if (e.target.checked) {
+        setSelectedFlows(new Set(filteredAndSortedFlows.map((f) => f.id)));
+      } else {
+        setSelectedFlows(new Set());
+      }
+    };
 
-  // in src/components/Ingest/Ingest.jsx
+    const handleGeneralParamChange = (paramName, value) => {
+      setGeneralParams((prev) => ({ ...prev, [paramName]: value }));
+    };
 
-const filteredAndSortedFlows = useMemo(() => {
-  let sortableFlows = [...filteredFlows];
+    const filteredFlows = useMemo(() => {
+      console.log("--- Ricalcolo filteredFlows ---");
+    console.log("Stato attuale dei filtri:", { searchTerm, packageFilter, statusFilter });
+    console.log("Dati di input (flowsData):", flowsData);
+    return flowsData.filter(flow =>
+        (flow.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        flow.package?.toLowerCase().includes(searchTerm.toLowerCase())) &&
+        (packageFilter === 'all' || flow.package === packageFilter) && // Usa packageFilter
+        (statusFilter === 'all' || (flow.result || 'N/A') === statusFilter)
+      );
+    }, [flowsData, searchTerm, packageFilter, statusFilter])
 
-  if (sortConfig.key) {
-    sortableFlows.sort((a, b) => {
-      // Estraiamo i valori da ordinare
-      const aValue = a[sortConfig.key];
-      const bValue = b[sortConfig.key];
+    // in src/components/Ingest/Ingest.jsx
 
-      // --- NUOVA CONDIZIONE SPECIFICA PER L'ORDINAMENTO NUMERICO DELL'ID ---
-      if (sortConfig.key === 'id') {
-        // Estraiamo la parte numerica dall'ID (es. da "17-1" prendiamo 17)
-        // Usiamo parseInt per convertire la stringa in un numero.
-        const numA = parseInt(a.originalId, 10) || 0;
-        const numB = parseInt(b.originalId, 10) || 0;
-        
-        // Se gli ID principali sono diversi, ordiniamo per quelli
-        if (numA !== numB) {
-            return numA - numB;
+  const filteredAndSortedFlows = useMemo(() => {
+    let sortableFlows = [...filteredFlows];
+
+    if (sortConfig.key) {
+      sortableFlows.sort((a, b) => {
+        // Estraiamo i valori da ordinare
+        const aValue = a[sortConfig.key];
+        const bValue = b[sortConfig.key];
+
+        // --- NUOVA CONDIZIONE SPECIFICA PER L'ORDINAMENTO NUMERICO DELL'ID ---
+        if (sortConfig.key === 'id') {
+          // Estraiamo la parte numerica dall'ID (es. da "17-1" prendiamo 17)
+          // Usiamo parseInt per convertire la stringa in un numero.
+          const numA = parseInt(a.originalId, 10) || 0;
+          const numB = parseInt(b.originalId, 10) || 0;
+          
+          // Se gli ID principali sono diversi, ordiniamo per quelli
+          if (numA !== numB) {
+              return numA - numB;
+          }
+          
+          // Se gli ID principali sono uguali, ordiniamo per la sequenza (SEQ)
+          const seqA = parseInt(a.originalSeq, 10) || 0;
+          const seqB = parseInt(b.originalSeq, 10) || 0;
+          return seqA - seqB;
         }
         
-        // Se gli ID principali sono uguali, ordiniamo per la sequenza (SEQ)
-        const seqA = parseInt(a.originalSeq, 10) || 0;
-        const seqB = parseInt(b.originalSeq, 10) || 0;
-        return seqA - seqB;
-      }
-      
-      // --- Logica esistente per gli altri tipi di dato ---
+        // --- Logica esistente per gli altri tipi di dato ---
 
-      // 1. Per le date (es. 'lastRun')
-      if (sortConfig.key === 'lastRun') {
-        const dateA = aValue ? new Date(aValue).getTime() : 0;
-        const dateB = bValue ? new Date(bValue).getTime() : 0;
-        return dateA - dateB;
-      }
-      
-      // 2. Per tutte le altre stringhe
-      const strA = (aValue || '').toString().toLowerCase();
-      const strB = (bValue || '').toString().toLowerCase();
-      return strA.localeCompare(strB); // localeCompare è leggermente meglio per le stringhe
-    });
+        // 1. Per le date (es. 'lastRun')
+        if (sortConfig.key === 'lastRun') {
+          const dateA = aValue ? new Date(aValue).getTime() : 0;
+          const dateB = bValue ? new Date(bValue).getTime() : 0;
+          return dateA - dateB;
+        }
+        
+        // 2. Per tutte le altre stringhe
+        const strA = (aValue || '').toString().toLowerCase();
+        const strB = (bValue || '').toString().toLowerCase();
+        return strA.localeCompare(strB); // localeCompare è leggermente meglio per le stringhe
+      });
 
-    // Applica la direzione (ascendente o discendente)
-    if (sortConfig.direction === 'descending') {
-      sortableFlows.reverse();
+      // Applica la direzione (ascendente o discendente)
+      if (sortConfig.direction === 'descending') {
+        sortableFlows.reverse();
+      }
     }
+
+    return sortableFlows;
+  }, [filteredFlows, sortConfig]);
+
+    const requestSort = (key) => {
+      let dir = "ascending";
+      if (sortConfig.key === key && sortConfig.direction === "ascending") {
+        dir = "descending";
+      }
+      setSortConfig({ key, direction: dir });
+    };
+    const getSortIcon = (key) => {
+      if (sortConfig.key !== key)
+        return <ChevronsUpDown className="inline-icon" />;
+      return sortConfig.direction === "ascending" ? (
+        <ChevronUp className="inline-icon" />
+      ) : (
+        <ChevronDown className="inline-icon" />
+      );
+    };
+
+    const simulateApiCall = (duration = 1500) =>
+      new Promise((resolve) => setTimeout(resolve, duration));
+
+    const handleExecuteSelectedFlows = async () => {
+  // 1. Controllo di sicurezza
+  if (selectedFlows.size === 0) {
+    toast.warn("Nessun flusso selezionato per l'esecuzione.");
+    return;
   }
+  setIsExecutingFlows(true);
+  
+  // 2. Filtra gli oggetti completi dei flussi che l'utente ha selezionato
+  const flowsToRun = flowsData.filter(f => selectedFlows.has(f.id));
 
-  return sortableFlows;
-}, [filteredFlows, sortConfig]);
-
-  const requestSort = (key) => {
-    let dir = "ascending";
-    if (sortConfig.key === key && sortConfig.direction === "ascending") {
-      dir = "descending";
-    }
-    setSortConfig({ key, direction: dir });
-  };
-  const getSortIcon = (key) => {
-    if (sortConfig.key !== key)
-      return <ChevronsUpDown className="inline-icon" />;
-    return sortConfig.direction === "ascending" ? (
-      <ChevronUp className="inline-icon" />
-    ) : (
-      <ChevronDown className="inline-icon" />
-    );
+  // 3. Prepara il payload da inviare al backend
+  const executionPayload = {
+    flows: flowsToRun.map(f => ({ // Invia solo i campi necessari
+        id: f.id,
+        name: f.name,
+        package: f.package,
+    })),
+    params: generalParams
   };
 
-  const simulateApiCall = (duration = 1500) =>
-    new Promise((resolve) => setTimeout(resolve, duration));
+  try {
+    // 4. Esegui la chiamata API REALE
+    const response = await apiClient.post('/tasks/execute-flows', executionPayload);
+    toast.success(response.data.message || "Esecuzione completata!");
+    
+    // 5. FONDAMENTALE: Ricarica i dati per mostrare i risultati aggiornati
+    // fetchInitialData() è la funzione che hai nell'useEffect. Assicurati che esista
+    // e sia accessibile in questo scope (deve essere definita nel componente Ingest).
+    fetchInitialData();
 
-  const handleExecuteSelectedFlows = async () => {
-    if (selectedFlows.size === 0) {
-      showToast("Nessun flusso selezionato per l'esecuzione.", "warning");
-      return;
-    }
-    setIsExecutingFlows(true);
-    await simulateApiCall(2500);
-    const flowsToRun = Array.from(selectedFlows)
-      .map((id) => flowsData.find((f) => f.id === id))
-      .filter((f) => f);
-    const executionDetails = `Parametri Generali:\n  - Settimana: ${
-      generalParams.selectedWeek
-    }\n\nFlussi Eseguiti:\n${flowsToRun
-      .map((f) => `  - ${f.name} (ID: ${f.id})`)
-      .join("\n")}`;
-    showToast(
-      `Esecuzione con parametri generali completata (simulazione).`,
-      "success"
-    );
-    console.log(
-      "DETTAGLI ESECUZIONE (da inviare al backend):",
-      executionDetails
-    );
-    const newExecutionLogs = flowsToRun.map((flow) => ({
-      id: `log_exec_${Date.now()}_${flow.id}`,
-      timestamp: new Date().toISOString(),
-      flowId: flow.id,
-      message: `Esecuzione flusso '${flow.name}' con settimana '${generalParams.selectedWeek}' completata (simulazione).`,
-      level: "INFO",
-    }));
-    setLogsData((prev) => [...newExecutionLogs, ...prev].slice(0, 200));
-    setSelectedFlows(new Set());
+  } catch (error) {
+    console.error("Errore durante l'esecuzione:", error);
+    toast.error(error.response?.data?.detail || "L'esecuzione dei flussi è fallita.");
+  } finally {
+    // 6. Pulisci la UI
+    setSelectedFlows(new Set()); // Deseleziona tutto
     setIsExecutingFlows(false);
-  };
-
-  const filteredLogs = useMemo(() => {
-    if (!logsData) return [];
-    return logsData
-      .filter((log) => {
-        const searchTermLower = logSearchTerm.toLowerCase();
-        const messageMatch =
-          log.message && typeof log.message === "string"
-            ? log.message.toLowerCase().includes(searchTermLower)
-            : false;
-        const flow = log.flowId
-          ? flowsData.find((f) => f.id === log.flowId)
-          : undefined;
-        const flowName = flow ? flow.name : undefined;
-        const flowNameMatch =
-          flowName && typeof flowName === "string"
-            ? flowName.toLowerCase().includes(searchTermLower)
-            : false;
-        const searchMatch = messageMatch || flowNameMatch;
-        const levelMatch =
-          logLevelFilter === "all" ||
-          (log.level && typeof log.level === "string"
-            ? log.level.toLowerCase() === logLevelFilter.toLowerCase()
-            : false);
-        return searchMatch && levelMatch;
-      })
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-  }, [logsData, logSearchTerm, logLevelFilter, flowsData]);
-
-  const handleRefreshLogs = async () => {
-    setIsRefreshingLogs(true);
-    await simulateApiCall(1000);
-    const flowExample = flowsData[Math.floor(Math.random() * flowsData.length)];
-    setLogsData((prevLogs) =>
-      [
-        {
-          id: `log_refresh_${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          flowId: flowExample?.id,
-          message: `Nuovo evento di log generato per ${
-            flowExample?.name || "sistema"
-          }.`,
-          level: "DEBUG",
-        },
-        ...prevLogs,
-      ].slice(0, 200)
-    );
-    showToast("Log aggiornati con successo.", "info");
-    setIsRefreshingLogs(false);
-  };
-  const handleClearLogs = async () => {
-    if (
-      window.confirm("Sei sicuro di voler pulire tutti i log di esecuzione?")
-    ) {
-      setIsClearingLogs(true);
-      await simulateApiCall(1000);
-      setLogsData([]);
-      showToast("Log puliti con successo.", "success");
-      setIsClearingLogs(false);
-    }
-  };
-  const handleDownloadLogs = async () => {
-    setIsDownloadingLogs(true);
-    showToast("Preparazione download log...", "info");
-    await simulateApiCall(2000);
-    const logData = filteredLogs
-      .map(
-        (log) =>
-          `${new Date(log.timestamp).toLocaleString()} [${
-            log.level?.toUpperCase() || "N/D"
-          }] ${log.message || ""}`
-      )
-      .join("\n");
-    const blob = new Blob([logData], { type: "text/plain;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", "ingest_logs.txt");
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    showToast("Download avviato.", "success");
-    setIsDownloadingLogs(false);
-  };
-
-
-  const TABS = [
-    {
-      id: "execution",
-      label: "Esecuzione",
-      icon: PlayCircle,
-      description: "Seleziona ed esegui flussi",
-    },
-    {
-      id: "logs",
-      label: "Log",
-      icon: TerminalSquare,
-      description: "Visualizza log di esecuzione",
-    },
-  ];
-
-  const renderActiveTabContent = () => {
-  // --- 1. CONTROLLO DELLO STATO DI CARICAMENTO ---
-  // Se stiamo caricando i dati iniziali dei flussi, mostriamo un messaggio
-  // e non renderizziamo nessuno dei due tab.
- if (isLoading) {
-    return (
-      <div className="tab-content-padding loading-container">
-        <RefreshCw className="animate-spin-css" />
-        <p>Caricamento flussi dal backend...</p>
-      </div>
-    );
-  }
-
-  // --- 2. SWITCH PER DECIDERE QUALE TAB MOSTRARE ---
-  // Una volta terminato il caricamento, decidiamo quale componente renderizzare
-  // in base allo stato 'activeTab'.
-  switch (activeTab) {
-    case "execution":
-      // Se la tab attiva è "execution", renderizziamo il componente ExecutionTabContent
-      return (
-        <ExecutionTabContent
-          // Gli passiamo tutte le props di cui ha bisogno per funzionare
-          selectedFlows={selectedFlows}
-          handleSelectFlow={handleSelectFlow}
-          handleSelectAllFlows={handleSelectAllFlows}
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          statusFilter={statusFilter}
-          setStatusFilter={setStatusFilter}
-          sortConfig={sortConfig}
-          requestSort={requestSort}
-          getSortIcon={getSortIcon}
-          filteredAndSortedFlows={filteredAndSortedFlows}
-          flowPackages={flowPackages}
-          flowStatuses={flowStatuses}
-          isExecuting={isExecutingFlows}
-          generalParams={generalParams}
-          handleGeneralParamChange={handleGeneralParamChange}
-          handleExecuteSelectedFlows={handleExecuteSelectedFlows}
-        />
-      );
-    case "logs":
-      // Se la tab attiva è "logs", renderizziamo il componente LogsTabContent
-      return (
-        <LogsTabContent
-          // Gli passiamo tutte le props di cui ha bisogno
-          logs={logsData}
-          flows={flowsData} 
-          logSearchTerm={logSearchTerm}
-          setLogSearchTerm={setLogSearchTerm}
-          logLevelFilter={logLevelFilter}
-          setLogLevelFilter={setLogLevelFilter}
-          handleRefreshLogs={handleRefreshLogs}
-          handleClearLogs={handleClearLogs}
-          handleDownloadLogs={handleDownloadLogs}
-          filteredLogs={filteredLogs} 
-          isRefreshingLogs={isRefreshingLogs}
-          isClearingLogs={isClearingLogs}
-          isDownloadingLogs={isDownloadingLogs}
-        />
-      );
-    default:
-      // Se per qualche motivo activeTab non corrisponde a nessun caso, non mostriamo nulla.
-      return null;
   }
 };
 
-  const isAnyCriticalLoadingOverall =
-    isExecutingFlows || isRefreshingLogs || isClearingLogs || isDownloadingLogs;
+    const filteredLogs = useMemo(() => {
+      if (!logsData) return [];
+      return logsData
+        .filter((log) => {
+          const searchTermLower = logSearchTerm.toLowerCase();
+          const messageMatch =
+            log.message && typeof log.message === "string"
+              ? log.message.toLowerCase().includes(searchTermLower)
+              : false;
+          const flow = log.flowId
+            ? flowsData.find((f) => f.id === log.flowId)
+            : undefined;
+          const flowName = flow ? flow.name : undefined;
+          const flowNameMatch =
+            flowName && typeof flowName === "string"
+              ? flowName.toLowerCase().includes(searchTermLower)
+              : false;
+          const searchMatch = messageMatch || flowNameMatch;
+          const levelMatch =
+            logLevelFilter === "all" ||
+            (log.level && typeof log.level === "string"
+              ? log.level.toLowerCase() === logLevelFilter.toLowerCase()
+              : false);
+          return searchMatch && levelMatch;
+        })
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    }, [logsData, logSearchTerm, logLevelFilter, flowsData]);
 
-   return (
-    <div className="ingest-container">
-      <div className="ingest-content-wrapper">
-        <header className="ingest-header-container">
-          <div className="ingest-header">
-            <div className="ingest-header-title-group">
-              <div className="ingest-header-icon-bg">
-                <Layers className="ingest-header-icon" />
-              </div>
-              <div>
-                <h1 className="ingest-header-title">Gestione Flussi Dati</h1>
-                <p className="ingest-header-subtitle">
-                  Esegui flussi e monitora i log di ingestione.
-                </p>
-              </div>
-            </div>
-            <div className="ingest-header-actions-group">
-              <button
-                onClick={() => navigate("/home")}
-                className="btn btn-outline ingest-header-back-button"
-                disabled={isAnyCriticalLoadingOverall}
-              >
-                ← Indietro
-              </button>
-            </div>
-          </div>
-        </header>
+    const handleRefreshLogs = async () => {
+      setIsRefreshingLogs(true);
+      await simulateApiCall(1000);
+      const flowExample = flowsData[Math.floor(Math.random() * flowsData.length)];
+      setLogsData((prevLogs) =>
+        [
+          {
+            id: `log_refresh_${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            flowId: flowExample?.id,
+            message: `Nuovo evento di log generato per ${
+              flowExample?.name || "sistema"
+            }.`,
+            level: "DEBUG",
+          },
+          ...prevLogs,
+        ].slice(0, 200)
+      );
+      showToast("Log aggiornati con successo.", "info");
+      setIsRefreshingLogs(false);
+    };
+    const handleClearLogs = async () => {
+      if (
+        window.confirm("Sei sicuro di voler pulire tutti i log di esecuzione?")
+      ) {
+        setIsClearingLogs(true);
+        await simulateApiCall(1000);
+        setLogsData([]);
+        showToast("Log puliti con successo.", "success");
+        setIsClearingLogs(false);
+      }
+    };
+    const handleDownloadLogs = async () => {
+      setIsDownloadingLogs(true);
+      showToast("Preparazione download log...", "info");
+      await simulateApiCall(2000);
+      const logData = filteredLogs
+        .map(
+          (log) =>
+            `${new Date(log.timestamp).toLocaleString()} [${
+              log.level?.toUpperCase() || "N/D"
+            }] ${log.message || ""}`
+        )
+        .join("\n");
+      const blob = new Blob([logData], { type: "text/plain;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "ingest_logs.txt");
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast("Download avviato.", "success");
+      setIsDownloadingLogs(false);
+    };
 
-        <nav className="tab-nav-container">
-          <div className="tab-nav-grid">
-            {TABS.map((tab) => {
-              const Icon = tab.icon;
-              return (
+
+    const TABS = [
+      {
+        id: "execution",
+        label: "Esecuzione",
+        icon: PlayCircle,
+        description: "Seleziona ed esegui flussi",
+      },
+      {
+        id: "logs",
+        label: "Log",
+        icon: TerminalSquare,
+        description: "Visualizza log di esecuzione",
+      },
+    ];
+
+    const renderActiveTabContent = () => {
+    // --- 1. CONTROLLO DELLO STATO DI CARICAMENTO ---
+    // Se stiamo caricando i dati iniziali dei flussi, mostriamo un messaggio
+    // e non renderizziamo nessuno dei due tab.
+  if (isLoading) {
+      return (
+        <div className="tab-content-padding loading-container">
+          <RefreshCw className="animate-spin-css" />
+          <p>Caricamento flussi dal backend...</p>
+        </div>
+      );
+    }
+
+    // --- 2. SWITCH PER DECIDERE QUALE TAB MOSTRARE ---
+    // Una volta terminato il caricamento, decidiamo quale componente renderizzare
+    // in base allo stato 'activeTab'.
+    switch (activeTab) {
+      case "execution":
+        // Se la tab attiva è "execution", renderizziamo il componente ExecutionTabContent
+        return (
+          <ExecutionTabContent
+            // Gli passiamo tutte le props di cui ha bisogno per funzionare
+            selectedFlows={selectedFlows}
+            handleSelectFlow={handleSelectFlow}
+            handleSelectAllFlows={handleSelectAllFlows}
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            sortConfig={sortConfig}
+            requestSort={requestSort}
+            getSortIcon={getSortIcon}
+            filteredAndSortedFlows={filteredAndSortedFlows}
+            flowPackages={flowPackages}
+            flowStatuses={flowStatuses}
+            isExecuting={isExecutingFlows}
+            generalParams={generalParams}
+            handleGeneralParamChange={handleGeneralParamChange}
+            handleExecuteSelectedFlows={handleExecuteSelectedFlows}
+          />
+        );
+      case "logs":
+        // Se la tab attiva è "logs", renderizziamo il componente LogsTabContent
+        return (
+          <LogsTabContent
+            // Gli passiamo tutte le props di cui ha bisogno
+            logs={logsData}
+            flows={flowsData} 
+            logSearchTerm={logSearchTerm}
+            setLogSearchTerm={setLogSearchTerm}
+            logLevelFilter={logLevelFilter}
+            setLogLevelFilter={setLogLevelFilter}
+            handleRefreshLogs={handleRefreshLogs}
+            handleClearLogs={handleClearLogs}
+            handleDownloadLogs={handleDownloadLogs}
+            filteredLogs={filteredLogs} 
+            isRefreshingLogs={isRefreshingLogs}
+            isClearingLogs={isClearingLogs}
+            isDownloadingLogs={isDownloadingLogs}
+          />
+        );
+      default:
+        // Se per qualche motivo activeTab non corrisponde a nessun caso, non mostriamo nulla.
+        return null;
+    }
+  };
+
+    const isAnyCriticalLoadingOverall =
+      isExecutingFlows || isRefreshingLogs || isClearingLogs || isDownloadingLogs;
+
+    return (
+      <div className="ingest-container">
+        <div className="ingest-content-wrapper">
+          <header className="ingest-header-container">
+            <div className="ingest-header">
+              <div className="ingest-header-title-group">
+                <div className="ingest-header-icon-bg">
+                  <Layers className="ingest-header-icon" />
+                </div>
+                <div>
+                  <h1 className="ingest-header-title">Gestione Flussi Dati</h1>
+                  <p className="ingest-header-subtitle">
+                    Esegui flussi e monitora i log di ingestione.
+                  </p>
+                </div>
+              </div>
+              <div className="ingest-header-actions-group">
                 <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`tab-button ${activeTab === tab.id ? "active" : ""}`}
-                  disabled={isAnyCriticalLoadingOverall && activeTab !== tab.id}
+                  onClick={() => navigate("/home")}
+                  className="btn btn-outline ingest-header-back-button"
+                  disabled={isAnyCriticalLoadingOverall}
                 >
-                  <div className="tab-button-header">
-                    <Icon className="tab-button-icon" />
-                    <span className="tab-button-label">{tab.label}</span>
-                  </div>
-                  <p className="tab-button-description">{tab.description}</p>
+                  ← Indietro
                 </button>
-              );
-            })}
-          </div>
-        </nav>
+              </div>
+            </div>
+          </header>
 
-        {/* ========================================================= */}
-        {/* ---       BARRA DEI FILTRI SPOSTATA QUI                 --- */}
-        {/* ========================================================= */}
-        {/* Mostra i filtri solo se non stiamo caricando e se siamo nel tab "execution" */}
-        {!isLoading && activeTab === 'execution' && (
-          <div className="ingest-filters-bar">
-            <input
-              type="text"
-              placeholder="Cerca per Nome o Package..."
-              className="form-input"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              disabled={isExecutingFlows}
-            />
-            <select
-              className="form-select"
-              value={packageFilter}
-              onChange={(e) => setpackageFilter(e.target.value)}
-              disabled={isExecutingFlows}
-            >
-              <option value="all">Tutti i Package</option>
-              {flowPackages.filter(pkg => pkg !== 'all').map((pkg) => (
-                <option key={pkg} value={pkg}>{pkg}</option>
-              ))}
-            </select>
-            <select
-              className="form-select"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              disabled={isExecutingFlows}
-            >
-              <option value="all">Tutti i Risultati</option>
-              {flowStatuses.filter(status => status !== 'all').map((status) => (
-                <option key={status} value={status}>{status}</option>
-              ))}
-            </select>
-          </div>
-        )}
-        
-        <main className="tab-content-main">
-          {renderActiveTabContent()}
-        </main>
+          <nav className="tab-nav-container">
+            <div className="tab-nav-grid">
+              {TABS.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`tab-button ${activeTab === tab.id ? "active" : ""}`}
+                    disabled={isAnyCriticalLoadingOverall && activeTab !== tab.id}
+                  >
+                    <div className="tab-button-header">
+                      <Icon className="tab-button-icon" />
+                      <span className="tab-button-label">{tab.label}</span>
+                    </div>
+                    <p className="tab-button-description">{tab.description}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+
+          {/* ========================================================= */}
+          {/* ---       BARRA DEI FILTRI SPOSTATA QUI                 --- */}
+          {/* ========================================================= */}
+          {/* Mostra i filtri solo se non stiamo caricando e se siamo nel tab "execution" */}
+          {!isLoading && activeTab === 'execution' && (
+            <div className="ingest-filters-bar">
+              <input
+                type="text"
+                placeholder="Cerca per Nome o Package..."
+                className="form-input"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                disabled={isExecutingFlows}
+              />
+              <select
+                className="form-select"
+                value={packageFilter}
+                onChange={(e) => setpackageFilter(e.target.value)}
+                disabled={isExecutingFlows}
+              >
+                <option value="all">Tutti i Package</option>
+                {flowPackages.filter(pkg => pkg !== 'all').map((pkg) => (
+                  <option key={pkg} value={pkg}>{pkg}</option>
+                ))}
+              </select>
+              <select
+                className="form-select"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                disabled={isExecutingFlows}
+              >
+                <option value="all">Tutti i Risultati</option>
+                {flowStatuses.filter(status => status !== 'all').map((status) => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          
+          <main className="tab-content-main">
+            {renderActiveTabContent()}
+          </main>
+        </div>
       </div>
-    </div>
-  );
-}
-export default Ingest;  
+    );
+  }
+  export default Ingest;  
