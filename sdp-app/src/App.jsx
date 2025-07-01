@@ -1,9 +1,10 @@
-// src/App.jsx (MODIFICATO)
+// src/App.jsx
 
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { ToastContainer } from 'react-toastify';
-import apiClient from "./api/apiClient"; // IMPORTIAMO IL CLIENT API
+import apiClient from "./api/apiClient";
+import { autoUpdate } from "./utils/updater"; // ✅ IMPORTA IL MODULO
 
 import Home from "./components/Home";
 import Ingest from "./components/Ingest";
@@ -14,99 +15,60 @@ import "./styles.css";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // Aggiungiamo uno stato di caricamento
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const checkAuth = async () => {
-      // Il nome della chiave è 'authToken' come nel tuo codice originale
-        const token = sessionStorage.getItem("accessToken");
+      const token = sessionStorage.getItem("accessToken");
       if (!token) {
         setIsAuthenticated(false);
-        setIsLoading(false); // Finito di caricare
+        setIsLoading(false);
         return;
       }
 
       try {
-        // Facciamo una chiamata a un endpoint protetto per verificare il token.
-        // /users/me è perfetto per questo.
-        // L'interceptor in apiClient aggiungerà automaticamente il token all'header.
         await apiClient.get("/users/me");
-        
-        // Se la chiamata ha successo, il token è valido.
         setIsAuthenticated(true);
       } catch (error) {
         console.error("Token verification failed:", error);
         setIsAuthenticated(false);
-        localStorage.removeItem("accessToken"); // Rimuove il token non valido o scaduto
+        sessionStorage.removeItem("accessToken");
       } finally {
-        setIsLoading(false); // In ogni caso, abbiamo finito di caricare
+        setIsLoading(false);
       }
     };
 
     checkAuth();
+
+    // ✅ Avvia controllo aggiornamenti all'avvio
+    autoUpdate();
   }, []);
 
-  const handleLogout = () => {
-    // localStorage.removeItem("accessToken"); // VECCHIO
-    sessionStorage.removeItem("accessToken"); // NUOVO
-    setIsAuthenticated(false);
-  };
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
 
-  // Il resto della tua logica di routing è quasi perfetta.
-  // Un piccolo miglioramento: la rotta "/" dovrebbe puntare a /login, non a se stessa.
   return (
-    <div className="app-container">
-      {isAuthenticated && (
-        <nav className="app-navbar">
-          <button onClick={handleLogout} className="logout-button">
-            Logout
-          </button>
-        </nav>
-      )}
-      <div className="app-content">
-        <Routes>
-          <Route 
-            path="/login" 
-            element={
-              !isAuthenticated ? <Login setIsAuthenticated={setIsAuthenticated} /> : <Navigate to="/home" replace />
-            }
-          />
-          <Route 
-            path="/home" 
-            element={isAuthenticated ? <Home /> : <Navigate to="/login" replace />} 
-          />
-          <Route 
-            path="/ingest" 
-            element={isAuthenticated ? <Ingest /> : <Navigate to="/login" replace />} 
-          />
-          <Route 
-            path="/report" 
-            element={isAuthenticated ? <Report /> : <Navigate to="/login" replace />} 
-          />
-          <Route 
-            path="/settings" 
-            element={isAuthenticated ? <Settings /> : <Navigate to="/login" replace />} 
-          />
-          {/* Reindirizzamento principale */}
-          <Route 
-            path="/" 
-            element={<Navigate to={isAuthenticated ? "/home" : "/login"} replace />} 
-          />
-        </Routes>
-      </div>
-      <ToastContainer
-        position="bottom-right" 
-        autoClose={4000}        
-        hideProgressBar={false} 
-        newestOnTop={false}     
-        closeOnClick            
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        theme="light"           
-      />
+    <div className="App">
+      <ToastContainer />
+      <Routes>
+        {!isAuthenticated ? (
+          <>
+            <Route path="/login" element={<Login setIsAuthenticated={setIsAuthenticated} />} />
+            <Route path="*" element={<Navigate to="/login" />} />
+          </>
+        ) : (
+          <>
+            <Route path="/" element={<Home />} />
+            <Route path="/ingest" element={<Ingest />} />
+            <Route path="/report" element={<Report />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="*" element={<Navigate to="/" />} />
+          </>
+        )}
+      </Routes>
     </div>
   );
 }
+
 export default App;

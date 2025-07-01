@@ -9,9 +9,18 @@
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
-  "app": {
+  "tauri": {
+    "updater": {
+      "active": true,
+      "dialog": true,
+      "endpoints": [
+        "https://TUO_DOMINIO_O_STORAGE/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGNzBCNjUzMDE2RTkxNEEKUldSS2tXNEJVN1p3ZjlucHZMRTBPMUZlNVlaT01paEUvNWNwOWhqZncvbFpRa1JQQmJJeTJWRzMK"
+    },
     "windows": [
-      {"label": "main",
+      {
+        "label": "main",
         "title": "Synapse Data Platform",
         "width": 1280,
         "height": 720,
@@ -31,17 +40,17 @@
     ],
     "security": {
       "csp": null
+    },
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ]
     }
-  },
-  "bundle": {
-    "active": true,
-    "targets": "all",
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ]
   }
 }
