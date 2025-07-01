@@ -1,5 +1,6 @@
 # sdp-api/api/flows.py
 import json
+import os
 from pathlib import Path
 from fastapi import APIRouter, Depends, Security, HTTPException
 from typing import List
@@ -14,20 +15,20 @@ router = APIRouter()
 # Definiamo il percorso del nostro file JSON
 DATA_FILE = Path(__file__).parent.parent / "data" / "flows.json"
 
+
 @router.get("/", response_model=List[dict])
-def get_all_flows(
-    # Proteggiamo l'endpoint, solo gli admin possono vedere i flussi
-    # admin_user: models.User = Security(get_current_active_admin)
-):
-    """Legge e restituisce la lista di flussi dal file flows.json."""
+def get_all_flows():
+    """Legge e restituisce la lista di flussi dal file JSON."""
     if not DATA_FILE.is_file():
-        raise HTTPException(status_code=404, detail="File dei flussi non trovato.")
+        # È giusto che dia 404 se il file non è stato ancora generato
+        raise HTTPException(status_code=404, detail="File dei flussi non trovato. Eseguire l'aggiornamento.")
     
-    with open(DATA_FILE, "r") as f:
-        data = json.load(f)
-    
-    # Il tuo JSON ha una chiave "flows" che contiene la lista
-    return data.get("flows", []) 
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("flows", [])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore nella lettura del file dei flussi: {e}")
 @router.get("/history")
 def get_flows_history(db: Session = Depends(get_db)):
     """

@@ -2,8 +2,9 @@
 import { useState, useMemo, useEffect } from "react";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
+import { useAppContext } from "../context/AppContext"; // Importa l'hook
 import apiClient from "../api/apiClient"; //
-
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
 import {
   Settings as SettingsIcon,
@@ -30,11 +31,12 @@ import "./Settings.css";
 
 // --- Sotto-Componente per il Tab "File Metadati" ---
 function MetadataFileTabContent({
-  config,
-  setConfig,
+  metadataFilePath,
+  setMetadataFilePath,
   onOpenSharePoint,
   onSave,
   isSaving,
+  onLoadFromFile,
 }) {
   return (
     <div className="tab-content-padding">
@@ -56,10 +58,8 @@ function MetadataFileTabContent({
           </p>
           <input
             type="text"
-            value={config.metadataPath}
-            onChange={(e) =>
-              setConfig((prev) => ({ ...prev, metadataPath: e.target.value }))
-            }
+            value={metadataFilePath}
+            onChange={(e) => setMetadataFilePath(e.target.value)}
             placeholder="Percorso file metadati"
             className="form-input"
             disabled={isSaving}
@@ -72,58 +72,41 @@ function MetadataFileTabContent({
             >
               <ExternalLink className="btn-icon-md" /> Apri SharePoint
             </button>
-            <button className="btn btn-outline w-full" disabled={isSaving}>
+            <button
+              onClick={onLoadFromFile} // Assegna la funzione all'evento onClick
+              className="btn btn-outline w-full"
+              disabled={isSaving}
+            >
               <Upload className="btn-icon-md" /> Carica File
             </button>
           </div>
         </div>
-      </div>
-      <div className="metadata-save-footer">
-        <button
-          onClick={onSave}
-          className="btn btn-outline"
-          disabled={isSaving}
-        >
-          {isSaving ? (
-            <>
-              <RefreshCw className="btn-icon-md animate-spin-css" />{" "}
-              Salvataggio...
-            </>
-          ) : (
-            <>
-              <Save className="btn-icon-md" /> Salva Percorso Metadati
-            </>
-          )}
-        </button>
       </div>
     </div>
   );
 }
 
 // --- Sotto-Componente per il Tab Log Applicativi ---
-function LogsTabContent({
-  logEntries,
-  onRefreshLogs,
-  onDownloadLogs,
-}) {
+function LogsTabContent({ logEntries, onRefreshLogs, onDownloadLogs }) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   const filteredLogs = useMemo(() => {
     const start = startDate ? new Date(startDate) : null;
-    const end = endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : null;
+    const end = endDate
+      ? new Date(new Date(endDate).setHours(23, 59, 59, 999))
+      : null;
 
     if (!logEntries) return [];
 
     return logEntries
-      .filter(log => {
+      .filter((log) => {
         const lowerSearchTerm = searchTerm.toLowerCase();
-        const matchesSearch = (
+        const matchesSearch =
           log.action?.toLowerCase().includes(lowerSearchTerm) ||
           log.username?.toLowerCase().includes(lowerSearchTerm) ||
-          JSON.stringify(log.details)?.toLowerCase().includes(lowerSearchTerm)
-        );
+          JSON.stringify(log.details)?.toLowerCase().includes(lowerSearchTerm);
         const logDate = new Date(log.timestamp);
         const matchesStartDate = !start || logDate >= start;
         const matchesEndDate = !end || logDate <= end;
@@ -133,9 +116,9 @@ function LogsTabContent({
   }, [logEntries, searchTerm, startDate, endDate]);
 
   const handleClearFilters = () => {
-    setSearchTerm('');
-    setStartDate('');
-    setEndDate('');
+    setSearchTerm("");
+    setStartDate("");
+    setEndDate("");
   };
 
   return (
@@ -145,7 +128,7 @@ function LogsTabContent({
         <ListChecks className="tab-content-icon" />
         <h2 className="tab-content-title">Registro Attività (Audit Log)</h2>
       </div>
-  
+
       {/* BARRA DEI FILTRI */}
       <div className="logs-controls-grid">
         <div className="search-input-wrapper">
@@ -159,77 +142,105 @@ function LogsTabContent({
           />
         </div>
         <div className="date-filter-group">
-          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="form-input" title="Data di inizio" />
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="form-input"
+            title="Data di inizio"
+          />
           <span>-</span>
-          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="form-input" title="Data di fine" />
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="form-input"
+            title="Data di fine"
+          />
         </div>
         <div className="action-buttons-group">
-          <button onClick={handleClearFilters} className="btn btn-outline" title="Resetta tutti i filtri">
+          <button
+            onClick={handleClearFilters}
+            className="btn btn-outline"
+            title="Resetta tutti i filtri"
+          >
             <RefreshCw className="btn-icon-sm" /> Pulisci Filtri
           </button>
-          <button onClick={onRefreshLogs} className="btn btn-outline" title="Ricarica i dati dal server">
+          <button
+            onClick={onRefreshLogs}
+            className="btn btn-outline"
+            title="Ricarica i dati dal server"
+          >
             <RefreshCw className="btn-icon-sm" /> Aggiorna
           </button>
         </div>
       </div>
-      
+
       {/* TABELLA DEI LOG */}
       <div className="permissions-table-wrapper">
         <table className="users-table">
           <thead>
             <tr>
-              <th style={{ width: '15%' }}>Data e Ora</th>
-              <th style={{ width: '15%' }}>Utente</th>
-              <th style={{ width: '20%' }}>Azione</th>
+              <th style={{ width: "15%" }}>Data e Ora</th>
+              <th style={{ width: "15%" }}>Utente</th>
+              <th style={{ width: "20%" }}>Azione</th>
               <th>Dettagli</th>
             </tr>
           </thead>
           <tbody>
-            {filteredLogs.length > 0 
-              ? filteredLogs.map(log => (
-                  <tr key={log.id}>
-                    <td data-label="Data e Ora">
-                      <div className="date-primary">{new Date(log.timestamp).toLocaleDateString('it-IT')}</div>
-                      <div className="date-secondary">{new Date(log.timestamp).toLocaleTimeString('it-IT')}</div>
-                    </td>
-                    <td data-label="Utente">{log.username || 'Sistema'}</td>
-                    <td data-label="Azione">
-                      <span className="action-badge">{log.action}</span>
-                    </td>
-                    <td data-label="Dettagli">
-                      {log.details ? (
-                        <pre className="details-pre">{JSON.stringify(log.details, null, 2)}</pre>
-                      ) : (
-                        <span className="muted-text">Nessun dettaglio</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              : (
-                <tr>
-                  <td colSpan="4" className="empty-state-cell">
-                    Nessun registro attività trovato per i filtri selezionati.
+            {filteredLogs.length > 0 ? (
+              filteredLogs.map((log) => (
+                <tr key={log.id}>
+                  <td data-label="Data e Ora">
+                    <div className="date-primary">
+                      {new Date(log.timestamp).toLocaleDateString("it-IT")}
+                    </div>
+                    <div className="date-secondary">
+                      {new Date(log.timestamp).toLocaleTimeString("it-IT")}
+                    </div>
+                  </td>
+                  <td data-label="Utente">{log.username || "Sistema"}</td>
+                  <td data-label="Azione">
+                    <span className="action-badge">{log.action}</span>
+                  </td>
+                  <td data-label="Dettagli">
+                    {log.details ? (
+                      <pre className="details-pre">
+                        {JSON.stringify(log.details, null, 2)}
+                      </pre>
+                    ) : (
+                      <span className="muted-text">Nessun dettaglio</span>
+                    )}
                   </td>
                 </tr>
-              )
-            }
+              ))
+            ) : (
+              <tr>
+                <td colSpan="4" className="empty-state-cell">
+                  Nessun registro attività trovato per i filtri selezionati.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
-  
+
       {/* FOOTER */}
       <div className="logs-actions">
         <p className="logs-count-info">
-          Visualizzati: {filteredLogs.length} (Totali: {logEntries?.length || 0})
+          Visualizzati: {filteredLogs.length} (Totali: {logEntries?.length || 0}
+          )
         </p>
-       
-          <button onClick={() => onDownloadLogs(filteredLogs)} className="btn btn-outline">
-            <Download className="btn-icon-md" /> Scarica Risultati
-          </button>
 
+        <button
+          onClick={() => onDownloadLogs(filteredLogs)}
+          className="btn btn-outline"
+        >
+          <Download className="btn-icon-md" /> Scarica Risultati
+        </button>
       </div>
     </div>
-  );  
+  );
 }
 // --- Sotto-Componente per il Tab Permessi (MODIFICATO) ---
 const ALL_ACCESS_MODULES = [
@@ -727,6 +738,7 @@ function CreateUserModal({
 // =====================================================
 function Settings() {
   const navigate = useNavigate();
+  const { metadataFilePath, setMetadataFilePath } = useAppContext();
   // --- STATI PRINCIPALI ---
   // Stato per l'utente loggato e per il caricamento dei suoi dati
   const [currentUser, setCurrentUser] = useState(null);
@@ -737,9 +749,7 @@ function Settings() {
   const [activeTab, setActiveTab] = useState("metadata_file");
 
   // Tutti gli altri tuoi stati originali rimangono qui
-  const [metadataFileConfig, setMetadataFileConfig] = useState({
-    metadataPath: "/data/principale_metadati.xlsx",
-  });
+
   const [permissions, setPermissions] = useState([]);
   const [iniContent, setIniContent] = useState(
     `[Database]\nhost=localhost\nport=5432\n\n[SharePoint]\nsite_url=https://company.sharepoint.com\n\n[Scripts]\npath=/scripts/auto.ps1`
@@ -786,38 +796,46 @@ function Settings() {
         const userResponse = await apiClient.get("/users/me");
         const user = userResponse.data;
         setCurrentUser(user);
-  
+
         if (user && user.role === "admin") {
           // Usiamo Promise.allSettled invece di Promise.all
           // Promise.all si ferma al primo errore.
           // Promise.allSettled esegue tutte le promise e ci dà il risultato di ciascuna.
           const results = await Promise.allSettled([
-            apiClient.get('/users/all'),
-            apiClient.get('/audit/logs')
+            apiClient.get("/users/all"),
+            apiClient.get("/audit/logs"),
           ]);
-  
+
           const permissionsResult = results[0];
           const auditLogsResult = results[1];
-  
+
           // Gestiamo i permessi
-          if (permissionsResult.status === 'fulfilled') {
-            const formattedPermissions = permissionsResult.value.data.map(dbUser => ({
-              id: dbUser.id,
-              user: dbUser.email || dbUser.username,
-              role: dbUser.role,
-              accessTo: dbUser.permissions || [],
-            }));
+          if (permissionsResult.status === "fulfilled") {
+            const formattedPermissions = permissionsResult.value.data.map(
+              (dbUser) => ({
+                id: dbUser.id,
+                user: dbUser.email || dbUser.username,
+                role: dbUser.role,
+                accessTo: dbUser.permissions || [],
+              })
+            );
             setPermissions(formattedPermissions);
           } else {
-            console.error("Fallito il caricamento dei permessi:", permissionsResult.reason);
+            console.error(
+              "Fallito il caricamento dei permessi:",
+              permissionsResult.reason
+            );
             toast.error("Impossibile caricare la lista utenti.");
           }
-  
+
           // Gestiamo i log di audit
-          if (auditLogsResult.status === 'fulfilled') {
+          if (auditLogsResult.status === "fulfilled") {
             setLogEntries(auditLogsResult.value.data);
           } else {
-            console.error("Fallito il caricamento dei log di audit:", auditLogsResult.reason);
+            console.error(
+              "Fallito il caricamento dei log di audit:",
+              auditLogsResult.reason
+            );
             toast.error("Impossibile caricare il registro attività.");
           }
         }
@@ -829,7 +847,7 @@ function Settings() {
         setAuthLoading(false);
       }
     };
-  
+
     fetchInitialData();
   }, [navigate]);
 
@@ -928,11 +946,34 @@ function Settings() {
   const simulateApiCall = (duration = 1500) =>
     new Promise((resolve) => setTimeout(resolve, duration));
   const handleSaveMetadataFile = async () => {
-    /* ... la tua logica ... */
+    // Ottieni il valore corrente
+    // Qui faresti una chiamata API per salvare permanentemente il percorso
+    // Esempio: await apiClient.post('/settings', { metadata_path: metadataFilePath });
+    toast.success(`Percorso "${metadataFilePath}" salvato (simulazione).`);
   };
   const handleOpenSharePoint = async (type) => {
-   console.log("premuto handleopen")
+    console.log("premuto handleopen");
   };
+  const handleLoadFileFromDialog = async () => {
+    try {
+      const selectedPath = await openDialog({
+        multiple: false,
+        title: "Seleziona il file Excel",
+        filters: [{ name: "Excel Files", extensions: ["xlsx", "xls"] }],
+      });
+
+      if (typeof selectedPath === "string" && selectedPath) {
+        setMetadataFilePath(selectedPath);
+        toast.success("Percorso file aggiornato!");
+      } else {
+        console.log("Selezione annullata dall'utente.");
+      }
+    } catch (error) {
+      console.error("Errore dialog:", error);
+      toast.error("Impossibile aprire la finestra di dialogo.");
+    }
+  };
+
   const handlePermissionChange = (id, field, valueOrUpdater) => {
     setHasUnsavedChanges(true);
     setPermissions((prevPermissions) =>
@@ -1013,7 +1054,7 @@ function Settings() {
     // Questa funzione ora ricaricherà i dati dal backend
     setAuthLoading(true); // Mostra un feedback di caricamento
     try {
-      const auditLogsResponse = await apiClient.get('/audit/logs');
+      const auditLogsResponse = await apiClient.get("/audit/logs");
       setLogEntries(auditLogsResponse.data);
       toast.success("Registro attività aggiornato!");
     } catch (error) {
@@ -1024,7 +1065,8 @@ function Settings() {
   };
   const handleDownloadLogs = () => {
     // Logica per scaricare i dati FILTRATI come CSV o JSON
-    if (filteredLogs.length === 0) { // NB: 'filteredLogs' non è disponibile qui. Vedi nota sotto.
+    if (filteredLogs.length === 0) {
+      // NB: 'filteredLogs' non è disponibile qui. Vedi nota sotto.
       toast.warn("Nessun dato da scaricare.");
       return;
     }
@@ -1052,11 +1094,13 @@ function Settings() {
       case "metadata_file":
         return (
           <MetadataFileTabContent
-            config={metadataFileConfig}
-            setConfig={setMetadataFileConfig}
+            // Passiamo i valori dal contesto come props
+            metadataFilePath={metadataFilePath}
+            setMetadataFilePath={setMetadataFilePath}
             onSave={handleSaveMetadataFile}
             isSaving={loadingStates.savingMetadataFile}
             onOpenSharePoint={handleOpenSharePoint}
+            onLoadFromFile={handleLoadFileFromDialog}
           />
         );
       case "permissions":
@@ -1097,7 +1141,6 @@ function Settings() {
             logEntries={logEntries}
             onRefreshLogs={handleRefreshLogs}
             onDownloadLogs={handleDownloadLogs}
-
           />
         );
       default:

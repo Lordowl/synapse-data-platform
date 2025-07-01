@@ -13,8 +13,7 @@ use tauri::generate_context;
 
 fn main() {
     tauri::Builder::default()
-        // La riga .invoke_handler(...) viene rimossa completamente
-        // perché non ci sono più comandi Rust da esporre al frontend.
+        .plugin(tauri_plugin_dialog::init())
         .run(generate_context!())
         .expect("Errore nell'avvio dell'app");
 }

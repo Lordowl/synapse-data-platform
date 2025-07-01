@@ -1,6 +1,7 @@
 import pandas as pd
 import json
 import os
+import sys
 from pathlib import Path
 import numpy as np
 
@@ -90,9 +91,13 @@ def save_json(data: dict, output_path: str):
 
 # --- Blocco Principale di Esecuzione (MODIFICATO) ---
 if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Errore: Percorso del file Excel non fornito come argomento.")
+        sys.exit(1)
+        
+    INPUT_FILE = sys.argv[1]
     # --- CONFIGURAZIONE ---
     BASE_PATH = Path(__file__).parent
-    INPUT_FILE = BASE_PATH / "file.xlsx"
     SHEET_NAME = 'File reportistica'
     OUTPUT_JSON_FILE = BASE_PATH.parent / "data" / "flows.json"
     COLUMNS_FOR_JSON = ['ID', 'SEQ', 'Package','Filename out', ]

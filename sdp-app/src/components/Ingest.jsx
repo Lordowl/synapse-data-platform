@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from 'react-toastify';
 import apiClient from "../api/apiClient";
+import { useAppContext } from '../context/AppContext';
 import {
   Play, Filter, ListChecks, ChevronDown, ChevronUp, ChevronsUpDown,
   RefreshCw, Trash2, Download, Layers, TerminalSquare, PlayCircle,
@@ -419,6 +420,7 @@ function LogsTabContent({
 // --- Componente Principale Ingest ---
 function Ingest() {
   const navigate = useNavigate();
+  const { metadataFilePath } = useAppContext();
     const [activeTab, setActiveTab] = useState("execution");
   const [isLoading, setIsLoading] = useState(true);
   const [flowsData, setFlowsData] = useState([]); // Inizia vuoto
@@ -454,7 +456,9 @@ useEffect(() => {
       // Prima di caricare i dati, diciamo al backend di rigenerare il JSON dall'Excel.
       // Usiamo await per bloccare l'esecuzione finché non è completo.
       console.log("-> Avvio aggiornamento automatico flussi da Excel...");
-      await apiClient.post('/tasks/update-flows-from-excel');
+      await apiClient.post('/tasks/update-flows-from-excel', { 
+          file_path: metadataFilePath 
+        });
       console.log("-> Aggiornamento da Excel completato sul backend.");
       toast.info("Fonte dati aggiornata dall'Excel.");
 
