@@ -1,10 +1,10 @@
-# sdp-api/main.py
-
+# main.py
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from db import models, crud, schemas
 from db.database import engine, SessionLocal
 from api import auth, users, tasks, audit, flows
+from core.config import settings, config_manager  # Importa le impostazioni
 
 import sys
 import subprocess
@@ -12,12 +12,10 @@ import os
 import requests
 import logging
 from importlib.metadata import version, PackageNotFoundError
-import uvicorn  # Importa uvicorn
+import uvicorn
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-GITHUB_REPO = "Lordowl/synapse-data-platform"
-GITHUB_REPO_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+# Il logging è già configurato in config.py
+GITHUB_REPO_API = f"https://api.github.com/repos/{settings.github_repo}/releases/latest"
 
 def get_latest_version():
     try:
@@ -54,6 +52,10 @@ def upgrade_package(asset_url):
         return False
 
 def check_and_update():
+    if not settings.auto_update_check:
+        logging.info("[Updater] Controllo aggiornamenti disabilitato")
+        return
+        
     latest = get_latest_version()
     current = get_current_version()
     logging.info(f"[Updater] Versione attuale: {current}, ultima versione: {latest}")
@@ -104,24 +106,17 @@ def create_default_admin_if_not_exists():
     finally:
         db.close()
 
-# Definisci l'app FastAPI PRIMA di qualsiasi altra cosa
+# Definisci l'app FastAPI
 app = FastAPI(
     title="Synapse Data Platform API",
     description="API per la Synapse Data Platform.",
     version="1.0.0",
 )
 
-origins = [
-    "*",
-    "http://localhost:1420",
-    "tauri://localhost",
-    "https://tauri.localhost",
-    "http://tauri.localhost",
-]
-
+# Usa le impostazioni CORS dal file di configurazione
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -145,21 +140,48 @@ def read_root():
 def health_check():
     return {"status": "ok"}
 
+@app.get("/config", tags=["Config"])
+def get_config_info():
+    """Endpoint per ottenere informazioni sulla configurazione"""
+    return {
+        "config_file": str(config_manager.get_config_path()),
+        "version": get_current_version(),
+        "auto_update_enabled": settings.auto_update_check
+    }
+
 def main():
     """Entry point per il comando sdp-api"""
-    import sys
     import argparse
     
     parser = argparse.ArgumentParser(description='Synapse Data Platform API Server')
-    parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
-    parser.add_argument('--port', type=int, default=8000, help='Port to bind to')
+    parser.add_argument('--host', default=settings.host, help='Host to bind to')
+    parser.add_argument('--port', type=int, default=settings.port, help='Port to bind to')
     parser.add_argument('--reload', action='store_true', help='Enable auto-reload')
     parser.add_argument('--no-update-check', action='store_true', help='Skip update check')
+    parser.add_argument('--config', action='store_true', help='Show config file location')
+    parser.add_argument('--regenerate-secret', action='store_true', help='Regenerate SECRET_KEY')
     
     args = parser.parse_args()
     
-    # Esegui il codice di auto-aggiornamento solo se non disabilitato
-    if not args.no_update_check:
+    # Gestisci comandi speciali
+    if args.config:
+        print(f"[CONFIG] File di configurazione: {config_manager.get_config_path()}")
+        print(f"[VERSION] Versione: {get_current_version()}")
+        return
+        
+    if args.regenerate_secret:
+        new_secret = config_manager.regenerate_secret_key()
+        if new_secret:
+            print(f"[SECRET] Nuova SECRET_KEY generata: {new_secret}")
+            print("[WARNING] Riavviare l'applicazione per applicare le modifiche")
+        return
+    
+    # Mostra informazioni di avvio
+    print(f"[STARTUP] Synapse Data Platform API v{get_current_version()}")
+    print(f"[CONFIG] Configurazione: {config_manager.get_config_path()}")
+    
+    # Esegui il controllo aggiornamenti se abilitato
+    if not args.no_update_check and settings.auto_update_check:
         check_and_update()
     
     models.Base.metadata.create_all(bind=engine)
