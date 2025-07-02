@@ -1,17 +1,17 @@
 // src/components/Login.jsx
 
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom"; // <-- IMPORTANTE: Importa l'hook useNavigate
+import { useNavigate } from "react-router-dom";
 import apiClient from "../api/apiClient";
 import "./Login.css";
 
 function Login({ setIsAuthenticated }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [apiAddress, setApiAddress] = useState("http://127.0.0.1");
+  const [apiPort, setApiPort] = useState("8000");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  // Inizializza l'hook per poterlo usare dopo
   const navigate = useNavigate();
 
   const handleSubmit = async (event) => {
@@ -19,74 +19,104 @@ function Login({ setIsAuthenticated }) {
     setError("");
     setLoading(true);
 
+    const baseURL = `${apiAddress}:${apiPort}/api/v1`;
+
     const formData = new URLSearchParams();
     formData.append('username', username);
     formData.append('password', password);
 
     try {
-      const response = await apiClient.post('/auth/token', formData, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      const response = await fetch(`${baseURL}/auth/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString()
       });
-      
-      const token = response.data.access_token;
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Username o password non validi.");
+      }
+
+      const token = data.access_token;
+
       sessionStorage.setItem("accessToken", token);
+      sessionStorage.setItem("apiBaseURL", baseURL);
       setIsAuthenticated(true);
-      
-      // Ora questa chiamata funzionerà e reindirizzerà l'utente
-      // Nota: nel tuo App.jsx la rotta per la Home è "/dashboard"
-      navigate("/dashboard"); 
+      navigate("/");
 
     } catch (err) {
       console.error("Login Error:", err);
-
-      // Logica robusta per la gestione degli errori
-      if (err.response) {
-        // Il server ha risposto (es. 401 Unauthorized)
-        setError(err.response.data.detail || "Username o password non validi.");
-      } else if (err.request) {
-        // La richiesta è partita ma non c'è stata risposta (server spento)
-        setError("Impossibile connettersi al server. Verificare che sia attivo.");
-      } else {
-        // Qualsiasi altro errore
-        setError("Si è verificato un errore imprevisto.");
-      }
+      setError(err.message || "Si è verificato un errore.");
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="login-page">
-      <h2 className="title">Welcome back!</h2>
-      <form onSubmit={handleSubmit}>
-        <label>Username</label>
-        <input
-          type="text"
-          placeholder="Username"
-          id="username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          disabled={loading}
-        />
-        <label>Password</label>
-        <input
-          type="password"
-          placeholder="Password"
-          id="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          disabled={loading}
-        />
-        
-        {/* Mostra il messaggio di errore nella UI */}
-        {error && <p className="error-message">{error}</p>}
+   return (
+        <div className="login-page">
+            <h2 className="title">Welcome back!</h2>
+            <form onSubmit={handleSubmit}>
 
-        <button type="submit" disabled={loading}>
-          {loading ? 'Accesso in corso...' : 'Login'}
-        </button>
-      </form>
-    </div>
-  );
+                {/* Sezione Connessione API */}
+                <div className="api-connection">
+                    <label htmlFor="apiAddress">
+                        Connection
+                    </label>
+                    <div className="api-address-port">
+                        <div className="input-group">
+                            <input
+                                type="text"
+                                placeholder="Address"
+                                id="apiAddress"
+                                value={apiAddress}
+                                onChange={(e) => setApiAddress(e.target.value)}
+                                disabled={loading}
+                            />
+                        </div>
+                        <div className="input-group">
+                            <input
+                                type="number"
+                                placeholder="Port"
+                                id="apiPort"
+                                value={apiPort}
+                                onChange={(e) => setApiPort(e.target.value)}
+                                disabled={loading}
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Sezione Username/Password */}
+                <label>Username</label>
+                <input
+                    type="text"
+                    placeholder="Username"
+                    id="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    disabled={loading}
+                />
+                <label>Password</label>
+                <input
+                    type="password"
+                    placeholder="Password"
+                    id="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={loading}
+                />
+
+                {error && <p className="error-message">{error}</p>}
+
+                <button type="submit" disabled={loading}>
+                    {loading ? 'Accesso in corso...' : 'Login'}
+                </button>
+            </form>
+        </div>
+    );
 }
 
 export default Login;

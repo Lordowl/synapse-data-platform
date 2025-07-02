@@ -68,7 +68,7 @@ setup(
         'python-jose[cryptography]>=3.3.0',
         'passlib[bcrypt]>=1.7.4',
         'python-multipart>=0.0.6',
-        'bcrypt>=4.0.0',
+        'bcrypt== 3.2.2',
         'requests>=2.31.0',
         'python-dotenv>=1.0.0',
         'pandas',

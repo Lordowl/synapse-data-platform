@@ -4,7 +4,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { ToastContainer } from 'react-toastify';
 import apiClient from "./api/apiClient";
-import { autoUpdate } from "./utils/updater"; // ✅ IMPORTA IL MODULO
+import { autoUpdate } from "./utils/updater";
 
 import Home from "./components/Home";
 import Ingest from "./components/Ingest";
@@ -20,7 +20,9 @@ function App() {
   useEffect(() => {
     const checkAuth = async () => {
       const token = sessionStorage.getItem("accessToken");
-      if (!token) {
+      const apiBaseURL = sessionStorage.getItem("apiBaseURL");
+
+      if (!token || !apiBaseURL) {
         setIsAuthenticated(false);
         setIsLoading(false);
         return;
@@ -33,6 +35,7 @@ function App() {
         console.error("Token verification failed:", error);
         setIsAuthenticated(false);
         sessionStorage.removeItem("accessToken");
+        sessionStorage.removeItem("apiBaseURL");
       } finally {
         setIsLoading(false);
       }
@@ -40,7 +43,6 @@ function App() {
 
     checkAuth();
 
-    // ✅ Avvia controllo aggiornamenti all'avvio
     autoUpdate();
   }, []);
 
@@ -59,7 +61,7 @@ function App() {
           </>
         ) : (
           <>
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={<Home setIsAuthenticated={setIsAuthenticated} />} /> {/* PASSAGGIO FONDAMENTALE */}
             <Route path="/ingest" element={<Ingest />} />
             <Route path="/report" element={<Report />} />
             <Route path="/settings" element={<Settings />} />

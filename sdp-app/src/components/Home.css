@@ -45,12 +45,11 @@
     */
   }
   
-  /* If you want Links to look like neumorphic buttons without using global .btn directly,
-     or if you need a distinct style for these specific links.
-     It's often better to apply the global .btn class to Links as well for consistency.
-     <Link to="/somepage" className="btn home-custom-link-btn">Go to Page</Link>
-     If you must have a separate .link-as-button:
-  */
+ .logout-container {
+  position: absolute; /* Posizionamento assoluto rispetto al contenitore .home-page-wrapper */
+  top: 10px; /* Distanza dal bordo superiore */
+  right: 10px; /* Distanza dal bordo destro */
+}
   .home-button-container .link-as-button {
     display: inline-flex; /* For centering content inside */
     align-items: center;
