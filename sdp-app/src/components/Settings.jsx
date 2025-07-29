@@ -1196,29 +1196,32 @@ function Settings() {
           </div>
         </header>
         <nav className="tab-nav-container">
-          <div className="tab-nav-grid">
-            {TABS.map((tab) => {
-              // TABS ora è l'array filtrato dinamicamente
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`tab-button ${
-                    activeTab === tab.id ? "active" : ""
-                  }`}
-                  disabled={isAnyLoadingInProgress && activeTab !== tab.id}
-                >
-                  <div className="tab-button-header">
-                    <Icon className="tab-button-icon" />
-                    <span className="tab-button-label">{tab.label}</span>
-                  </div>
-                  <p className="tab-button-description">{tab.description}</p>
-                </button>
-              );
-            })}
-          </div>
-        </nav>
+          <div 
+          className={`tab-nav-grid ${TABS.length === 3 ? 'three-tabs' : ''}`}
+          // Oppure usa questa classe per la soluzione flexbox:
+          // className="tab-nav-flex force-row"
+        >
+          {TABS.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`tab-button ${
+                  activeTab === tab.id ? "active" : ""
+                }`}
+                disabled={isAnyLoadingInProgress && activeTab !== tab.id}
+              >
+                <div className="tab-button-header">
+                  <Icon className="tab-button-icon" />
+                  <span className="tab-button-label">{tab.label}</span>
+                </div>
+                <p className="tab-button-description">{tab.description}</p>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
         <main className="tab-content-main">{renderActiveTabContent()}</main>
       </div>
       <CreateUserModal

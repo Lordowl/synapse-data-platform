@@ -65,10 +65,61 @@ function ExecutionTabContent({
   requestSort,
   getSortIcon,
 }) {
-  const weekOptions = [
-    { value: "27", label: "Settimana 27" },
-    { value: "28", label: "Settimana 28" },
-  ];
+const weekOptions = [
+  { value: "1", label: "Settimana 1" },
+  { value: "2", label: "Settimana 2" },
+  { value: "3", label: "Settimana 3" },
+  { value: "4", label: "Settimana 4" },
+  { value: "5", label: "Settimana 5" },
+  { value: "6", label: "Settimana 6" },
+  { value: "7", label: "Settimana 7" },
+  { value: "8", label: "Settimana 8" },
+  { value: "9", label: "Settimana 9" },
+  { value: "10", label: "Settimana 10" },
+  { value: "11", label: "Settimana 11" },
+  { value: "12", label: "Settimana 12" },
+  { value: "13", label: "Settimana 13" },
+  { value: "14", label: "Settimana 14" },
+  { value: "15", label: "Settimana 15" },
+  { value: "16", label: "Settimana 16" },
+  { value: "17", label: "Settimana 17" },
+  { value: "18", label: "Settimana 18" },
+  { value: "19", label: "Settimana 19" },
+  { value: "20", label: "Settimana 20" },
+  { value: "21", label: "Settimana 21" },
+  { value: "22", label: "Settimana 22" },
+  { value: "23", label: "Settimana 23" },
+  { value: "24", label: "Settimana 24" },
+  { value: "25", label: "Settimana 25" },
+  { value: "26", label: "Settimana 26" },
+  { value: "27", label: "Settimana 27" },
+  { value: "28", label: "Settimana 28" },
+  { value: "29", label: "Settimana 29" },
+  { value: "30", label: "Settimana 30" },
+  { value: "31", label: "Settimana 31" },
+  { value: "32", label: "Settimana 32" },
+  { value: "33", label: "Settimana 33" },
+  { value: "34", label: "Settimana 34" },
+  { value: "35", label: "Settimana 35" },
+  { value: "36", label: "Settimana 36" },
+  { value: "37", label: "Settimana 37" },
+  { value: "38", label: "Settimana 38" },
+  { value: "39", label: "Settimana 39" },
+  { value: "40", label: "Settimana 40" },
+  { value: "41", label: "Settimana 41" },
+  { value: "42", label: "Settimana 42" },
+  { value: "43", label: "Settimana 43" },
+  { value: "44", label: "Settimana 44" },
+  { value: "45", label: "Settimana 45" },
+  { value: "46", label: "Settimana 46" },
+  { value: "47", label: "Settimana 47" },
+  { value: "48", label: "Settimana 48" },
+  { value: "49", label: "Settimana 49" },
+  { value: "50", label: "Settimana 50" },
+  { value: "51", label: "Settimana 51" },
+  { value: "52", label: "Settimana 52" },
+];
+
 
   // Funzione helper per il colore delle righe (rimane qui perché è solo di visualizzazione)
   const getRowColorByResult = (resultStatus) => {
@@ -433,7 +484,7 @@ function Ingest() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortConfig, setSortConfig] = useState({ key: "id", direction: "ascending" });
 
-  const [generalParams, setGeneralParams] = useState({ selectedWeek: "27" });
+  const [generalParams, setGeneralParams] = useState({ selectedWeek: "1" });
   const [logSearchTerm, setLogSearchTerm] = useState("");
   const [logLevelFilter, setLogLevelFilter] = useState("all");
 
@@ -653,7 +704,7 @@ useEffect(() => {
         name: f.name,
         package: f.package,
     })),
-    params: generalParams
+    params: generalParams,
   };
 
   try {

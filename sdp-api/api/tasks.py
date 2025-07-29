@@ -170,7 +170,6 @@ def execute_selected_flows(
         status = "Failed" # Default in caso di problemi
         script_output = ""
         script_error = ""
-        
         try:
             # --- COSTRUZIONE DEGLI ARGOMENTI PER LO SCRIPT ---
             # Il primo argomento è sempre lo script stesso.
@@ -180,7 +179,7 @@ def execute_selected_flows(
                 str(script_path),
                 "--flow-id", str(flow.id),
                 "--package", str(flow.package),
-                "--week", str(request.params.get("week", ""))
+                "--week", str(request.params.get("selectedWeek", ""))
                 # Aggiungi altri parametri se necessario
             ]
             
