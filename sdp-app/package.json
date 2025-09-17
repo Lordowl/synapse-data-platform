@@ -1,7 +1,7 @@
 {
   "name": "sdp-app",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,7 +15,6 @@
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-process": "^2.3.0",
     "@tauri-apps/plugin-updater": "^2.9.0",
-    
     "axios": "^1.9.0",
     "font-awesome": "^4.7.0",
     "lucide-react": "^0.511.0",
