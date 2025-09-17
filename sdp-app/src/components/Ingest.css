@@ -44,7 +44,7 @@
   box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
               calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
 }
-.ingest-header-title-group { display: flex; align-items: center; gap: var(--space-3);  }
+.ingest-header-title-group { display: flex; align-items: left; gap: var(--space-3);  }
 .ingest-header-icon-bg { padding: var(--space-2); background-color: var(--primary-bg); border-radius: var(--rounded-base); display: inline-flex; box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark), calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light); }
 .ingest-header-icon { width: 1.5rem; height: 1.5rem; color: var(--accent-color); }
 .ingest-header-title { font-size: var(--text-xl); font-weight: 700; color: var(--text-color); margin: 0; }

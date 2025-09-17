@@ -42,7 +42,7 @@ function MetadataFileTabContent({
     <div className="tab-content-padding">
       <div className="tab-content-header">
         <Database className="tab-content-icon" />
-        <h2 className="tab-content-title">Gestione File Metadati</h2>
+        <h2 className="tab-content-title">Ingestion</h2>
       </div>
       <div className="metadata-grid">
         <div className="metadata-card">
