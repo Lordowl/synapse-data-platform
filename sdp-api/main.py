@@ -1,4 +1,5 @@
 # main.py
+import os
 import sys
 import subprocess
 import logging
@@ -65,7 +66,6 @@ def check_and_update():
 
 # ----------------- Funzioni database ----------------- #
 def create_default_admin_if_not_exists():
-    from db.database import engine
     db = get_db().__next__()
     try:
         admin_user = crud.get_user_by_username(db, username="admin")
@@ -90,11 +90,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-      allow_origins=[
-        "http://localhost:1420",  # Your frontend URL
-        "http://127.0.0.1:1420",  # Alternative localhost format
-        "http://localhost:3000",  # Common React dev server port
-        # Add other frontend URLs as needed
+    allow_origins=[
+        "http://localhost:1420",
+        "http://127.0.0.1:1420",
+        "http://localhost:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -115,19 +114,38 @@ app.include_router(api_router, prefix="/api/v1")
 def startup_event():
     db_url = settings.DATABASE_URL
     if not db_url:
-        raise RuntimeError("DATABASE_URL non configurato. Impostalo in config o .env")
-    
-    # Inizializza il database
-    init_db(db_url)
+        logging.warning("[STARTUP] Nessun DATABASE_URL configurato. Attendo /folder/update.")
+        return
 
-    # Crea le tabelle se non esistono
-    from db.database import engine
-    models.Base.metadata.create_all(bind=engine)
+    if db_url.startswith("sqlite:///"):
+        db_path = db_url.replace("sqlite:///", "")
+        base_folder = os.path.dirname(os.path.dirname(db_path))  # fino a .../App
 
-    # Crea l'admin di default
-    create_default_admin_if_not_exists()
+        # Percorsi richiesti
+        ingestion_ps1 = os.path.join(base_folder, "Ingestion", "ingestion.ps1")
+        log_folder = os.path.join(base_folder, "Ingestion", "log_SPK")
+        ini_file = os.path.join(base_folder, "Ingestion", "main_ingestion_SPK.ini")
 
-    print(f"[STARTUP] Database inizializzato: {db_url}")
+        required_paths = [ingestion_ps1, log_folder, ini_file]
+
+        # Se mancano file/cartelle → fermati
+        if not all(os.path.exists(p) for p in required_paths):
+            logging.warning("[STARTUP] Alberatura incompleta. Attendo /folder/update.")
+            return
+
+        # Se manca il DB → ricrealo
+        if not os.path.exists(db_path):
+            logging.info(f"[STARTUP] DB non trovato, ricreo in {db_path}")
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            open(db_path, "a").close()
+
+    try:
+        init_db(db_url)
+        create_default_admin_if_not_exists()
+        print(f"[STARTUP] Database inizializzato: {db_url}")
+    except Exception as e:
+        logging.error(f"[STARTUP] Errore nell'inizializzazione del DB: {e}", exc_info=True)
+
 
 # ----------------- Endpoints generali ----------------- #
 @app.get("/", tags=["Root"])

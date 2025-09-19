@@ -157,17 +157,20 @@ def execute_selected_flows(
     script_error = ""
 
     try:
-        # --- COSTRUZIONE ARGOMENTI ---
+        # --- COSTRUZIONE COMANDO POWERHELL ---
         command_args = [
-            str(script_path),
-            "--flow-id", flow_ids_str,
-            "--anno", str(request.params.get("selectedYear", "")),
-            "--settimana", str(request.params.get("selectedWeek", ""))
+            "powershell.exe",
+            "-ExecutionPolicy", "Bypass",
+            "-File", str(script_path),
+            "-id", flow_ids_str,
+            "-anno", str(request.params.get("selectedYear", "")),
+            "-settimana", str(request.params.get("selectedWeek", "")),
+            "-log_key","abc"
         ]
 
         print(f"Esecuzione comando: {' '.join(command_args)}")
 
-        # --- ESECUZIONE FILE .ps1 ---
+        # --- ESECUZIONE FILE .ps1 TRAMITE POWERSHELL ---
         result = subprocess.run(
             command_args,
             capture_output=True,
