@@ -4,6 +4,7 @@ api/__init__.py
 api/audit.py
 api/auth.py
 api/flows.py
+api/settings_path.py
 api/tasks.py
 api/users.py
 core/__init__.py

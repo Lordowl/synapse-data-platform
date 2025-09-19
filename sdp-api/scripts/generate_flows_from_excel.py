@@ -6,37 +6,39 @@ from pathlib import Path
 import numpy as np
 
 def clean_and_filter_data(file_path: str, sheet_name: str) -> pd.DataFrame | None:
-    """
-    Legge, pulisce e filtra i dati da un foglio Excel specifico.
-    """
     try:
         df = pd.read_excel(file_path, sheet_name=sheet_name, dtype=str).fillna('')
-        
-        required_cols = ['Package', 'Filename out']
+
+        required_cols = ['Package', 'Filename out', 'Path out', 'Formato out']
         for col in required_cols:
             if col not in df.columns:
                 print(f"Errore Critico: La colonna essenziale '{col}' non è stata trovata.")
                 return None
-            
-        # --- ECCO LA RIGA CHIAVE DA AGGIUNGERE ---
-        # Applica il "forward fill" alla colonna 'Package'.
-        # Questo propaga l'ultimo valore valido verso il basso per riempire le celle vuote.
+
+        # Forward fill su Package
         print("   -> Applicazione forward fill sulla colonna 'Package'...")
         package_col = df['Package']
         package_col_cleaned = package_col.replace(r'^\s*$', np.nan, regex=True)
         df['Package'] = package_col_cleaned.ffill()
-        # ----------------------------------------
-        
-        # Filtra le righe dove tutte le colonne (tranne 'Package') sono vuote.
-        # Questo rimuove eventuali righe totalmente vuote che potrebbero essere presenti.
+
+        # 🔑 Ricostruzione della colonna "Filename out"
+        print("   -> Creazione nuova colonna 'Filename out' da Path/Filename/Formato...")
+        df['Filename out'] = (
+            df['Path out'].str.strip() + "/" +
+            df['Filename out'].str.strip() + "." +
+            df['Formato out'].str.strip()
+        )
+
+        # Rimozione righe completamente vuote (eccetto Package)
         other_cols = [col for col in df.columns if col != 'Package']
         df.dropna(subset=other_cols, how='all', inplace=True)
-        
-        # Il resto della tua logica di pulizia e filtraggio
+
+        # Filtra righe con Filename out non vuoto
         initial_rows = len(df)
         df = df[df['Filename out'].str.strip() != ''].copy()
         print(f"   -> Filtraggio per 'Filename out' non vuoto: {initial_rows} -> {len(df)} righe.")
-        
+
+        # Conversione numerica ID e SEQ (se presenti)
         for col in ['ID', 'SEQ']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').astype('Int64').where(pd.notna(df[col]), None)

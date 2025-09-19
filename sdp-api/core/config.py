@@ -3,7 +3,8 @@ import secrets
 import logging
 from pathlib import Path
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field,validator
+from typing import List
 from dotenv import load_dotenv
 
 # PRIMA DI TUTTO: Assicuriamoci che esista una configurazione
@@ -83,7 +84,7 @@ class Settings(BaseSettings):
     github_repo: str = Field(default="Lordowl/synapse-data-platform")
     
     # === CORS ===
-    cors_origins: list = Field(default=["*"])
+    cors_origins: List[str] = Field(default=["*"])
 
     model_config = {
         # Punta al file .env nella directory di configurazione globale

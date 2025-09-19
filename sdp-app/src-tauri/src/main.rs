@@ -4,7 +4,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 // Non è più necessario importare il modulo 'auth'
-// mod auth; 
+// mod auth;
 
 // Non è necessario importare `command` se non hai altri comandi
 // use tauri::command;
@@ -13,6 +13,7 @@ use tauri::{generate_context, WindowEvent};
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
@@ -22,5 +23,5 @@ fn main() {
             }
         })
         .run(generate_context!())
-       .expect("Errore nell'avvio dell'app");
+        .expect("Errore nell'avvio dell'app");
 }

@@ -24,60 +24,64 @@ import {
 } from "lucide-react";
 import "./Ingest.css";
 
-  const weekOptions = [
-    { value: "1", label: "Settimana 1" },
-    { value: "2", label: "Settimana 2" },
-    { value: "3", label: "Settimana 3" },
-    { value: "4", label: "Settimana 4" },
-    { value: "5", label: "Settimana 5" },
-    { value: "6", label: "Settimana 6" },
-    { value: "7", label: "Settimana 7" },
-    { value: "8", label: "Settimana 8" },
-    { value: "9", label: "Settimana 9" },
-    { value: "10", label: "Settimana 10" },
-    { value: "11", label: "Settimana 11" },
-    { value: "12", label: "Settimana 12" },
-    { value: "13", label: "Settimana 13" },
-    { value: "14", label: "Settimana 14" },
-    { value: "15", label: "Settimana 15" },
-    { value: "16", label: "Settimana 16" },
-    { value: "17", label: "Settimana 17" },
-    { value: "18", label: "Settimana 18" },
-    { value: "19", label: "Settimana 19" },
-    { value: "20", label: "Settimana 20" },
-    { value: "21", label: "Settimana 21" },
-    { value: "22", label: "Settimana 22" },
-    { value: "23", label: "Settimana 23" },
-    { value: "24", label: "Settimana 24" },
-    { value: "25", label: "Settimana 25" },
-    { value: "26", label: "Settimana 26" },
-    { value: "27", label: "Settimana 27" },
-    { value: "28", label: "Settimana 28" },
-    { value: "29", label: "Settimana 29" },
-    { value: "30", label: "Settimana 30" },
-    { value: "31", label: "Settimana 31" },
-    { value: "32", label: "Settimana 32" },
-    { value: "33", label: "Settimana 33" },
-    { value: "34", label: "Settimana 34" },
-    { value: "35", label: "Settimana 35" },
-    { value: "36", label: "Settimana 36" },
-    { value: "37", label: "Settimana 37" },
-    { value: "38", label: "Settimana 38" },
-    { value: "39", label: "Settimana 39" },
-    { value: "40", label: "Settimana 40" },
-    { value: "41", label: "Settimana 41" },
-    { value: "42", label: "Settimana 42" },
-    { value: "43", label: "Settimana 43" },
-    { value: "44", label: "Settimana 44" },
-    { value: "45", label: "Settimana 45" },
-    { value: "46", label: "Settimana 46" },
-    { value: "47", label: "Settimana 47" },
-    { value: "48", label: "Settimana 48" },
-    { value: "49", label: "Settimana 49" },
-    { value: "50", label: "Settimana 50" },
-    { value: "51", label: "Settimana 51" },
-    { value: "52", label: "Settimana 52" },
-  ];
+const weekOptions = [
+  { value: "1", label: "Settimana 1" },
+  { value: "2", label: "Settimana 2" },
+  { value: "3", label: "Settimana 3" },
+  { value: "4", label: "Settimana 4" },
+  { value: "5", label: "Settimana 5" },
+  { value: "6", label: "Settimana 6" },
+  { value: "7", label: "Settimana 7" },
+  { value: "8", label: "Settimana 8" },
+  { value: "9", label: "Settimana 9" },
+  { value: "10", label: "Settimana 10" },
+  { value: "11", label: "Settimana 11" },
+  { value: "12", label: "Settimana 12" },
+  { value: "13", label: "Settimana 13" },
+  { value: "14", label: "Settimana 14" },
+  { value: "15", label: "Settimana 15" },
+  { value: "16", label: "Settimana 16" },
+  { value: "17", label: "Settimana 17" },
+  { value: "18", label: "Settimana 18" },
+  { value: "19", label: "Settimana 19" },
+  { value: "20", label: "Settimana 20" },
+  { value: "21", label: "Settimana 21" },
+  { value: "22", label: "Settimana 22" },
+  { value: "23", label: "Settimana 23" },
+  { value: "24", label: "Settimana 24" },
+  { value: "25", label: "Settimana 25" },
+  { value: "26", label: "Settimana 26" },
+  { value: "27", label: "Settimana 27" },
+  { value: "28", label: "Settimana 28" },
+  { value: "29", label: "Settimana 29" },
+  { value: "30", label: "Settimana 30" },
+  { value: "31", label: "Settimana 31" },
+  { value: "32", label: "Settimana 32" },
+  { value: "33", label: "Settimana 33" },
+  { value: "34", label: "Settimana 34" },
+  { value: "35", label: "Settimana 35" },
+  { value: "36", label: "Settimana 36" },
+  { value: "37", label: "Settimana 37" },
+  { value: "38", label: "Settimana 38" },
+  { value: "39", label: "Settimana 39" },
+  { value: "40", label: "Settimana 40" },
+  { value: "41", label: "Settimana 41" },
+  { value: "42", label: "Settimana 42" },
+  { value: "43", label: "Settimana 43" },
+  { value: "44", label: "Settimana 44" },
+  { value: "45", label: "Settimana 45" },
+  { value: "46", label: "Settimana 46" },
+  { value: "47", label: "Settimana 47" },
+  { value: "48", label: "Settimana 48" },
+  { value: "49", label: "Settimana 49" },
+  { value: "50", label: "Settimana 50" },
+  { value: "51", label: "Settimana 51" },
+  { value: "52", label: "Settimana 52" },
+];
+const currentYear = new Date().getFullYear();
+const yearOptions = Array.from({ length: 2 }, (_, i) => currentYear - i).map(
+  (year) => ({ value: year.toString(), label: year.toString() })
+);
 
 // --- Funzioni Helper ---
 const getStatusBadgeColor = (status) => {
@@ -527,7 +531,10 @@ function Ingest() {
     direction: "ascending",
   });
 
-  const [generalParams, setGeneralParams] = useState({ selectedWeek: "1" });
+  const [generalParams, setGeneralParams] = useState({
+    selectedWeek: "1",
+    selectedYear: currentYear.toString(),
+  });
   const [logSearchTerm, setLogSearchTerm] = useState("");
   const [logLevelFilter, setLogLevelFilter] = useState("all");
 
@@ -739,46 +746,55 @@ function Ingest() {
     new Promise((resolve) => setTimeout(resolve, duration));
 
   const handleExecuteSelectedFlows = async () => {
-    // 1. Controllo di sicurezza
+    // Controllo selezione flussi
     if (selectedFlows.size === 0) {
       toast.warn("Nessun flusso selezionato per l'esecuzione.");
       return;
     }
+
     setIsExecutingFlows(true);
 
-    // 2. Filtra gli oggetti completi dei flussi che l'utente ha selezionato
-    const flowsToRun = flowsData.filter((f) => selectedFlows.has(f.id));
-
-    // 3. Prepara il payload da inviare al backend
-    const executionPayload = {
-      flows: flowsToRun.map((f) => ({
-        // Invia solo i campi necessari
-        id: f.id,
-        name: f.name,
-        package: f.package,
-      })),
-      params: generalParams,
-    };
-
     try {
-      // 4. Esegui la chiamata API REALE
+      // Filtra gli oggetti completi dei flussi selezionati
+      const flowsToRun = flowsData.filter((f) => selectedFlows.has(f.id));
+
+      if (flowsToRun.length === 0) {
+        toast.warn("I flussi selezionati non sono presenti nei dati.");
+        return;
+      }
+
+      // --- CREAZIONE PAYLOAD CORRETTO ---
+const executionPayload = {
+  flows: flowsToRun.map((f) => {
+    const mainId = f.id.split("-")[0]; // prendi solo la parte prima del trattino
+    return {
+      id: mainId,
+      name: f.name,
+    };
+  }),
+  params: generalParams,
+};
+
+      console.log("Payload inviato al backend:", executionPayload);
+
+      // POST verso il backend
       const response = await apiClient.post(
         "/tasks/execute-flows",
         executionPayload
       );
+
       toast.success(response.data.message || "Esecuzione completata!");
 
-      // 5. FONDAMENTALE: Ricarica i dati per mostrare i risultati aggiornati
-      // fetchInitialData() è la funzione che hai nell'useEffect. Assicurati che esista
-      // e sia accessibile in questo scope (deve essere definita nel componente Ingest).
-      fetchInitialData();
+      // Ricarica dati aggiornati (funzione fetchInitialData deve esistere)
+      if (typeof fetchInitialData === "function") {
+        fetchInitialData();
+      }
     } catch (error) {
       console.error("Errore durante l'esecuzione:", error);
       toast.error(
         error.response?.data?.detail || "L'esecuzione dei flussi è fallita."
       );
     } finally {
-      // 6. Pulisci la UI
       setSelectedFlows(new Set()); // Deseleziona tutto
       setIsExecutingFlows(false);
     }
@@ -1042,6 +1058,22 @@ function Ingest() {
                   </option>
                 ))}
             </select>
+            {/* Dropdown Anno */}
+            <select
+              id="year-select"
+              className="form-select form-select-sm"
+              value={generalParams.selectedYear}
+              onChange={(e) =>
+                handleGeneralParamChange("selectedYear", e.target.value)
+              }
+            >
+              {yearOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+
             <select
               className="form-select"
               value={statusFilter}

@@ -52,7 +52,13 @@ function App() {
 
   return (
     <div className="App">
-      <ToastContainer />
+        <ToastContainer
+        position="bottom-right" // Puoi scegliere: bottom-left, bottom-right, bottom-center, top-left, top-right, top-center
+        autoClose={2000}       // Durata di default in ms
+        hideProgressBar={false} // Mostra o nasconde la barra di progresso
+        newestOnTop={true}      // I toast più recenti sopra
+        closeOnClick             // Si chiude al click
+      />
       <Routes>
         {!isAuthenticated ? (
           <>
