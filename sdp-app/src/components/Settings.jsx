@@ -1,14 +1,13 @@
 // src/components/Settings/Settings.jsx
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
-import { useAppContext } from "../context/AppContext"; // Importa l'hook
-import apiClient from "../api/apiClient"; //
+import { useAppContext } from "../context/AppContext";
+import apiClient from "../api/apiClient";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-
+import { invoke } from "@tauri-apps/api/tauri"; // Importa invoke
 import {
   Settings as SettingsIcon,
-  // FileText, // Non più usata direttamente, Database è usata per il tab metadati
   Users,
   Database,
   Edit,
@@ -19,17 +18,15 @@ import {
   Trash2,
   RefreshCw,
   ListChecks,
-  Download,
-  Search, // Per la barra di ricerca nei permessi
-  // Filter as FilterIcon, // Non più usata se usiamo Search + Select
+  Search,
 } from "lucide-react";
 import "./Settings.css";
 
 // =================================================================================
-// --- DEFINIZIONE DEI SOTTO-COMPONENTI PER I TAB (PRIMA DEL COMPONENTE SETTINGS) ---
+// --- DEFINIZIONE DEI SOTTO-COMPONENTI PER I TAB
 // =================================================================================
 
-// --- Sotto-Componente per il Tab "File Metadati" ---
+// --- Tab "File Metadati" ---
 function MetadataFileTabContent({
   metadataFilePath,
   setMetadataFilePath,
@@ -53,8 +50,7 @@ function MetadataFileTabContent({
             <h3 className="metadata-card-title">File Sorgente Metadati</h3>
           </div>
           <p className="metadata-card-description">
-            Configura il percorso del file principale dei metadati (es. .xlsx,
-            .csv).
+            Percorso del file principale dei metadati (es. .xlsx, .csv).
           </p>
           <input
             type="text"
@@ -73,7 +69,7 @@ function MetadataFileTabContent({
               <ExternalLink className="btn-icon-md" /> Apri SharePoint
             </button>
             <button
-              onClick={onLoadFromFile} // Assegna la funzione all'evento onClick
+              onClick={onLoadFromFile}
               className="btn btn-outline w-full"
               disabled={isSaving}
             >
@@ -86,30 +82,31 @@ function MetadataFileTabContent({
   );
 }
 
-// --- Sotto-Componente per il Tab Log Applicativi ---
-function LogsTabContent({ logEntries, onRefreshLogs, onDownloadLogs }) {
+// --- Tab Log Applicativi ---
+function LogsTabContent({ logEntries, onRefreshLogs }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
   const filteredLogs = useMemo(() => {
-    const start = startDate ? new Date(startDate) : null;
-    const end = endDate
-      ? new Date(new Date(endDate).setHours(23, 59, 59, 999))
-      : null;
-
     if (!logEntries) return [];
+
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : null;
+
+    const lowerSearchTerm = searchTerm.toLowerCase();
 
     return logEntries
       .filter((log) => {
-        const lowerSearchTerm = searchTerm.toLowerCase();
         const matchesSearch =
           log.action?.toLowerCase().includes(lowerSearchTerm) ||
           log.username?.toLowerCase().includes(lowerSearchTerm) ||
           JSON.stringify(log.details)?.toLowerCase().includes(lowerSearchTerm);
+
         const logDate = new Date(log.timestamp);
         const matchesStartDate = !start || logDate >= start;
         const matchesEndDate = !end || logDate <= end;
+
         return matchesSearch && matchesStartDate && matchesEndDate;
       })
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -123,13 +120,11 @@ function LogsTabContent({ logEntries, onRefreshLogs, onDownloadLogs }) {
 
   return (
     <div className="tab-content-padding">
-      {/* INTESTAZIONE */}
       <div className="tab-content-header">
         <ListChecks className="tab-content-icon" />
-        <h2 className="tab-content-title">Registro Attività (Audit Log)</h2>
+        <h2 className="tab-content-title">Registro Attività</h2>
       </div>
 
-      {/* BARRA DEI FILTRI */}
       <div className="logs-controls-grid">
         <div className="search-input-wrapper">
           <Search className="search-input-icon" />
@@ -176,7 +171,6 @@ function LogsTabContent({ logEntries, onRefreshLogs, onDownloadLogs }) {
         </div>
       </div>
 
-      {/* TABELLA DEI LOG */}
       <div className="permissions-table-wrapper">
         <table className="users-table">
           <thead>
@@ -217,7 +211,7 @@ function LogsTabContent({ logEntries, onRefreshLogs, onDownloadLogs }) {
             ) : (
               <tr>
                 <td colSpan="4" className="empty-state-cell">
-                  Nessun registro attività trovato per i filtri selezionati.
+                  Nessun registro trovato con questi filtri.
                 </td>
               </tr>
             )}
@@ -225,29 +219,20 @@ function LogsTabContent({ logEntries, onRefreshLogs, onDownloadLogs }) {
         </table>
       </div>
 
-      {/* FOOTER */}
       <div className="logs-actions">
         <p className="logs-count-info">
-          Visualizzati: {filteredLogs.length} (Totali: {logEntries?.length || 0}
-          )
+          Visualizzati: {filteredLogs.length} (Totali: {logEntries?.length || 0})
         </p>
-
-        <button
-          onClick={() => onDownloadLogs(filteredLogs)}
-          className="btn btn-outline"
-        >
-          <Download className="btn-icon-md" /> Scarica Risultati
-        </button>
       </div>
     </div>
   );
 }
-// --- Sotto-Componente per il Tab Permessi (MODIFICATO) ---
+
+// --- Tab Permessi ---
 const ALL_ACCESS_MODULES = [
-  // Definisci i moduli a cui si può dare accesso
   { id: "ingest", label: "Ingest" },
   { id: "report", label: "Report" },
-  { id: "settings", label: "Settings" }, // Accesso alle impostazioni
+  { id: "settings", label: "Settings" },
 ];
 
 function PermissionsTabContent({
@@ -259,59 +244,38 @@ function PermissionsTabContent({
   isSaving,
   hasUnsavedChanges,
   loadingStates,
-  // Nuove props per filtri e ricerca
   searchTerm,
   setSearchTerm,
   roleFilter,
   setRoleFilter,
-  accessFilter, // <<--- NUOVO: filtro per tipo di accesso
-  setAccessFilter, // <<--- NUOVO: setter per filtro accesso
+  accessFilter,
+  setAccessFilter,
   availableRoles,
 }) {
   const [selectedPermissionIds, setSelectedPermissionIds] = useState(new Set());
 
   const filteredPermissions = useMemo(() => {
+    const lowerSearchTerm = searchTerm.toLowerCase();
+
     return permissions.filter((perm) => {
-      const matchesSearch = perm.user
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase());
+      const matchesSearch = perm.user.toLowerCase().includes(lowerSearchTerm);
       const matchesRole = roleFilter === "all" || perm.role === roleFilter;
       const matchesAccess =
-        accessFilter === "all" ||
-        (perm.accessTo && perm.accessTo.includes(accessFilter));
+        accessFilter === "all" || (perm.accessTo && perm.accessTo.includes(accessFilter));
+
       return matchesSearch && matchesRole && matchesAccess;
     });
   }, [permissions, searchTerm, roleFilter, accessFilter]);
 
   const handleAccessToChange = (permId, accessType, checked) => {
     onPermissionChange(permId, "accessTo", (currentAccessTo = []) => {
-      if (checked) {
-        return [...new Set([...currentAccessTo, accessType])];
-      } else {
-        return currentAccessTo.filter((type) => type !== accessType);
-      }
+      return checked
+        ? [...new Set([...currentAccessTo, accessType])]
+        : currentAccessTo.filter((type) => type !== accessType);
     });
   };
 
-  const handleSelectPermission = (permId) => {
-    setSelectedPermissionIds((prev) => {
-      const newSelection = new Set(prev);
-      if (newSelection.has(permId)) newSelection.delete(permId);
-      else newSelection.add(permId);
-      return newSelection;
-    });
-  };
-
-  const handleSelectAllPermissions = (e) => {
-    if (e.target.checked) {
-      setSelectedPermissionIds(new Set(filteredPermissions.map((p) => p.id)));
-    } else {
-      setSelectedPermissionIds(new Set());
-    }
-  };
-
-  const anyActionLoading =
-    isSaving || loadingStates.removingPermissionId !== null;
+  const anyActionLoading = isSaving || loadingStates.removingPermissionId !== null;
 
   return (
     <div className="tab-content-padding">
@@ -387,36 +351,24 @@ function PermissionsTabContent({
             {filteredPermissions.map((perm) => (
               <tr
                 key={perm.id}
-                className={
-                  selectedPermissionIds.has(perm.id) ? "selected-row" : ""
-                }
+                className={selectedPermissionIds.has(perm.id) ? "selected-row" : ""}
               >
                 <td>
                   <input
                     type="email"
                     value={perm.user}
-                    onChange={(e) =>
-                      onPermissionChange(perm.id, "user", e.target.value)
-                    }
+                    onChange={(e) => onPermissionChange(perm.id, "user", e.target.value)}
                     className="form-input"
                     placeholder="email@company.com"
-                    disabled={
-                      anyActionLoading ||
-                      loadingStates.removingPermissionId === perm.id
-                    }
+                    disabled={anyActionLoading || loadingStates.removingPermissionId === perm.id}
                   />
                 </td>
                 <td>
                   <select
                     value={perm.role}
-                    onChange={(e) =>
-                      onPermissionChange(perm.id, "role", e.target.value)
-                    }
+                    onChange={(e) => onPermissionChange(perm.id, "role", e.target.value)}
                     className="form-select"
-                    disabled={
-                      anyActionLoading ||
-                      loadingStates.removingPermissionId === perm.id
-                    }
+                    disabled={anyActionLoading || loadingStates.removingPermissionId === perm.id}
                   >
                     {availableRoles
                       .filter((r) => r !== "all")
@@ -435,15 +387,10 @@ function PermissionsTabContent({
                         className="form-checkbox-sm"
                         checked={perm.accessTo?.includes(module.id) || false}
                         onChange={(e) =>
-                          handleAccessToChange(
-                            perm.id,
-                            module.id,
-                            e.target.checked
-                          )
+                          handleAccessToChange(perm.id, module.id, e.target.checked)
                         }
                         disabled={
-                          anyActionLoading ||
-                          loadingStates.removingPermissionId === perm.id
+                          anyActionLoading || loadingStates.removingPermissionId === perm.id
                         }
                       />
                       {module.label}
@@ -455,15 +402,14 @@ function PermissionsTabContent({
                     onClick={() => onRemove(perm.id)}
                     className="btn btn-outline"
                     disabled={
-                      anyActionLoading ||
-                      loadingStates.removingPermissionId === perm.id
+                      anyActionLoading || loadingStates.removingPermissionId === perm.id
                     }
                   >
                     {loadingStates.removingPermissionId === perm.id ? (
                       <RefreshCw className="btn-icon-sm animate-spin-css" />
                     ) : (
                       <Trash2 className="btn-icon-sm" />
-                    )}{" "}
+                    )}
                     Rimuovi
                   </button>
                 </td>
@@ -472,7 +418,7 @@ function PermissionsTabContent({
             {filteredPermissions.length === 0 && (
               <tr>
                 <td colSpan="5" className="text-center muted-text">
-                  Nessun utente trovato per i filtri applicati.
+                  Nessun utente trovato con questi filtri.
                 </td>
               </tr>
             )}
@@ -481,11 +427,9 @@ function PermissionsTabContent({
       </div>
       <div className="permissions-footer">
         <p className="permissions-footer-count">
-          Utenti visualizzati: {filteredPermissions.length} (Totali:{" "}
-          {permissions.length})
+          Utenti visualizzati: {filteredPermissions.length} (Totali: {permissions.length})
         </p>
 
-        {/* --- ECCO LA MODIFICA PER L'INDICATORE --- */}
         <div className="save-actions-wrapper">
           {hasUnsavedChanges && (
             <span className="unsaved-indicator">Modifiche non salvate</span>
@@ -493,7 +437,6 @@ function PermissionsTabContent({
           <button
             onClick={onSave}
             className="btn btn-outline"
-            // Disabilita il pulsante se non ci sono modifiche da salvare
             disabled={anyActionLoading || !hasUnsavedChanges}
           >
             {isSaving ? (
@@ -514,92 +457,48 @@ function PermissionsTabContent({
   );
 }
 
-// --- Sotto-Componente per il Tab Config File ---
+// --- Tab Config File (Solo Path e Apri) ---
 function ConfigFileTabContent({
-  content,
-  setContent,
-  onOpenSharePoint,
-  onReset,
-  onSave,
-  isSaving,
+  iniPath, // Riceve il percorso del file INI
+  onOpenFile, // Funzione per aprire il file
   loadingStates,
 }) {
-  const anyConfigActionLoading = isSaving || loadingStates.loadingConfigFile;
+  const anyConfigActionLoading = loadingStates.loadingConfigFile;
+
   return (
     <div className="tab-content-padding">
-      <div className="config-file-header">
-        <div className="config-file-header-title-group">
-          <Edit className="tab-content-icon" />
-          <h2 className="tab-content-title">Editor File Config</h2>
-        </div>
-        <button
-          onClick={() => onOpenSharePoint("config_file_load")}
-          className="btn btn-outline"
-          disabled={anyConfigActionLoading}
-        >
-          {loadingStates.loadingConfigFile ? (
-            <>
-              <RefreshCw className="btn-icon-md animate-spin-css" />
-              Caricando...
-            </>
-          ) : (
-            <>
-              <ExternalLink className="btn-icon-md" />
-              Carica da SharePoint
-            </>
-          )}
-        </button>
+      <div className="tab-content-header">
+        <Edit className="tab-content-icon" />
+        <h2 className="tab-content-title">File Config</h2>
       </div>
-      <div className="config-file-editor-container">
-        {/* ... (contenuto editor) ... */}
-        <div className="config-file-editor-topbar">
-          <div className="config-file-editor-controls">
-            <div className="config-file-editor-dots">
-              <div className="config-file-editor-dot config-file-editor-dot-red"></div>
-              <div className="config-file-editor-dot config-file-editor-dot-yellow"></div>
-              <div className="config-file-editor-dot config-file-editor-dot-green"></div>
+
+      <div className="metadata-grid">
+        <div className="metadata-card">
+          <div className="metadata-card-header">
+            <div className="metadata-card-icon-bg">
+              <Edit className="metadata-card-icon" />
             </div>
-            <span className="config-file-editor-filename">config.ini</span>
+            <h3 className="metadata-card-title">Percorso File INI</h3>
           </div>
-          <div className="config-file-editor-last-modified hidden md:block">
-            Mod: {new Date().toLocaleTimeString()}
+          <p className="metadata-card-description">
+            Visualizza il percorso del file di configurazione INI.
+          </p>
+          <input
+            type="text"
+            value={iniPath || ""}
+            className="form-input"
+            disabled // Impedisce la modifica
+          />
+          <div className="metadata-card-input-group">
+            <button
+              onClick={onOpenFile}
+              className="btn btn-outline w-full"
+              disabled={anyConfigActionLoading}
+            >
+              <ExternalLink className="btn-icon-md" /> Apri File
+            </button>
           </div>
         </div>
-        <textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          className="config-file-editor-textarea"
-          disabled={anyConfigActionLoading}
-        />
-      </div>
-      <div className="config-file-actions">
-        <button
-          onClick={onSave}
-          className="btn btn-outline"
-          disabled={anyConfigActionLoading}
-        >
-          {isSaving ? (
-            <>
-              <RefreshCw className="btn-icon-md animate-spin-css" />
-              Salvataggio...
-            </>
-          ) : (
-            <>
-              <Save className="btn-icon-md" />
-              Salva Config
-            </>
-          )}
-        </button>
-        <button
-          onClick={onReset}
-          className="btn btn-outline"
-          disabled={anyConfigActionLoading}
-        >
-          <RefreshCw className="btn-icon-md" /> Ripristina Default
-        </button>
-        <p className="config-file-autosave-text hidden md:block">
-          Auto-save ogni 30s
-        </p>
       </div>
     </div>
   );
@@ -619,19 +518,6 @@ function CreateUserModal({
   const handleChange = (e) => {
     const { name, value } = e.target;
     setNewUser((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const generatePassword = () => {
-    // Semplice generatore di password lato client (meno sicuro di quello server-side,
-    // ma utile per pre-compilare il campo).
-    const chars =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()";
-    let password = "";
-    for (let i = 0; i < 12; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    // Aggiorna lo stato newUser con la password generata
-    setNewUser((prev) => ({ ...prev, password: password }));
   };
 
   const handleSubmit = (e) => {
@@ -673,32 +559,6 @@ function CreateUserModal({
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">
-              Password (lasciare vuoto per generarla automaticamente)
-            </label>
-            <div className="password-input-group">
-              <input
-                type="text" // 'text' per vedere la password generata
-                id="password"
-                name="password"
-                value={newUser.password}
-                onChange={handleChange}
-                disabled={isCreating}
-                placeholder="Opzionale"
-              />
-              <button
-                type="button"
-                onClick={generatePassword}
-                className="btn btn-outline"
-                style={{ flexShrink: 0 }} // Evita che il pulsante si restringa
-                disabled={isCreating}
-              >
-                Genera
-              </button>
-            </div>
-          </div>
-
-          <div className="form-group">
             <label htmlFor="role">Ruolo</label>
             <select
               id="role"
@@ -712,7 +572,6 @@ function CreateUserModal({
             </select>
           </div>
 
-          {/* Mostra un eventuale errore di creazione dall'API */}
           {error && <p className="error-message">{error}</p>}
 
           <div className="modal-actions">
@@ -733,30 +592,19 @@ function CreateUserModal({
     </div>
   );
 }
-// =====================================================
-// --- COMPONENTE PRINCIPALE SETTINGS (VERSIONE COMPLETA E MODIFICATA) ---
-// =====================================================
+
 function Settings() {
   const navigate = useNavigate();
   const { metadataFilePath, setMetadataFilePath } = useAppContext();
-  // --- STATI PRINCIPALI ---
-  // Stato per l'utente loggato e per il caricamento dei suoi dati
+
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  // Stato per il tab attivo. Default su un tab accessibile a tutti.
   const [activeTab, setActiveTab] = useState("metadata_file");
-
-  // Tutti gli altri tuoi stati originali rimangono qui
-
   const [permissions, setPermissions] = useState([]);
-  const [iniContent, setIniContent] = useState(
-    `[Database]\nhost=localhost\nport=5432\n\n[SharePoint]\nsite_url=https://company.sharepoint.com\n\n[Scripts]\npath=/scripts/auto.ps1`
-  );
+  const [iniPath, setIniPath] = useState(""); // Stato per il percorso del file INI
   const [logEntries, setLogEntries] = useState([]);
 
-  // Stati per i filtri dei permessi
   const [permissionSearchTerm, setPermissionSearchTerm] = useState("");
   const [permissionRoleFilter, setPermissionRoleFilter] = useState("all");
   const [permissionAccessFilter, setPermissionAccessFilter] = useState("all");
@@ -769,12 +617,9 @@ function Settings() {
   const [loadingStates, setLoadingStates] = useState({
     savingMetadataFile: false,
     savingPermissions: false,
-    savingConfig: false,
     removingPermissionId: null,
     loadingConfigFile: false,
     refreshingLogs: false,
-    clearingLogs: false,
-    downloadingLogs: false,
   });
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -782,25 +627,32 @@ function Settings() {
     username: "",
     email: "",
     password: "",
-    role: "user", // Ruolo di default
+    role: "user",
   });
   const [createError, setCreateError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+ const fetchIniPath = useCallback(async () => {
+    setLoadingStates(prev => ({ ...prev, loadingConfigFile: true }));
+    try {
+      const response = await apiClient.get("/folder/ini");
+      setIniPath(response.data.ini_path); // Salva il percorso del file INI
+    } catch (error) {
+      console.error("Errore nel recupero del file INI:", error);
+      toast.error("Impossibile caricare il percorso del file di configurazione.");
+    } finally {
+      setLoadingStates(prev => ({ ...prev, loadingConfigFile: false }));
+    }
+  }, []);
 
-  // --- LOGICA DI AUTENTICAZIONE E PERMESSI ---
   useEffect(() => {
     const fetchInitialData = async () => {
       setAuthLoading(true);
       try {
-        // La chiamata a /users/me è fondamentale, la lasciamo qui
         const userResponse = await apiClient.get("/users/me");
         const user = userResponse.data;
         setCurrentUser(user);
 
         if (user && user.role === "admin") {
-          // Usiamo Promise.allSettled invece di Promise.all
-          // Promise.all si ferma al primo errore.
-          // Promise.allSettled esegue tutte le promise e ci dà il risultato di ciascuna.
           const results = await Promise.allSettled([
             apiClient.get("/users/all"),
             apiClient.get("/audit/logs"),
@@ -809,38 +661,26 @@ function Settings() {
           const permissionsResult = results[0];
           const auditLogsResult = results[1];
 
-          // Gestiamo i permessi
           if (permissionsResult.status === "fulfilled") {
-            const formattedPermissions = permissionsResult.value.data.map(
-              (dbUser) => ({
-                id: dbUser.id,
-                user: dbUser.email || dbUser.username,
-                role: dbUser.role,
-                accessTo: dbUser.permissions || [],
-              })
-            );
-            setPermissions(formattedPermissions);
+            setPermissions(permissionsResult.value.data.map((dbUser) => ({
+              id: dbUser.id,
+              user: dbUser.email || dbUser.username,
+              role: dbUser.role,
+              accessTo: dbUser.permissions || [],
+            })));
           } else {
-            console.error(
-              "Fallito il caricamento dei permessi:",
-              permissionsResult.reason
-            );
+            console.error("Fallito il caricamento dei permessi:", permissionsResult.reason);
             toast.error("Impossibile caricare la lista utenti.");
           }
 
-          // Gestiamo i log di audit
           if (auditLogsResult.status === "fulfilled") {
             setLogEntries(auditLogsResult.value.data);
           } else {
-            console.error(
-              "Fallito il caricamento dei log di audit:",
-              auditLogsResult.reason
-            );
+            console.error("Fallito il caricamento dei log di audit:", auditLogsResult.reason);
             toast.error("Impossibile caricare il registro attività.");
           }
         }
       } catch (error) {
-        // Questo catch ora si attiverà solo se la prima chiamata a /users/me fallisce
         console.error("Errore di autenticazione:", error);
         navigate("/login");
       } finally {
@@ -850,59 +690,40 @@ function Settings() {
 
     fetchInitialData();
   }, [navigate]);
+  useEffect(() => {
+    // Chiama fetchIniContent solo se il tab attivo è "config"
+    if (activeTab === "config") {
+      fetchIniPath();
+    }
+  }, [activeTab, fetchIniPath]);
 
-  // --- GESTIONE DINAMICA DEI TAB ---
+
   const TABS = useMemo(() => {
     const baseTabs = [
-      {
-        id: "metadata_file",
-        label: "File Metadati",
-        icon: Database,
-        description: "Percorso file metadati",
-      },
-      {
-        id: "config",
-        label: "Config File",
-        icon: Edit,
-        description: "Editor file .ini",
-      },
-      {
-        id: "logs",
-        label: "Log",
-        icon: ListChecks,
-        description: "Visualizza log applicativi",
-      },
+      { id: "metadata_file", label: "File Metadati", icon: Database, description: "Percorso file metadati" },
+      { id: "config", label: "Config File", icon: Edit, description: "Visualizza e apri il file .ini" },
+      { id: "logs", label: "Log", icon: ListChecks, description: "Visualizza log applicativi" },
     ];
 
     if (currentUser && currentUser.role === "admin") {
-      // Inserisce il tab dei permessi in una posizione specifica se l'utente è admin
-      const adminTab = {
+      baseTabs.splice(2, 0, {
         id: "permissions",
         label: "Permessi",
         icon: Users,
         description: "Gestione accessi utenti",
-      };
-      // Esempio: inserisce il tab dei permessi come terza posizione
-      const finalTabs = [...baseTabs];
-      finalTabs.splice(2, 0, adminTab);
-      return finalTabs;
+      });
     }
 
     return baseTabs;
   }, [currentUser]);
 
-  // Effetto di sicurezza: se un non-admin finisce sul tab dei permessi, lo sposta
   useEffect(() => {
-    if (
-      currentUser &&
-      currentUser.role !== "admin" &&
-      activeTab === "permissions"
-    ) {
-      setActiveTab("metadata_file"); // Sposta al primo tab di default
+    if (currentUser && currentUser.role !== "admin" && activeTab === "permissions") {
+      setActiveTab("metadata_file");
     }
   }, [currentUser, activeTab]);
+
   const openCreateModal = () => {
-    // Resetta i campi prima di aprire
     setNewUser({ username: "", email: "", password: "", role: "user" });
     setCreateError("");
     setIsCreateModalOpen(true);
@@ -915,45 +736,38 @@ function Settings() {
   const handleCreateUser = async () => {
     setIsCreating(true);
     setCreateError("");
-    try {
-      // Chiamata API REALE per creare l'utente
-      const response = await apiClient.post("/users/", newUser);
 
-      // Formatta il nuovo utente per aggiungerlo alla lista visualizzata
+    try {
+      const response = await apiClient.post("/users/", newUser);
       const createdUser = response.data;
-      const formattedNewUser = {
+
+      setPermissions((prev) => [{
         id: createdUser.id,
         user: createdUser.email || createdUser.username,
         role: createdUser.role,
         accessTo: createdUser.permissions || [],
-      };
+      }, ...prev]);
 
-      // Aggiunge il nuovo utente in cima alla lista esistente
-      setPermissions((prev) => [formattedNewUser, ...prev]);
       toast.success("Utente creato con successo!");
-      closeCreateModal(); // Chiude la modale
+      closeCreateModal();
+
     } catch (error) {
       console.error("Errore nella creazione dell'utente:", error);
-      setCreateError(
-        error.response?.data?.detail || "Impossibile creare l'utente."
-      );
+      setCreateError(error.response?.data?.detail || "Impossibile creare l'utente.");
+
     } finally {
       setIsCreating(false);
     }
   };
 
-  // --- GESTIONE DEGLI EVENTI (LE TUE FUNZIONI ORIGINALI) ---
-  const simulateApiCall = (duration = 1500) =>
-    new Promise((resolve) => setTimeout(resolve, duration));
   const handleSaveMetadataFile = async () => {
-    // Ottieni il valore corrente
-    // Qui faresti una chiamata API per salvare permanentemente il percorso
-    // Esempio: await apiClient.post('/settings', { metadata_path: metadataFilePath });
     toast.success(`Percorso "${metadataFilePath}" salvato (simulazione).`);
   };
+
   const handleOpenSharePoint = async (type) => {
     console.log("premuto handleopen");
   };
+
   const handleLoadFileFromDialog = async () => {
     try {
       const selectedPath = await openDialog({
@@ -974,41 +788,27 @@ function Settings() {
     }
   };
 
-  const handlePermissionChange = (id, field, valueOrUpdater) => {
+  const handlePermissionChange = async (id, field, valueOrUpdater) => {
     setHasUnsavedChanges(true);
-    setPermissions((prevPermissions) =>
-      prevPermissions.map((p) => {
-        if (p.id === id) {
-          // Se il valore è una funzione (come nel nostro caso per accessTo), la eseguiamo
-          if (typeof valueOrUpdater === "function") {
-            return { ...p, [field]: valueOrUpdater(p[field]) };
-          }
-          // Altrimenti, è un valore semplice
-          return { ...p, [field]: valueOrUpdater };
-        }
-        return p;
-      })
+    setPermissions((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? { ...p, [field]: typeof valueOrUpdater === "function" ? valueOrUpdater(p[field]) : valueOrUpdater }
+          : p
+      )
     );
   };
 
   const removePermission = async (id) => {
-    // Cerchiamo l'utente da rimuovere per mostrare un messaggio di conferma più chiaro
     const userToRemove = permissions.find((p) => p.id === id);
     if (!userToRemove) return;
 
-    if (
-      window.confirm(
-        `Sei sicuro di voler rimuovere l'utente "${userToRemove.user}"? L'azione è irreversibile.`
-      )
-    ) {
+    if (window.confirm(`Vuoi rimuovere "${userToRemove.user}"?`)) {
       setLoadingStates((prev) => ({ ...prev, removingPermissionId: id }));
       try {
-        // Chiamata API REALE per cancellare l'utente
         await apiClient.delete(`/users/${id}`);
-
-        // Se la chiamata ha successo, aggiorniamo lo stato del frontend
         setPermissions((prev) => prev.filter((p) => p.id !== id));
-        toast.success(`Utente "${userToRemove.user}" rimosso con successo.`);
+        toast.success(`Utente "${userToRemove.user}" rimosso.`);
       } catch (error) {
         console.error("Errore nella rimozione dell'utente:", error);
         toast.error("Impossibile rimuovere l'utente.");
@@ -1017,42 +817,36 @@ function Settings() {
       }
     }
   };
+
   const handleSavePermissions = async () => {
     setHasUnsavedChanges(false);
     setLoadingStates((prev) => ({ ...prev, savingPermissions: true }));
+
     try {
-      // Usiamo Promise.all per inviare tutte le richieste di aggiornamento in parallelo
-      const updatePromises = permissions.map((perm) => {
-        // Prepariamo i dati da inviare per l'aggiornamento
-        const userDataToUpdate = {
-          role: perm.role,
-          permissions: perm.accessTo, // Il nostro campo 'accessTo' corrisponde a 'permissions' nel backend
-        };
-        // Chiamata API REALE per aggiornare l'utente
-        return apiClient.put(`/users/${perm.id}`, userDataToUpdate);
-      });
+      await Promise.all(permissions.map((perm) =>
+        apiClient.put(`/users/${perm.id}`, { role: perm.role, permissions: perm.accessTo })
+      ));
 
-      await Promise.all(updatePromises);
-
-      toast.success("Permessi salvati con successo!"); // Sostituire con Toast
+      toast.success("Permessi salvati!");
     } catch (error) {
       console.error("Errore nel salvataggio dei permessi:", error);
-      toast.error(
-        error.response?.data?.detail || "Impossibile salvare i permessi."
-      );
+      toast.error(error.response?.data?.detail || "Impossibile salvare i permessi.");
     } finally {
       setLoadingStates((prev) => ({ ...prev, savingPermissions: false }));
     }
   };
-  const resetIniContent = async () => {
-    /* ... la tua logica ... */
+
+    const handleOpenFile = async () => {
+    try {
+      await invoke("open_file", { path: iniPath });
+    } catch (error) {
+      console.error("Errore nell'apertura del file:", error);
+      toast.error("Impossibile aprire il file.");
+    }
   };
-  const handleSaveConfigFile = async () => {
-    /* ... la tua logica ... */
-  };
+
   const handleRefreshLogs = async () => {
-    // Questa funzione ora ricaricherà i dati dal backend
-    setAuthLoading(true); // Mostra un feedback di caricamento
+    setAuthLoading(true);
     try {
       const auditLogsResponse = await apiClient.get("/audit/logs");
       setLogEntries(auditLogsResponse.data);
@@ -1063,29 +857,12 @@ function Settings() {
       setAuthLoading(false);
     }
   };
-  const handleDownloadLogs = () => {
-    // Logica per scaricare i dati FILTRATI come CSV o JSON
-    if (filteredLogs.length === 0) {
-      // NB: 'filteredLogs' non è disponibile qui. Vedi nota sotto.
-      toast.warn("Nessun dato da scaricare.");
-      return;
-    }
-    // ... logica per creare e scaricare il file ...
-    toast.info("Funzionalità di download non ancora implementata.");
-  };
 
-  // --- RENDER DEI CONTENUTI DEI TAB ---
   const renderActiveTabContent = () => {
-    // Controllo di sicurezza aggiuntivo
-    if (
-      activeTab === "permissions" &&
-      (!currentUser || currentUser.role !== "admin")
-    ) {
+    if (activeTab === "permissions" && (!currentUser || currentUser.role !== "admin")) {
       return (
         <div className="tab-content-padding">
-          <p className="error-message">
-            Accesso non autorizzato a questa sezione.
-          </p>
+          <p className="error-message">Accesso non autorizzato.</p>
         </div>
       );
     }
@@ -1094,7 +871,6 @@ function Settings() {
       case "metadata_file":
         return (
           <MetadataFileTabContent
-            // Passiamo i valori dal contesto come props
             metadataFilePath={metadataFilePath}
             setMetadataFilePath={setMetadataFilePath}
             onSave={handleSaveMetadataFile}
@@ -1126,13 +902,9 @@ function Settings() {
       case "config":
         return (
           <ConfigFileTabContent
-            content={iniContent}
-            setContent={setIniContent}
-            onReset={resetIniContent}
-            onSave={handleSaveConfigFile}
-            isSaving={loadingStates.savingConfig}
+            iniPath={iniPath} // Passa il percorso del file INI
+            onOpenFile={handleOpenFile} // Passa la funzione per aprire il file
             loadingStates={loadingStates}
-            onOpenSharePoint={handleOpenSharePoint}
           />
         );
       case "logs":
@@ -1140,7 +912,6 @@ function Settings() {
           <LogsTabContent
             logEntries={logEntries}
             onRefreshLogs={handleRefreshLogs}
-            onDownloadLogs={handleDownloadLogs}
           />
         );
       default:
@@ -1148,27 +919,15 @@ function Settings() {
     }
   };
 
-  // --- RENDER PRINCIPALE DEL COMPONENTE ---
-  // Mostra un caricamento mentre si verificano i permessi
   if (authLoading) {
     return (
-      <div
-        className="settings-container"
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100vh",
-        }}
-      >
-        <p>Caricamento impostazioni e permessi...</p>
+      <div className="settings-container loading">
+        <p>Caricamento impostazioni...</p>
       </div>
     );
   }
 
-  const isAnyLoadingInProgress = Object.values(loadingStates).some(
-    (state) => state === true || (typeof state === "string" && state !== null)
-  );
+  const isAnyLoadingInProgress = Object.values(loadingStates).some(Boolean);
 
   return (
     <div className="settings-container">
@@ -1181,9 +940,7 @@ function Settings() {
               </div>
               <div>
                 <h1 className="settings-header-title">Impostazioni</h1>
-                <p className="settings-header-subtitle">
-                  Configurazione, permessi e log
-                </p>
+                <p className="settings-header-subtitle">Configurazione, permessi e log</p>
               </div>
             </div>
             <button
@@ -1195,35 +952,32 @@ function Settings() {
             </button>
           </div>
         </header>
+
         <nav className="tab-nav-container">
-          <div 
-          className={`tab-nav-grid ${TABS.length === 3 ? 'three-tabs' : ''}`}
-          // Oppure usa questa classe per la soluzione flexbox:
-          // className="tab-nav-flex force-row"
-        >
-          {TABS.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`tab-button ${
-                  activeTab === tab.id ? "active" : ""
-                }`}
-                disabled={isAnyLoadingInProgress && activeTab !== tab.id}
-              >
-                <div className="tab-button-header">
-                  <Icon className="tab-button-icon" />
-                  <span className="tab-button-label">{tab.label}</span>
-                </div>
-                <p className="tab-button-description">{tab.description}</p>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
+          <div className={`tab-nav-grid ${TABS.length === 3 ? "three-tabs" : ""}`}>
+            {TABS.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`tab-button ${activeTab === tab.id ? "active" : ""}`}
+                  disabled={isAnyLoadingInProgress && activeTab !== tab.id}
+                >
+                  <div className="tab-button-header">
+                    <Icon className="tab-button-icon" />
+                    <span className="tab-button-label">{tab.label}</span>
+                  </div>
+                  <p className="tab-button-description">{tab.description}</p>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+
         <main className="tab-content-main">{renderActiveTabContent()}</main>
       </div>
+
       <CreateUserModal
         isOpen={isCreateModalOpen}
         onClose={closeCreateModal}

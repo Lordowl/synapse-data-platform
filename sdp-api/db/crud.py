@@ -72,14 +72,37 @@ def delete_user(db: Session, user_id: int):
     db.delete(db_user)
     db.commit()
     return db_user
-def create_execution_log(db: Session, flow_id_str: str, status: str, duration_seconds: int = 0, details: dict = None):
-    db_log = models.FlowExecutionHistory(
+
+    # --- Crea record aggregato ---
+def create_execution_log(db: Session, flow_id_str: str, status: str, duration_seconds: int, details: dict, log_key: str):
+    record = models.FlowExecutionHistory(
         flow_id_str=flow_id_str,
         status=status,
         duration_seconds=duration_seconds,
-        details=details
+        details=details,
+        log_key=log_key
     )
-    db.add(db_log)
-    db.commit()      # <- commit necessario
-    db.refresh(db_log)
-    return db_log
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+def create_execution_detail(db: Session, log_key: str, element_id: str, error_lines: list, result: str = "Success"):
+    detail = models.FlowExecutionDetail(  # ✅ CORRETTO con models.
+        log_key=log_key,
+        element_id=element_id,
+        result=result,  # ← NUOVO CAMPO
+        error_lines="\n".join(error_lines)
+    )
+    db.add(detail)
+    db.commit()
+    db.refresh(detail)
+    return detail
+
+# --- Aggiorna lo status globale dell'esecuzione ---
+def update_execution_log_status(db: Session, log_key: str, status: str):
+    record = db.query(models.FlowExecutionHistory).filter(models.FlowExecutionHistory.log_key == log_key).first()
+    if record:
+        record.status = status
+        db.commit()
+        db.refresh(record)
+    return record

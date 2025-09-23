@@ -1,12 +1,6 @@
 {
     "flows": [
         {
-            "ID": 1,
-            "SEQ": null,
-            "Package": "Utility",
-            "Filename out": "/."
-        },
-        {
             "ID": 2,
             "SEQ": null,
             "Package": "Utility",
@@ -151,12 +145,6 @@
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\0 Utility\\Settimana attuale\\Settimana/Settimana_Eurovita_aaaass..xlsx"
         },
         {
-            "ID": 24,
-            "SEQ": null,
-            "Package": "Utility",
-            "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\0 Utility\\Settimana attuale\\Settimana/TB_GiorniSettAnno..xlsx"
-        },
-        {
             "ID": 25,
             "SEQ": null,
             "Package": "Utility",
@@ -173,18 +161,6 @@
             "SEQ": null,
             "Package": "Utility",
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\0 Utility\\Coni di visibilita/Estrazione Ruolo..xlsx"
-        },
-        {
-            "ID": 27,
-            "SEQ": null,
-            "Package": "Utility",
-            "Filename out": "/."
-        },
-        {
-            "ID": 28,
-            "SEQ": null,
-            "Package": "Impieghi",
-            "Filename out": "/."
         },
         {
             "ID": 29,
@@ -265,18 +241,6 @@
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\1 Impieghi_Privati\\2 Input file settimanali/20 TB_NdgCodAtecoAgrari..xlsx"
         },
         {
-            "ID": 42,
-            "SEQ": null,
-            "Package": "Impieghi",
-            "Filename out": "/."
-        },
-        {
-            "ID": 43,
-            "SEQ": null,
-            "Package": "Breve termine",
-            "Filename out": "/."
-        },
-        {
             "ID": 44,
             "SEQ": null,
             "Package": "Breve termine",
@@ -307,18 +271,6 @@
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\2 Breve termine\\2 Input file settimanali/4 ConsulenteOrgAttuale_aaaa..xlsx"
         },
         {
-            "ID": 49,
-            "SEQ": null,
-            "Package": "Breve termine",
-            "Filename out": "/."
-        },
-        {
-            "ID": 50,
-            "SEQ": null,
-            "Package": "Raccolta diretta",
-            "Filename out": "/."
-        },
-        {
             "ID": 51,
             "SEQ": null,
             "Package": "Raccolta diretta",
@@ -347,36 +299,6 @@
             "SEQ": null,
             "Package": "Raccolta diretta",
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\3 Raccolta diretta\\2 Input file settimanali/4 ForzatureConsa_aaaass..xlsx"
-        },
-        {
-            "ID": 56,
-            "SEQ": null,
-            "Package": "Raccolta diretta",
-            "Filename out": "/."
-        },
-        {
-            "ID": 57,
-            "SEQ": null,
-            "Package": "Flussi Netti preparazione",
-            "Filename out": "/."
-        },
-        {
-            "ID": 58,
-            "SEQ": null,
-            "Package": "Flussi Netti preparazione",
-            "Filename out": "/."
-        },
-        {
-            "ID": 59,
-            "SEQ": null,
-            "Package": "Flussi Netti preparazione",
-            "Filename out": "/."
-        },
-        {
-            "ID": 60,
-            "SEQ": null,
-            "Package": "Flussi Netti",
-            "Filename out": "/."
         },
         {
             "ID": 61,
@@ -421,12 +343,6 @@
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\5 Assicurazioni flussi netti\\2 Input file settimanali/5 Bolzano_Premium_2209_SPK Valia_aaaass..xlsx"
         },
         {
-            "ID": 67,
-            "SEQ": null,
-            "Package": "Flussi Netti",
-            "Filename out": "/."
-        },
-        {
             "ID": 68,
             "SEQ": 1,
             "Package": "Flussi Netti",
@@ -443,18 +359,6 @@
             "SEQ": null,
             "Package": "Flussi Netti",
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\5 Assicurazioni flussi netti\\2 Input file settimanali/7 InserContratti_aaaass..xlsx"
-        },
-        {
-            "ID": 71,
-            "SEQ": null,
-            "Package": "Flussi Netti",
-            "Filename out": "/."
-        },
-        {
-            "ID": 72,
-            "SEQ": null,
-            "Package": "Raccolta indiretta",
-            "Filename out": "/."
         },
         {
             "ID": 73,
@@ -505,12 +409,6 @@
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\4 Raccolta indiretta\\2 Input file settimanali/7 Eurovita_aaaass..xlsx"
         },
         {
-            "ID": 81,
-            "SEQ": null,
-            "Package": "Raccolta indiretta",
-            "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\4 Raccolta indiretta\\2 Input file settimanali/7 EurovitaPac_aaaass..xlsx"
-        },
-        {
             "ID": 82,
             "SEQ": null,
             "Package": "Raccolta indiretta",
@@ -551,12 +449,6 @@
             "SEQ": null,
             "Package": "Raccolta indiretta",
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\4 Raccolta indiretta\\2 Input file settimanali/10 ItasPensplanPlurifond_aaaass..xlsx"
-        },
-        {
-            "ID": 89,
-            "SEQ": 1,
-            "Package": "Raccolta indiretta",
-            "Filename out": "/."
         },
         {
             "ID": 90,
@@ -625,46 +517,10 @@
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\4 Raccolta indiretta\\2 Input file settimanali\\ArchvioK8MovCod/K8MOVCODComplessivo aaaa..xlsx"
         },
         {
-            "ID": 101,
-            "SEQ": null,
-            "Package": "Raccolta indiretta",
-            "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\4 Raccolta indiretta\\2 Input file settimanali\\VERSIONE Q4/K8MOVCOD_aaaass..xlsx"
-        },
-        {
-            "ID": 102,
-            "SEQ": null,
-            "Package": "Raccolta indiretta",
-            "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\4 Raccolta indiretta\\2 Input file settimanali\\VERSIONE Q4/ScaglioniCodDeroghe_aaaass..xlsx"
-        },
-        {
-            "ID": 103,
-            "SEQ": null,
-            "Package": "Raccolta indiretta",
-            "Filename out": "File non più in uso/TabCodDeroghe_aaaass..xlsx"
-        },
-        {
-            "ID": 104,
-            "SEQ": null,
-            "Package": "Raccolta indiretta",
-            "Filename out": "/."
-        },
-        {
-            "ID": 105,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "/."
-        },
-        {
             "ID": 106,
             "SEQ": null,
             "Package": "Flussi esterni",
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\6 Flussi esterni\\2 Input file settimanali/6a_LeasingN_aaaass..xlsx"
-        },
-        {
-            "ID": 107,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\6 Flussi esterni\\2 Input file settimanali/6b_RCAutoNew_aaaass..xlsx"
         },
         {
             "ID": 108,
@@ -673,22 +529,10 @@
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\6 Flussi esterni\\2 Input file settimanali/6c_PresConsumoN_aaaass..xlsx"
         },
         {
-            "ID": 109,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/6c1_PresConsumoN..xlsx"
-        },
-        {
             "ID": 110,
             "SEQ": null,
             "Package": "Flussi esterni",
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\6 Flussi esterni\\2 Input file settimanali/6d_Quixa_aaaass..xlsx"
-        },
-        {
-            "ID": 111,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/6e_Quixa codFiscNoIncrocio_aaaass..xlsx"
         },
         {
             "ID": 112,
@@ -697,82 +541,16 @@
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\6 Flussi esterni\\2 Input file settimanali/7Pitagora_aaaass..xlsx"
         },
         {
-            "ID": 113,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/8NltContrattiAnnullati N_aaaass..xlsx"
-        },
-        {
-            "ID": 114,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/8Nlt CodFiscNoIncrocio_aaaass..xlsx"
-        },
-        {
-            "ID": 115,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/8Nlt_aaaass..xlsx"
-        },
-        {
-            "ID": 116,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/8NltContrattiAnnullati N..xlsx"
-        },
-        {
-            "ID": 117,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/8NltEstensioni N..xlsx"
-        },
-        {
             "ID": 118,
             "SEQ": null,
             "Package": "Flussi esterni",
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\6 Flussi esterni\\2 Input file settimanali/8Nlt N-AS_aaaass..xlsx"
         },
         {
-            "ID": 119,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/9 Forzature_FlussiContratti_mandati_aaaass..xlsx"
-        },
-        {
-            "ID": 120,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/10 Alperia Bartucci_aaaass..xlsx"
-        },
-        {
-            "ID": 121,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/11 Forzature_Flusso_Alperia_aaaass..xlsx"
-        },
-        {
-            "ID": 122,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\6 Flussi esterni\\2 Input file settimanali/12 AlperiaLuceGas_aaaass..xlsx"
-        },
-        {
-            "ID": 123,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/13 AlperiaLuceGasProvvigioni_aaaass..xlsx"
-        },
-        {
             "ID": 124,
             "SEQ": null,
             "Package": "Flussi esterni",
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\6 Flussi esterni\\2 Input file settimanali/13 AnPIVA_aaaass..xlsx"
-        },
-        {
-            "ID": 125,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/14 Forzature_Flusso_AlperiaLuceGas_aaaass..xlsx"
         },
         {
             "ID": 126,
@@ -817,54 +595,6 @@
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\6 Flussi esterni\\2 Input file settimanali/15 SS16OT_aaaass..xlsx"
         },
         {
-            "ID": 133,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/17 Sparkasse_Reporting_Status Clienti_..xlsx"
-        },
-        {
-            "ID": 134,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/17 Kpmg_Report pratiche ecobonus_..xlsx"
-        },
-        {
-            "ID": 135,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/17 Sparkasse_Reporting_Status ClientiForzStrutt_..xlsx"
-        },
-        {
-            "ID": 136,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/18 Crediti accettati_accreditatiDefinitivo_..xlsx"
-        },
-        {
-            "ID": 137,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/18 Dasboard Deloitte_..xlsx"
-        },
-        {
-            "ID": 138,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/19 Produzione Mutui Superbonus_..xlsx"
-        },
-        {
-            "ID": 139,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/19 Stock Mutui Superbonus_..xlsx"
-        },
-        {
-            "ID": 140,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/20 FidiCessSuperbonus_..xlsx"
-        },
-        {
             "ID": 141,
             "SEQ": null,
             "Package": "Flussi esterni",
@@ -893,24 +623,6 @@
             "SEQ": 4,
             "Package": "Flussi esterni",
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\6 Flussi esterni\\2 Input file settimanali/26 FactoringSG_aaaass..xlsx"
-        },
-        {
-            "ID": 143,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/27 MonitorCR CodFiscNoIncrocio..xlsx"
-        },
-        {
-            "ID": 144,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/28 MonitorCRContattiPipeline..xlsx"
-        },
-        {
-            "ID": 145,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "File non più in uso/29 MonitorCRContratti..xlsx"
         },
         {
             "ID": 146,
@@ -949,18 +661,6 @@
             "Filename out": "\\\\vstore\\servizinew\\811 SERVIZIO BILANCIO, CONTABILITA E FISCALE\\493 Ufficio Controllo di Gestione\\iriondq\\Progetto Azioni Strategiche\\Input file2021/FTP_029_FTP0_CONTATTI_PR_FTP0_CONTATTI_PR_aaaass..txt"
         },
         {
-            "ID": 152,
-            "SEQ": null,
-            "Package": "Flussi esterni",
-            "Filename out": "/."
-        },
-        {
-            "ID": 153,
-            "SEQ": null,
-            "Package": "ML termine",
-            "Filename out": "/."
-        },
-        {
             "ID": 154,
             "SEQ": null,
             "Package": "ML termine",
@@ -997,18 +697,6 @@
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\7 ML termine\\2 Input file settimanali/4 ConsulenteOrgAttualeRWA_aaaa..xlsx"
         },
         {
-            "ID": 160,
-            "SEQ": null,
-            "Package": "ML termine",
-            "Filename out": "/."
-        },
-        {
-            "ID": 161,
-            "SEQ": null,
-            "Package": "Südspa Raisin",
-            "Filename out": "/."
-        },
-        {
             "ID": 162,
             "SEQ": null,
             "Package": "Südspa Raisin",
@@ -1027,18 +715,6 @@
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\8 Südspa Raisin\\2 Input file settimanali/0 Erhebungdatum_aaaass..xlsx"
         },
         {
-            "ID": 165,
-            "SEQ": null,
-            "Package": "Südspa Raisin",
-            "Filename out": "/."
-        },
-        {
-            "ID": 166,
-            "SEQ": null,
-            "Package": "Unica",
-            "Filename out": "/."
-        },
-        {
             "ID": 167,
             "SEQ": null,
             "Package": "Unica",
@@ -1049,18 +725,6 @@
             "SEQ": null,
             "Package": "Unica",
             "Filename out": "H:\\570 Measurement & data Office\\IrionDQ\\0 Utility\\Unica\\Settimana/UNICA_029_PRIVATI_SABINA_aaaass..xlsx"
-        },
-        {
-            "ID": 169,
-            "SEQ": null,
-            "Package": "Unica",
-            "Filename out": "/."
-        },
-        {
-            "ID": 170,
-            "SEQ": null,
-            "Package": "Prove",
-            "Filename out": "/."
         }
     ]
 }

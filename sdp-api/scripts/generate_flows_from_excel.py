@@ -35,8 +35,16 @@ def clean_and_filter_data(file_path: str, sheet_name: str) -> pd.DataFrame | Non
 
         # Filtra righe con Filename out non vuoto
         initial_rows = len(df)
-        df = df[df['Filename out'].str.strip() != ''].copy()
-        print(f"   -> Filtraggio per 'Filename out' non vuoto: {initial_rows} -> {len(df)} righe.")
+        df = df[~df['Filename out'].isin(["/.", ".", "/"])]
+        print(f"   -> Rimosse {initial_rows - len(df)} righe con 'Filename out' non valido.")
+
+        # 🔎 Nuovo filtro: tieni solo righe con 'No automation' vuoto
+        if 'No automation' in df.columns:
+            initial_rows = len(df)
+            df = df[df['No automation'].str.strip() == ''].copy()
+            print(f"   -> Filtraggio per 'No automation' vuoto: {initial_rows} -> {len(df)} righe.")
+        else:
+            print("Avviso: Colonna 'No automation' non trovata, filtro ignorato.")
 
         # Conversione numerica ID e SEQ (se presenti)
         for col in ['ID', 'SEQ']:

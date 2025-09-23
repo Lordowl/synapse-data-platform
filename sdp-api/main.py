@@ -14,7 +14,13 @@ from db import models, crud, schemas
 from db.database import init_db, get_db
 from api import auth, users, tasks, audit, flows, settings_path
 from core.config import settings, config_manager
+import logging
 
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger(__name__)
 # ----------------- Funzioni aggiornamento ----------------- #
 GITHUB_REPO_API = f"https://api.github.com/repos/{settings.github_repo}/releases/latest"
 
@@ -94,6 +100,7 @@ app.add_middleware(
         "http://localhost:1420",
         "http://127.0.0.1:1420",
         "http://localhost:3000",
+        "http://tauri.localhost",
     ],
     allow_credentials=True,
     allow_methods=["*"],

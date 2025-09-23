@@ -171,7 +171,22 @@ class ConfigManager:
         except Exception as e:
             logging.error(f"Errore nell'aggiornamento dell'impostazione {key}: {e}")
             return False
-
+    def get_setting(self, key: str) -> str | None:
+        """Legge il valore di una chiave dal file di configurazione .env"""
+        try:
+            if not self.env_file.exists():
+                logging.error("File di configurazione non trovato")
+                return None
+            
+            content = self.env_file.read_text().splitlines()
+            for line in content:
+                if line.startswith(f"{key}="):
+                    return line.split("=", 1)[1].strip()
+            
+            return None
+        except Exception as e:
+            logging.error(f"Errore nel recupero dell'impostazione {key}: {e}")
+            return None
 # Creiamo le istanze che verranno importate
 try:
     settings = Settings()

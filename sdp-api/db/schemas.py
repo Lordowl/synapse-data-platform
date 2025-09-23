@@ -59,3 +59,4 @@ class AuditLogInDB(AuditLogBase):
 
     class Config:
         from_attributes = True
+        

@@ -58,8 +58,11 @@ async def update_folder_path(data: FolderUpdate, user: dict = Depends(get_curren
             raise HTTPException(status_code=500, detail="Impossibile aggiornare DATABASE_URL")
 
         logging.info(f"[Settings] DATABASE_URL aggiornata: {new_db_url}")
-
-# --- 4. Verifica esistenza INI main_ingestion_SPK.ini ---
+        # --- 4. Aggiorna SETTINGS_PATH ---
+        if not config_manager.update_setting("SETTINGS_PATH", folder):
+            raise HTTPException(status_code=500, detail="Impossibile aggiornare SETTINGS_PATH")
+        logging.info(f"[Settings] SETTINGS_PATH aggiornata: {folder}")
+        # --- 4. Verifica esistenza INI main_ingestion_SPK.ini ---  
         ini_path = os.path.join(folder, "App", "Ingestion", "main_ingestion_SPK.ini")
         if os.path.exists(ini_path):
             logging.info(f"[Settings] INI trovato: {ini_path}")
@@ -102,3 +105,52 @@ async def update_folder_path(data: FolderUpdate, user: dict = Depends(get_curren
     except Exception as e:
         logging.error(f"Errore nell'aggiornamento folder_path: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Errore interno")
+@router.get("/folder/current")
+async def get_current_folder(user: dict = Depends(get_current_user)):
+    try:
+        db_url = config_manager.get_setting("DATABASE_URL")
+        if not db_url:
+            raise HTTPException(status_code=404, detail="Nessun folder salvato")
+
+        # Estraggo la parte di cartella dalla DATABASE_URL
+        if db_url.startswith("sqlite:///"):
+            db_path = db_url.replace("sqlite:///", "")
+            folder_path = os.path.dirname(os.path.dirname(db_path))  # risalgo a cartella base
+        else:
+            folder_path = None
+
+        return {"folder_path": folder_path}
+    except Exception as e:
+        logging.error(f"Errore recupero folder corrente: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Errore interno")
+
+@router.get("/folder/ini")
+async def read_ini(user: dict = Depends(get_current_user)):
+    try:
+        db_url = config_manager.get_setting("DATABASE_URL")
+        if not db_url:
+            raise HTTPException(status_code=404, detail="DATABASE_URL non configurato")
+
+        db_path = db_url.replace("sqlite:///", "")
+        folder_path = os.path.dirname(os.path.dirname(db_path))
+        ini_path = os.path.join(folder_path, "Ingestion", "main_ingestion_SPK.ini")
+
+        if not os.path.exists(ini_path):
+            raise HTTPException(status_code=404, detail=f"File INI non trovato: {ini_path}")
+
+        config = configparser.ConfigParser()
+        config.read(ini_path, encoding="utf-8")
+
+        # Include DEFAULT e le altre sezioni
+        ini_data = {}
+        if config.defaults():
+            ini_data["DEFAULT"] = dict(config.defaults())
+        for section in config.sections():
+            ini_data[section] = dict(config[section])
+
+        return {"ini_path": ini_path, "data": ini_data}
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Errore lettura INI: {e}")

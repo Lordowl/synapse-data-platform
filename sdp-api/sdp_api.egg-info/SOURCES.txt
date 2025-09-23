@@ -4,6 +4,7 @@ api/__init__.py
 api/audit.py
 api/auth.py
 api/flows.py
+api/reset.py
 api/settings_path.py
 api/tasks.py
 api/users.py
@@ -18,7 +19,6 @@ db/models.py
 db/schemas.py
 scripts/__init__.py
 scripts/generate_flows_from_excel.py
-scripts/sample_script.py
 sdp_api.egg-info/PKG-INFO
 sdp_api.egg-info/SOURCES.txt
 sdp_api.egg-info/dependency_links.txt

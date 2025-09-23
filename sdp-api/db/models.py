@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, JSON, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Boolean,ForeignKey,func, result_tuple
 from sqlalchemy.sql import func
 from .database import Base
 
@@ -25,9 +25,22 @@ class AuditLog(Base):
     details = Column(JSON, nullable=True)
 class FlowExecutionHistory(Base):
     __tablename__ = "flow_execution_history"
-    id = Column(Integer, primary_key=True)
-    flow_id_str = Column(String, index=True) # L'ID del flusso eseguito (es. "17-1")
+
+    id = Column(Integer, primary_key=True, index=True)
+    flow_id_str = Column(String, index=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
-    status = Column(String) # Es. "Success", "Failed", "Warning"
+    status = Column(String)  # "Success" / "Failed"
     duration_seconds = Column(Integer)
-    details = Column(JSON, nullable=True) # Dettagli extr
+    log_key = Column(String, unique=True, index=True)  # serve per collegare i dettagli
+    details = Column(JSON, nullable=True)
+
+
+class FlowExecutionDetail(Base):
+    __tablename__ = "flow_execution_detail"
+
+    id = Column(Integer, primary_key=True, index=True)
+    log_key = Column(String, index=True)
+    element_id = Column(String)
+    result = Column(String)
+    error_lines = Column(Text)  # salva come JSON o testo multilinea
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())  # <-- aggiunto

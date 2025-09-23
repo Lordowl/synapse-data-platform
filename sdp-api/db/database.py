@@ -1,8 +1,8 @@
-# db/database.py
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from core.config import settings
+from db import models  # assicurati di importare tutti i modelli
 
 engine = None
 SessionLocal = None
@@ -20,7 +20,10 @@ def init_db(db_url: str = None):
         connect_args={"check_same_thread": False} if db_url.startswith("sqlite") else {}
     )
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
+    
+    # CREA TUTTE LE TABELLE DEFINITE NEI MODELS
+    Base.metadata.create_all(bind=engine)
+    
 def get_db():
     if SessionLocal is None:
         raise RuntimeError("Database non inizializzato. Chiama prima init_db(path).")

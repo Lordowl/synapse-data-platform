@@ -1,6 +1,6 @@
 // src/components/Ingest/Ingest.jsx
 import React, { useState, useMemo, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "react-toastify";
 import apiClient from "../api/apiClient";
 import { useAppContext } from "../context/AppContext";
@@ -78,6 +78,7 @@ const weekOptions = [
   { value: "51", label: "Settimana 51" },
   { value: "52", label: "Settimana 52" },
 ];
+
 const currentYear = new Date().getFullYear();
 const yearOptions = Array.from({ length: 2 }, (_, i) => currentYear - i).map(
   (year) => ({ value: year.toString(), label: year.toString() })
@@ -99,63 +100,84 @@ const getStatusBadgeColor = (status) => {
       return "bg-gray-100 text-gray-700";
   }
 };
+
 const getLogLevelClass = (level) => {
   if (!level || typeof level !== "string") return "log-level-debug";
   switch (level.toLowerCase()) {
     case "error":
+    case "failed":
       return "log-level-error";
     case "warning":
       return "log-level-warning";
     case "info":
       return "log-level-info";
+    case "success":
+      return "log-level-success";
     default:
       return "log-level-debug";
   }
 };
 
+// --- Funzione per mappare il log del backend al formato frontend ---
+const mapBackendLogToFrontend = (backendLog, flows) => {
+  // Cerca il flusso che ha originalId uguale a element_id
+  const flow = flows.find((f) => f.originalId === backendLog.element_id);
+
+  return {
+    id: backendLog.id,
+    timestamp: backendLog.timestamp,
+    flowId: backendLog.element_id, // conserva element_id
+    flowName: flow?.name || backendLog.element_id, // nome leggibile
+    message:
+      backendLog.details?.message ||
+      `Esecuzione flusso ${backendLog.element_id}`,
+    level:
+      backendLog.status?.toLowerCase() === "success"
+        ? "success"
+        : backendLog.status?.toLowerCase() === "failed"
+        ? "error"
+        : "info",
+    details: backendLog.details
+      ? JSON.stringify(backendLog.details, null, 2)
+      : null,
+  };
+};
+
+
 // --- Sotto-Componente per il Tab Esecuzione Flussi ---
 function ExecutionTabContent({
-  // Dati da visualizzare (già filtrati e ordinati)
   filteredAndSortedFlows,
-
-  // Dati e funzioni per la selezione
   selectedFlows,
   handleSelectFlow,
   handleSelectAllFlows,
-
-  // Dati e funzioni per l'esecuzione
   isExecuting,
   handleExecuteSelectedFlows,
-
-  // Dati e funzioni per i parametri generali
   generalParams,
   handleGeneralParamChange,
-
-  // Dati e funzioni per l'ordinamento della tabella
   sortConfig,
   requestSort,
   getSortIcon,
 }) {
-  // Funzione helper per il colore delle righe (rimane qui perché è solo di visualizzazione)
-  const getRowColorByResult = (resultStatus) => {
-    if (!resultStatus) return "row-color-default";
-    switch (resultStatus.toLowerCase()) {
-      case "success":
-        return "row-color-success";
-      case "failed":
-        return "row-color-failed";
-      case "warning":
-        return "row-color-warning";
-      case "running":
-        return "row-color-running";
-      default:
-        return "row-color-default";
-    }
-  };
+ const getRowColorByResult = (resultStatus) => {
+  if (!resultStatus) return "row-color-default";
+  switch (resultStatus.toLowerCase()) {
+    case "success":
+      return "row-color-success";
+    case "failed":
+      return "row-color-failed";
+    case "warning":
+      return "row-color-warning";
+    case "running":
+      return "row-color-running";
+    case "n/a":
+      return "row-color-na"; // definisci questa classe nel CSS
+    default:
+      return "row-color-default";
+  }
+};
 
   return (
     <div className="tab-content-padding">
-      {/* SEZIONE SUPERIORE CON IL PULSANTE DI ESECUZIONE */}
       <div className="ingest-section-header execution-tab-header">
         <div className="ingest-section-header-title-group">
           <Filter className="ingest-section-icon" />
@@ -170,7 +192,7 @@ function ExecutionTabContent({
         >
           {isExecuting ? (
             <>
-              <RefreshCw className="btn-icon-md animate-spin-css" />{" "}
+              <RefreshCw className="btn-icon-md animate-spin-css" />
               Esecuzione...
             </>
           ) : (
@@ -181,9 +203,6 @@ function ExecutionTabContent({
         </button>
       </div>
 
-      {/* LA BARRA DEI FILTRI È STATA SPOSTATA FUORI DA QUESTO COMPONENTE */}
-
-      {/* TABELLA CHE MOSTRA I DATI GIÀ PRONTI */}
       <div className="ingest-table-wrapper">
         <table className="ingest-table">
           <thead>
@@ -214,7 +233,7 @@ function ExecutionTabContent({
                 Package {getSortIcon("package")}
               </th>
               <th onClick={() => !isExecuting && requestSort("id")}>
-                ID Univoco {getSortIcon("id")}
+                ID -SEQ {getSortIcon("id")}
               </th>
               <th onClick={() => !isExecuting && requestSort("lastRun")}>
                 Ultima Esecuzione {getSortIcon("lastRun")}
@@ -222,6 +241,7 @@ function ExecutionTabContent({
               <th onClick={() => !isExecuting && requestSort("result")}>
                 Risultato {getSortIcon("result")}
               </th>
+              <th>Dettagli</th>
             </tr>
           </thead>
           <tbody>
@@ -241,7 +261,13 @@ function ExecutionTabContent({
                     disabled={isExecuting}
                   />
                 </td>
-                <td data-label="Nome Flusso">{flow.name}</td>
+                <td data-label="Flusso">
+                  {flow.name ? (
+                    flow.name
+                  ) : (
+                    <span className="muted-text italic">{flow.id}</span>
+                  )}
+                </td>
                 <td data-label="Package">{flow.package}</td>
                 <td data-label="ID Univoco">
                   <span className="muted-text">{flow.id}</span>
@@ -260,11 +286,18 @@ function ExecutionTabContent({
                     {flow.result || "N/A"}
                   </span>
                 </td>
+                <td data-label="Dettagli">
+                  {flow.detail ? (
+                    <pre className="flow-detail-content">{flow.detail}</pre>
+                  ) : (
+                    <span className="muted-text italic">Nessun dettaglio</span>
+                  )}
+                </td>
               </tr>
             ))}
             {filteredAndSortedFlows.length === 0 && (
               <tr>
-                <td colSpan="6" className="text-center muted-text">
+                <td colSpan="7" className="text-center muted-text">
                   Nessun flusso dati trovato per i filtri selezionati.
                 </td>
               </tr>
@@ -295,27 +328,26 @@ function LogsTabContent({
   const anyLogActionLoading =
     isRefreshingLogs || isClearingLogs || isDownloadingLogs;
 
-  // Stato per tenere traccia dei log espansi (ID del log espanso, o null)
   const [expandedLogId, setExpandedLogId] = useState(null);
 
   const toggleLogDetails = (logId) => {
     setExpandedLogId((prevId) => (prevId === logId ? null : logId));
   };
 
-  // Funzione per ottenere la classe di colore della riga basata sul livello del log
   const getLogRowColorClass = (level) => {
     if (!level || typeof level !== "string") return "log-row-default";
     switch (level.toLowerCase()) {
-      case "success": // Assumendo che tu abbia log con livello 'SUCCESS'
-        return "log-row-success"; // Verde
+      case "success":
+        return "log-row-success";
       case "error":
-        return "log-row-error"; // Rosso
+      case "failed":
+        return "log-row-error";
       case "warning":
-        return "log-row-warning"; // Giallo
+        return "log-row-warning";
       case "info":
-        return "log-row-info"; // Blu chiaro o default
+        return "log-row-info";
       case "debug":
-        return "log-row-debug"; // Grigio o default
+        return "log-row-debug";
       default:
         return "log-row-default";
     }
@@ -343,11 +375,11 @@ function LogsTabContent({
           disabled={anyLogActionLoading}
         >
           <option value="all">Tutti i Livelli</option>
-          <option value="success">Success</option>{" "}
-          {/* Aggiunto Success se lo usi */}
+          <option value="success">Success</option>
           <option value="info">Info</option>
           <option value="warning">Warning</option>
           <option value="error">Error</option>
+          <option value="failed">Failed</option>
           <option value="debug">Debug</option>
         </select>
         <button
@@ -370,11 +402,7 @@ function LogsTabContent({
       </div>
 
       <div className="ingest-log-table-wrapper">
-        {" "}
-        {/* Nuovo wrapper per lo scroll */}
         <table className="ingest-log-table">
-          {" "}
-          {/* Nuova classe per la tabella log */}
           <thead>
             <tr>
               <th style={{ width: "180px" }}>Timestamp</th>
@@ -394,7 +422,7 @@ function LogsTabContent({
                     )} ${expandedLogId === log.id ? "expanded" : ""}`}
                   >
                     <td data-label="Timestamp">
-                      {new Date(log.timestamp).toLocaleString()}
+                      {new Date(log.timestamp).toLocaleString("it-IT")}
                     </td>
                     <td data-label="Livello">
                       <span
@@ -407,8 +435,8 @@ function LogsTabContent({
                     </td>
                     <td data-label="Flusso">
                       {log.flowId &&
-                      flows.find((f) => f.id === log.flowId)?.name ? (
-                        flows.find((f) => f.id === log.flowId)?.name
+                      flows.find((f) => f.originalId === log.flowId)?.name ? (
+                        flows.find((f) => f.originalId === log.flowId)?.name
                       ) : log.flowId ? (
                         <span className="muted-text italic">
                           {log.flowId} (ID non trovato)
@@ -431,7 +459,7 @@ function LogsTabContent({
                       {log.details && (
                         <button
                           onClick={() => toggleLogDetails(log.id)}
-                          className="btn btn-outline btn-sm log-details-btn" // btn-sm per un bottone più piccolo
+                          className="btn btn-outline btn-sm log-details-btn"
                           aria-expanded={expandedLogId === log.id}
                           disabled={anyLogActionLoading}
                         >
@@ -440,7 +468,6 @@ function LogsTabContent({
                           ) : (
                             <ChevronDown size={16} />
                           )}
-                          {/* Testo rimosso per più spazio, l'icona dovrebbe bastare */}
                         </button>
                       )}
                     </td>
@@ -512,15 +539,18 @@ function LogsTabContent({
     </div>
   );
 }
+
 // --- Componente Principale Ingest ---
 function Ingest() {
   const navigate = useNavigate();
-  const { metadataFilePath } = useAppContext();
+  const location = useLocation();
+  const metadataFilePath = location.state?.metadataFilePath;
   const [activeTab, setActiveTab] = useState("execution");
   const [isLoading, setIsLoading] = useState(true);
-  const [flowsData, setFlowsData] = useState([]); // Inizia vuoto
-  const [logsData, setLogsData] = useState([]); // Inizia vuoto
+  const [flowsData, setFlowsData] = useState([]);
+  const [logsData, setLogsData] = useState([]);
   const [isUpdatingFlows, setIsUpdatingFlows] = useState(false);
+
   // Stati per filtri e interazioni
   const [selectedFlows, setSelectedFlows] = useState(new Set());
   const [searchTerm, setSearchTerm] = useState("");
@@ -539,94 +569,114 @@ function Ingest() {
   const [logLevelFilter, setLogLevelFilter] = useState("all");
 
   const [isExecutingFlows, setIsExecutingFlows] = useState(false);
-
   const [isRefreshingLogs, setIsRefreshingLogs] = useState(false);
   const [isClearingLogs, setIsClearingLogs] = useState(false);
   const [isDownloadingLogs, setIsDownloadingLogs] = useState(false);
 
-  // in src/components/Ingest/Ingest.jsx
+  // Funzione per caricare i dati iniziali
+  const fetchInitialData = async () => {
+    setIsLoading(true);
+    try {
+      console.log("-> Avvio aggiornamento automatico flussi da Excel...");
+      console.log("Invio file_path al backend:", metadataFilePath);
+
+      await apiClient.post("/tasks/update-flows-from-excel", {
+        file_path: metadataFilePath,
+      });
+      console.log("-> Aggiornamento da Excel completato sul backend.");
+      toast.info("Fonte dati aggiornata dall'Excel.");
+
+      console.log("-> Caricamento flussi e storico...");
+      const [flowsResponse, historyResponse] = await Promise.all([
+        apiClient.get("/flows"),
+        apiClient.get("/flows/history"), // Usa FlowExecutionDetail per lo storico
+      ]);
+
+      const staticFlows = flowsResponse.data;
+      const historyMap = historyResponse.data;
+
+      // DEBUG: Vediamo cosa restituisce il backend
+      console.log("🔍 DEBUG - staticFlows:", staticFlows?.slice(0, 2));
+      console.log("🔍 DEBUG - historyMap:", historyMap);
+      console.log("🔍 DEBUG - historyMap keys:", Object.keys(historyMap));
+      console.log("🔍 DEBUG - historyMap length:", Object.keys(historyMap).length);
+      
+      if (!Array.isArray(staticFlows)) {
+        throw new Error("La risposta dei flussi non è valida.");
+      }
+
+      console.log("-> Unione dati per la visualizzazione...");
+      const combinedFlows = staticFlows.map((flow) => {
+        const flowId = flow.ID; // Usa solo la prima parte dell'ID
+        const executionHistory = historyMap[flowId] || {};
+
+        return {
+          id: `${flow.ID}-${flow.SEQ || "0"}`,
+          originalId: flow.ID,
+          originalSeq: flow.SEQ || "0",
+          name: flow["Filename out"],
+          package: flow["Package"],
+          year: new Date().getFullYear(),
+          lastRun: executionHistory.timestamp || null,
+          result: executionHistory.result || "N/A",
+          detail: executionHistory.error_lines || "",
+          duration: executionHistory.duration || null,
+        };
+      });
+
+      console.log("Dati combinati pronti:", combinedFlows);
+      setFlowsData(combinedFlows);
+      toast.success("Dati caricati e pronti.");
+    } catch (error) {
+      console.error(
+        "Errore nel processo di caricamento e aggiornamento:",
+        error
+      );
+      toast.error(
+        error.response?.data?.detail ||
+          "Un'operazione è fallita durante il caricamento."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Funzione per caricare i log dal backend (usa FlowExecutionHistory)
+  const fetchLogs = async () => {
+    try {
+      const response = await apiClient.get("/flows/logs");
+      const backendLogs = response.data;
+
+      if (!Array.isArray(backendLogs)) throw new Error("Logs non validi");
+
+      const frontendLogs = backendLogs.map((log) =>
+        mapBackendLogToFrontend(log, flowsData)
+      );
+
+      setLogsData(frontendLogs);
+    } catch (error) {
+      console.error("Errore nel caricamento dei log:", error);
+      toast.error("Errore nel caricamento dei log di esecuzione");
+      setLogsData([]);
+    }
+  };
 
   useEffect(() => {
-    const fetchInitialData = async () => {
-      setIsLoading(true); // Inizia a mostrare lo spinner
-
-      try {
-        // ==========================================================
-        // ---    STEP 1: AGGIORNAMENTO AUTOMATICO DALL'EXCEL     ---
-        // ==========================================================
-        // Prima di caricare i dati, diciamo al backend di rigenerare il JSON dall'Excel.
-        // Usiamo await per bloccare l'esecuzione finché non è completo.
-        console.log("-> Avvio aggiornamento automatico flussi da Excel...");
-        await apiClient.post("/tasks/update-flows-from-excel", {
-          file_path: metadataFilePath,
-        });
-        console.log("-> Aggiornamento da Excel completato sul backend.");
-        toast.info("Fonte dati aggiornata dall'Excel.");
-
-        // ==========================================================
-        // --- STEP 2: CARICAMENTO DEI DATI AGGIORNATI E STORICO ---
-        // ==========================================================
-        // Ora che il file flows.json è aggiornato, procediamo a caricarlo.
-        console.log("-> Caricamento flussi e storico...");
-        const [flowsResponse, historyResponse] = await Promise.all([
-          apiClient.get("/flows"),
-          apiClient.get("/flows/history"),
-        ]);
-
-        const staticFlows = flowsResponse.data;
-        const historyMap = historyResponse.data;
-
-        if (!Array.isArray(staticFlows)) {
-          throw new Error("La risposta dei flussi non è valida.");
-        }
-
-        // ==========================================================
-        // ---          STEP 3: UNIONE E VISUALIZZAZIONE          ---
-        // ==========================================================
-        console.log("-> Unione dati per la visualizzazione...");
-        const combinedFlows = staticFlows.map((flow) => {
-          const flowId = `${flow.ID}-${flow.SEQ || "0"}`;
-          const executionHistory = historyMap[flowId] || {};
-
-          return {
-            id: flowId,
-            name: flow["Filename out"],
-            package: flow["Package"],
-
-            year: new Date().getFullYear(),
-            lastRun: executionHistory.lastRun || null,
-            result: executionHistory.result || "N/A",
-            duration: executionHistory.duration || null,
-            lastWeekExecution: null,
-          };
-        });
-
-        console.log("Dati combinati pronti:", combinedFlows);
-        setFlowsData(combinedFlows);
-        toast.success("Dati caricati e pronti.");
-      } catch (error) {
-        // Questo 'catch' catturerà qualsiasi errore in tutta la catena
-        console.error(
-          "Errore nel processo di caricamento e aggiornamento:",
-          error
-        );
-        toast.error(
-          error.response?.data?.detail ||
-            "Un'operazione è fallita durante il caricamento."
-        );
-      } finally {
-        // In ogni caso, il caricamento è terminato
-        setIsLoading(false);
-      }
-    };
-
     fetchInitialData();
-  }, []); // L'array vuoto [] assicura che venga eseguito solo una volta all'apertura
+  }, []);
+
+  // Carica i log quando cambia activeTab o quando i flussi sono caricati
+  useEffect(() => {
+    if (activeTab === "logs" && flowsData.length > 0) {
+      fetchLogs();
+    }
+  }, [activeTab, flowsData]);
 
   const flowPackages = useMemo(
-    () => ["all", ...new Set(flowsData.map((f) => f.package).filter(Boolean))], // Usa .package
+    () => ["all", ...new Set(flowsData.map((f) => f.package).filter(Boolean))],
     [flowsData]
   );
+
   const flowStatuses = useMemo(
     () => ["all", ...new Set(flowsData.map((f) => f.result || "N/A"))],
     [flowsData]
@@ -643,6 +693,7 @@ function Ingest() {
       return nS;
     });
   };
+
   const handleSelectAllFlows = (e) => {
     if (e.target.checked) {
       setSelectedFlows(new Set(filteredAndSortedFlows.map((f) => f.id)));
@@ -667,56 +718,43 @@ function Ingest() {
       (flow) =>
         (flow.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           flow.package?.toLowerCase().includes(searchTerm.toLowerCase())) &&
-        (packageFilter === "all" || flow.package === packageFilter) && // Usa packageFilter
+        (packageFilter === "all" || flow.package === packageFilter) &&
         (statusFilter === "all" || (flow.result || "N/A") === statusFilter)
     );
   }, [flowsData, searchTerm, packageFilter, statusFilter]);
-
-  // in src/components/Ingest/Ingest.jsx
 
   const filteredAndSortedFlows = useMemo(() => {
     let sortableFlows = [...filteredFlows];
 
     if (sortConfig.key) {
       sortableFlows.sort((a, b) => {
-        // Estraiamo i valori da ordinare
         const aValue = a[sortConfig.key];
         const bValue = b[sortConfig.key];
 
-        // --- NUOVA CONDIZIONE SPECIFICA PER L'ORDINAMENTO NUMERICO DELL'ID ---
         if (sortConfig.key === "id") {
-          // Estraiamo la parte numerica dall'ID (es. da "17-1" prendiamo 17)
-          // Usiamo parseInt per convertire la stringa in un numero.
           const numA = parseInt(a.originalId, 10) || 0;
           const numB = parseInt(b.originalId, 10) || 0;
 
-          // Se gli ID principali sono diversi, ordiniamo per quelli
           if (numA !== numB) {
             return numA - numB;
           }
 
-          // Se gli ID principali sono uguali, ordiniamo per la sequenza (SEQ)
           const seqA = parseInt(a.originalSeq, 10) || 0;
           const seqB = parseInt(b.originalSeq, 10) || 0;
           return seqA - seqB;
         }
 
-        // --- Logica esistente per gli altri tipi di dato ---
-
-        // 1. Per le date (es. 'lastRun')
         if (sortConfig.key === "lastRun") {
           const dateA = aValue ? new Date(aValue).getTime() : 0;
           const dateB = bValue ? new Date(bValue).getTime() : 0;
           return dateA - dateB;
         }
 
-        // 2. Per tutte le altre stringhe
         const strA = (aValue || "").toString().toLowerCase();
         const strB = (bValue || "").toString().toLowerCase();
-        return strA.localeCompare(strB); // localeCompare è leggermente meglio per le stringhe
+        return strA.localeCompare(strB);
       });
 
-      // Applica la direzione (ascendente o discendente)
       if (sortConfig.direction === "descending") {
         sortableFlows.reverse();
       }
@@ -732,6 +770,7 @@ function Ingest() {
     }
     setSortConfig({ key, direction: dir });
   };
+
   const getSortIcon = (key) => {
     if (sortConfig.key !== key)
       return <ChevronsUpDown className="inline-icon" />;
@@ -742,11 +781,7 @@ function Ingest() {
     );
   };
 
-  const simulateApiCall = (duration = 1500) =>
-    new Promise((resolve) => setTimeout(resolve, duration));
-
   const handleExecuteSelectedFlows = async () => {
-    // Controllo selezione flussi
     if (selectedFlows.size === 0) {
       toast.warn("Nessun flusso selezionato per l'esecuzione.");
       return;
@@ -755,7 +790,6 @@ function Ingest() {
     setIsExecutingFlows(true);
 
     try {
-      // Filtra gli oggetti completi dei flussi selezionati
       const flowsToRun = flowsData.filter((f) => selectedFlows.has(f.id));
 
       if (flowsToRun.length === 0) {
@@ -763,21 +797,19 @@ function Ingest() {
         return;
       }
 
-      // --- CREAZIONE PAYLOAD CORRETTO ---
-const executionPayload = {
-  flows: flowsToRun.map((f) => {
-    const mainId = f.id.split("-")[0]; // prendi solo la parte prima del trattino
-    return {
-      id: mainId,
-      name: f.name,
-    };
-  }),
-  params: generalParams,
-};
+      const executionPayload = {
+        flows: flowsToRun.map((f) => {
+          const mainId = f.id.split("-")[0];
+          return {
+            id: mainId,
+            name: f.name,
+          };
+        }),
+        params: generalParams,
+      };
 
       console.log("Payload inviato al backend:", executionPayload);
 
-      // POST verso il backend
       const response = await apiClient.post(
         "/tasks/execute-flows",
         executionPayload
@@ -785,9 +817,12 @@ const executionPayload = {
 
       toast.success(response.data.message || "Esecuzione completata!");
 
-      // Ricarica dati aggiornati (funzione fetchInitialData deve esistere)
-      if (typeof fetchInitialData === "function") {
-        fetchInitialData();
+      // Ricarica i dati dopo l'esecuzione
+      await fetchInitialData();
+
+      // Se siamo nel tab logs, ricarica anche i log
+      if (activeTab === "logs") {
+        await fetchLogs();
       }
     } catch (error) {
       console.error("Errore durante l'esecuzione:", error);
@@ -795,7 +830,7 @@ const executionPayload = {
         error.response?.data?.detail || "L'esecuzione dei flussi è fallita."
       );
     } finally {
-      setSelectedFlows(new Set()); // Deseleziona tutto
+      setSelectedFlows(new Set());
       setIsExecutingFlows(false);
     }
   };
@@ -810,7 +845,7 @@ const executionPayload = {
             ? log.message.toLowerCase().includes(searchTermLower)
             : false;
         const flow = log.flowId
-          ? flowsData.find((f) => f.id === log.flowId)
+          ? flowsData.find((f) => f.originalId === log.flowId)
           : undefined;
         const flowName = flow ? flow.name : undefined;
         const flowNameMatch =
@@ -830,60 +865,70 @@ const executionPayload = {
 
   const handleRefreshLogs = async () => {
     setIsRefreshingLogs(true);
-    await simulateApiCall(1000);
-    const flowExample = flowsData[Math.floor(Math.random() * flowsData.length)];
-    setLogsData((prevLogs) =>
-      [
-        {
-          id: `log_refresh_${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          flowId: flowExample?.id,
-          message: `Nuovo evento di log generato per ${
-            flowExample?.name || "sistema"
-          }.`,
-          level: "DEBUG",
-        },
-        ...prevLogs,
-      ].slice(0, 200)
-    );
-    showToast("Log aggiornati con successo.", "info");
-    setIsRefreshingLogs(false);
+    try {
+      await fetchLogs();
+      toast.success("Log aggiornati con successo.");
+    } catch (error) {
+      toast.error("Errore nell'aggiornamento dei log.");
+    } finally {
+      setIsRefreshingLogs(false);
+    }
   };
+
   const handleClearLogs = async () => {
     if (
       window.confirm("Sei sicuro di voler pulire tutti i log di esecuzione?")
     ) {
       setIsClearingLogs(true);
-      await simulateApiCall(1000);
-      setLogsData([]);
-      showToast("Log puliti con successo.", "success");
-      setIsClearingLogs(false);
+      try {
+        // Chiamata API per pulire i log dal backend
+        await apiClient.delete("/flows/logs");
+        setLogsData([]);
+        toast.success("Log puliti con successo.");
+      } catch (error) {
+        console.error("Errore nella pulizia dei log:", error);
+        toast.error("Errore nella pulizia dei log.");
+      } finally {
+        setIsClearingLogs(false);
+      }
     }
   };
+
   const handleDownloadLogs = async () => {
     setIsDownloadingLogs(true);
-    showToast("Preparazione download log...", "info");
-    await simulateApiCall(2000);
-    const logData = filteredLogs
-      .map(
-        (log) =>
-          `${new Date(log.timestamp).toLocaleString()} [${
-            log.level?.toUpperCase() || "N/D"
-          }] ${log.message || ""}`
-      )
-      .join("\n");
-    const blob = new Blob([logData], { type: "text/plain;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", "ingest_logs.txt");
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    showToast("Download avviato.", "success");
-    setIsDownloadingLogs(false);
+    try {
+      toast.info("Preparazione download log...");
+
+      const logData = filteredLogs
+        .map(
+          (log) =>
+            `${new Date(log.timestamp).toLocaleString("it-IT")} [${
+              log.level?.toUpperCase() || "N/D"
+            }] ${log.flowId || "N/A"}: ${log.message || ""}`
+        )
+        .join("\n");
+
+      const blob = new Blob([logData], { type: "text/plain;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute(
+        "download",
+        `ingest_logs_${new Date().toISOString().split("T")[0]}.txt`
+      );
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success("Download completato.");
+    } catch (error) {
+      console.error("Errore nel download dei log:", error);
+      toast.error("Errore nel download dei log.");
+    } finally {
+      setIsDownloadingLogs(false);
+    }
   };
 
   const TABS = [
@@ -902,9 +947,6 @@ const executionPayload = {
   ];
 
   const renderActiveTabContent = () => {
-    // --- 1. CONTROLLO DELLO STATO DI CARICAMENTO ---
-    // Se stiamo caricando i dati iniziali dei flussi, mostriamo un messaggio
-    // e non renderizziamo nessuno dei due tab.
     if (isLoading) {
       return (
         <div className="tab-content-padding loading-container">
@@ -914,15 +956,10 @@ const executionPayload = {
       );
     }
 
-    // --- 2. SWITCH PER DECIDERE QUALE TAB MOSTRARE ---
-    // Una volta terminato il caricamento, decidiamo quale componente renderizzare
-    // in base allo stato 'activeTab'.
     switch (activeTab) {
       case "execution":
-        // Se la tab attiva è "execution", renderizziamo il componente ExecutionTabContent
         return (
           <ExecutionTabContent
-            // Gli passiamo tutte le props di cui ha bisogno per funzionare
             selectedFlows={selectedFlows}
             handleSelectFlow={handleSelectFlow}
             handleSelectAllFlows={handleSelectAllFlows}
@@ -943,10 +980,8 @@ const executionPayload = {
           />
         );
       case "logs":
-        // Se la tab attiva è "logs", renderizziamo il componente LogsTabContent
         return (
           <LogsTabContent
-            // Gli passiamo tutte le props di cui ha bisogno
             logs={logsData}
             flows={flowsData}
             logSearchTerm={logSearchTerm}
@@ -963,7 +998,6 @@ const executionPayload = {
           />
         );
       default:
-        // Se per qualche motivo activeTab non corrisponde a nessun caso, non mostriamo nulla.
         return null;
     }
   };
@@ -973,6 +1007,7 @@ const executionPayload = {
 
   return (
     <div className="ingest-container">
+  
       <div className="ingest-content-wrapper">
         <header className="ingest-header-container">
           <div className="ingest-header">
@@ -1023,10 +1058,6 @@ const executionPayload = {
           </div>
         </nav>
 
-        {/* ========================================================= */}
-        {/* ---       BARRA DEI FILTRI SPOSTATA QUI                 --- */}
-        {/* ========================================================= */}
-        {/* Mostra i filtri solo se non stiamo caricando e se siamo nel tab "execution" */}
         {!isLoading && activeTab === "execution" && (
           <div className="ingest-filters-bar">
             <select
@@ -1058,7 +1089,6 @@ const executionPayload = {
                   </option>
                 ))}
             </select>
-            {/* Dropdown Anno */}
             <select
               id="year-select"
               className="form-select form-select-sm"
@@ -1073,7 +1103,6 @@ const executionPayload = {
                 </option>
               ))}
             </select>
-
             <select
               className="form-select"
               value={statusFilter}
@@ -1097,4 +1126,5 @@ const executionPayload = {
     </div>
   );
 }
+
 export default Ingest;

@@ -243,7 +243,7 @@
   text-overflow: ellipsis;
 }
 
-/* Colonna 4: ID Univoco */
+/* Colonna 4: ID -Seq */
 .ingest-table th:nth-child(4),
 .ingest-table td:nth-child(4) {
   width: 15%;
@@ -319,3 +319,58 @@
 .animate-spin-css { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .btn-disabled-visual { opacity: 0.7; cursor: wait; }
+
+td[data-label="Dettagli"],
+th:has-text("Dettagli") {
+  min-width: 200px;   /* puoi aumentare se serve più spazio */
+  max-width: 400px;   /* evita che esploda in larghezza */
+  text-align: left;
+  vertical-align: top;
+}
+/* Colonna 7: Dettagli */
+.ingest-table th:nth-child(7),
+.ingest-table td:nth-child(7) {
+  width: 25%;
+  min-width: 200px;
+  max-width: 400px;
+  text-align: left;
+  vertical-align: top;
+  white-space: normal;
+  word-wrap: break-word;
+}
+/* Stile del contenuto dei dettagli */
+.flow-detail-content {
+  white-space: pre-wrap;   /* rispetta gli a capo */
+  word-wrap: break-word;   /* manda a capo se troppo lungo */
+  max-height: 120px;       /* spazio massimo visibile */
+  overflow-y: auto;        /* scroll verticale se lungo */
+  padding: 6px;
+  background: #f9f9f9;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.row-color-success {
+  background-color: #d4edda;  /* verde chiaro */
+  color: #155724;
+}
+
+.row-color-failed {
+  background-color: #f8d7da;  /* rosso chiaro */
+  color: #721c24;
+}
+
+.row-color-warning {
+  background-color: #fff3cd;  /* giallo chiaro */
+  color: #856404;
+}
+
+.row-color-running {
+  background-color: #d1ecf1;  /* azzurro chiaro */
+  color: #0c5460;
+}
+
+.row-color-na {
+  background-color: #f0f0f0;  /* grigio chiaro */
+  color: #888;
+}

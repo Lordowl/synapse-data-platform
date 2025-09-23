@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
 import "./Login.css";
@@ -6,7 +6,8 @@ import "./Login.css";
 function Login({ setIsAuthenticated }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [selectedFolder, setSelectedFolder] = useState(""); 
+  const [selectedFolder, setSelectedFolder] = useState("");
+  const [oldFolder, setOldFolder] = useState("");  // <-- dal backend
   const [apiAddress, setApiAddress] = useState("http://127.0.0.1");
   const [apiPort, setApiPort] = useState("8000");
   const [error, setError] = useState("");
@@ -14,6 +15,32 @@ function Login({ setIsAuthenticated }) {
   const navigate = useNavigate();
 
   const baseURL = `${apiAddress}:${apiPort}/api/v1`;
+
+  // Al mount recuperiamo il folder dal backend
+  useEffect(() => {
+  const fetchOldFolder = async () => {
+    try {
+      const token = sessionStorage.getItem("accessToken") || "";
+      const response = await fetch(`${baseURL}/folder/current`, {
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (data?.folder_path) {
+        setOldFolder(data.folder_path);
+        setSelectedFolder(data.folder_path); // 👈 imposto direttamente il value
+      }
+    } catch (err) {
+      console.error("Errore fetch old folder:", err);
+    }
+  };
+
+  fetchOldFolder();
+}, [baseURL]);
 
   const handleFolderSelect = async () => {
     const selected = await open({
@@ -27,13 +54,12 @@ function Login({ setIsAuthenticated }) {
     const folderPath = Array.isArray(selected) ? selected[0] : selected;
     setSelectedFolder(folderPath);
 
-    // Invia il path tramite POST appena viene selezionato
     try {
       const response = await fetch(`${baseURL}/folder/update`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${sessionStorage.getItem("accessToken") || ""}`
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${sessionStorage.getItem("accessToken") || ""}`
         },
         body: JSON.stringify({ folder_path: folderPath })
       });
@@ -56,16 +82,16 @@ function Login({ setIsAuthenticated }) {
     setLoading(true);
 
     const formData = new URLSearchParams();
-    formData.append('username', username);
-    formData.append('password', password);
+    formData.append("username", username);
+    formData.append("password", password);
 
     try {
       const response = await fetch(`${baseURL}/auth/token`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          "Content-Type": "application/x-www-form-urlencoded",
         },
-        body: formData.toString()
+        body: formData.toString(),
       });
 
       const data = await response.json();
@@ -81,18 +107,16 @@ function Login({ setIsAuthenticated }) {
       setIsAuthenticated(true);
       navigate("/");
 
-      // Se il folder era già selezionato prima del login, lo inviamo subito
       if (selectedFolder) {
         await fetch(`${baseURL}/folder/update`, {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
           },
-          body: JSON.stringify({ folder_path: selectedFolder })
+          body: JSON.stringify({ folder_path: selectedFolder }),
         });
       }
-
     } catch (err) {
       console.error("Login Error:", err);
       setError(err.message || "Si è verificato un errore.");
@@ -105,14 +129,12 @@ function Login({ setIsAuthenticated }) {
     <div className="login-page">
       <h2 className="title">Welcome back!</h2>
       <form onSubmit={handleSubmit}>
-
         <div className="api-connection">
           <label htmlFor="apiFolder">API Folder</label>
           <div className="api-address-port">
             <div className="input-group">
               <input
                 type="text"
-                placeholder="Select API Folder"
                 id="apiFolder"
                 value={selectedFolder}
                 readOnly
@@ -147,7 +169,7 @@ function Login({ setIsAuthenticated }) {
         {error && <p className="error-message">{error}</p>}
 
         <button type="submit" disabled={loading}>
-          {loading ? 'Accesso in corso...' : 'Login'}
+          {loading ? "Accesso in corso..." : "Login"}
         </button>
       </form>
     </div>
