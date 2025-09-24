@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
 import apiClient from "../api/apiClient";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { invoke } from "@tauri-apps/api/tauri"; // Importa invoke
+import { invoke } from "@tauri-apps/api/core"
 import {
   Settings as SettingsIcon,
   Users,
