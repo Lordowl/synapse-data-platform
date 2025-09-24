@@ -59,18 +59,21 @@ class ExecutionRequest(BaseModel):
 # --- Router FastAPI ---
 router = APIRouter(tags=["Tasks"])
 
+
 def clean_log_line(line):
     """
     Rimuove timestamp iniziale e livello (ERROR/WARN/INFO) da una riga di log.
     Funziona anche se ci sono spazi multipli o tab.
     """
     # Cerca la prima occorrenza di ERROR/WARNING/WARN/INFO
-    match = re.search(r'\b(ERROR|WARNING|WARN|INFO)\b', line, re.IGNORECASE)
+    match = re.search(r"\b(ERROR|WARNING|WARN|INFO)\b", line, re.IGNORECASE)
     if match:
         # Prendi tutto ciò che segue la keyword
-        return line[match.end():].strip()
+        return line[match.end() :].strip()
     else:
         return line.strip()
+
+
 # ----------------------------
 # Endpoint esecuzione flussi selezionati
 # -----------------------------
@@ -130,25 +133,35 @@ def trigger_update_flows_from_excel(
         raise HTTPException(
             status_code=500, detail=f"Errore imprevisto del server: {e}"
         )
+
 @router.post("/execute-flows", response_model=Dict)
 def execute_selected_flows(
     request: ExecutionRequest,
     db: Session = Depends(get_db),
-    current_user: models.User = Security(require_ingest_permission)
+    current_user: models.User = Security(require_ingest_permission),
 ):
-    # Verifica percorso folder base
+    logger.info(f"=== INIZIO ESECUZIONE FLOWS ===")
+    logger.info(f"User: {current_user.username if current_user else 'unknown'}")
+    logger.info(f"Flows richiesti: {[flow.id for flow in request.flows]}")
+    logger.info(f"Parametri: {request.params}")
+    
     folder_path = config_manager.get_setting("SETTINGS_PATH")
     if not folder_path:
-        raise HTTPException(status_code=500, detail="Folder base non configurato in settings_path")
+        logger.error("Folder base non configurato in settings_path")
+        raise HTTPException(500, "Folder base non configurato in settings_path")
 
     script_path = Path(folder_path) / "App" / "Ingestion" / "ingestion.ps1"
+    logger.info(f"Script path: {script_path}")
     if not script_path.is_file():
-        raise HTTPException(status_code=500, detail="File di esecuzione .ps1 non trovato.")
+        logger.error(f"File di esecuzione .ps1 non trovato: {script_path}")
+        raise HTTPException(500, "File di esecuzione .ps1 non trovato.")
 
-    # Prepara ID flussi (sostituisci / con -)
     flow_ids_str = " ".join(str(flow.id).replace("/", "-") for flow in request.flows)
-    log_key = f"exec_{int(time.time())}_{uuid.uuid4().hex}"
+    log_key = uuid.uuid4().hex[:8]
     start_time = time.time()
+    
+    logger.info(f"Flow IDs string: {flow_ids_str}")
+    logger.info(f"Log key generato: {log_key}")
 
     command_args = [
         "powershell.exe",
@@ -157,224 +170,249 @@ def execute_selected_flows(
         "-id", flow_ids_str,
         "-anno", str(request.params.get("selectedYear", "")),
         "-settimana", str(request.params.get("selectedWeek", "")),
-        "-log_key", log_key
+        "-log_key", log_key,
     ]
+    logger.info(f"Comando da eseguire: {' '.join(command_args)}")
 
+    def save_element_detail(element_id, buffer):
+        """Determina il risultato basandosi sull'ultima riga significativa e salva nel DB."""
+        logger.info(f"--- ANALISI ELEMENTO {element_id} ---")
+        logger.info(f"Buffer contiene {len(buffer)} righe:")
+        
+        # Debug: stampa tutto il buffer
+        for i, buf_line in enumerate(buffer):
+            logger.info(f"  Buffer[{i}]: {repr(buf_line.strip())}")
+        
+        last_line = ""
+        logger.info("Ricerca ultima riga significativa (dal fondo):")
+        
+        for i, prev_line in enumerate(reversed(buffer)):
+            prev_line_clean = prev_line.strip()
+            logger.debug(f"  Controllo riga {len(buffer)-i-1}: {repr(prev_line_clean)}")
+            
+            if not prev_line_clean:
+                logger.debug("    -> Riga vuota, skip")
+                continue
+                
+            upper_line = prev_line_clean.upper()
+            
+            # Salta righe di debug
+            if "DEBUG" in upper_line:
+                logger.debug("    -> Riga DEBUG, skip")
+                continue
+            
+            # Salta righe INFO vuote (solo "INFO" o "TIMESTAMP INFO")
+            line_parts = prev_line_clean.split()
+            if (upper_line.startswith("INFO") and len(line_parts) == 1) or \
+               (len(line_parts) == 2 and line_parts[1].upper() == "INFO"):
+                logger.debug("    -> Riga INFO vuota, skip")
+                continue
+                
+            # Salta righe che contengono solo timestamp + INFO senza contenuto significativo
+            if upper_line.startswith("INFO") and "INIZIO PROCESSO ELEMENTO" in upper_line:
+                logger.debug("    -> Riga inizio processo, skip")
+                continue
+                
+            last_line = prev_line_clean
+            logger.info(f"    -> TROVATA ultima riga significativa: {repr(last_line)}")
+            break
+
+        if not last_line:
+            logger.warning(f"Nessuna riga significativa trovata per elemento {element_id}")
+
+        # Determina il risultato in base al contenuto
+        upper_last_line = last_line.upper()
+        logger.info(f"Analisi contenuto riga (uppercase): {repr(upper_last_line)}")
+        
+        if "ERROR" in upper_last_line:
+            result = "Failed"
+            to_add = clean_log_line(last_line)
+            logger.info(f"    -> RISULTATO: Failed (trovato ERROR)")
+            logger.info(f"    -> Messaggio pulito: {repr(to_add)} (tipo: {type(to_add)})")
+        elif "WARNING" in upper_last_line or "WARN" in upper_last_line:
+            result = "Warning"  
+            to_add = clean_log_line(last_line)
+            logger.info(f"    -> RISULTATO: Warning (trovato WARNING/WARN)")
+            logger.info(f"    -> Messaggio pulito: {repr(to_add)} (tipo: {type(to_add)})")
+        else:
+            result = "Success"
+            to_add = ""
+            logger.info(f"    -> RISULTATO: Success (nessun errore/warning)")
+
+        logger.info(f"Elemento {element_id} - Risultato finale: {result} - Messaggio: {repr(to_add)}")
+
+        try:
+            crud.create_execution_detail(
+                db=db,
+                log_key=log_key,
+                element_id=element_id,
+                error_lines=[to_add] if to_add else [],  # Passa come lista
+                result=result,
+            )
+            logger.info(f"✓ Dettagli salvati nel DB per elemento {element_id}")
+            return 1
+        except Exception as e:
+            logger.error(f"✗ Errore nel salvare dettagli per elemento {element_id}: {e}")
+            return 0
+
+    elements_processed = 0
     try:
-        subprocess.run(
+        logger.info("=== ESECUZIONE SCRIPT POWERSHELL ===")
+        result = subprocess.run(
             command_args,
             capture_output=True,
             text=True,
             check=False,
             timeout=300,
             encoding="cp1252",
-            shell=False
+            shell=False,
         )
-
-        # Leggi file log generati
-        log_folder = Path(folder_path) / "App" / "Ingestion" / "log_SPK"
-        log_files = glob.glob(str(log_folder / f"*_{log_key}.log"))
         
-        logger.info(f"Cercando file log in: {log_folder}")
-        logger.info(f"Pattern: *_{log_key}.log")
-        logger.info(f"File trovati: {log_files}")
+        logger.info(f"Script completato - Return code: {result.returncode}")
+        if result.stdout:
+            logger.info(f"STDOUT: {result.stdout[:500]}...")
+        if result.stderr:
+            logger.warning(f"STDERR: {result.stderr[:500]}...")
+
+        logger.info("=== RICERCA E LETTURA LOG FILE ===")
+        log_folder = Path(folder_path) / "App" / "Ingestion" / "log_SPK"
+        logger.info(f"Cartella log: {log_folder}")
+        
+        log_files = glob.glob(str(log_folder / f"*_{log_key}.log"))
+        logger.info(f"File log con log_key {log_key}: {log_files}")
         
         if not log_files:
-            # Se non trova file con log_key, prova a cercare i più recenti
-            all_log_files = glob.glob(str(log_folder / "*.log"))
-            if all_log_files:
-                # Prendi il file più recente
-                log_file_path = max(all_log_files, key=os.path.getctime)
-                logger.info(f"Usando file log più recente: {log_file_path}")
-            else:
+            logger.warning("Nessun file log con log_key trovato, cerco il più recente...")
+            all_logs = glob.glob(str(log_folder / "*.log"))
+            logger.info(f"Tutti i file log disponibili: {all_logs}")
+            if not all_logs:
+                logger.error("Nessun file log trovato nella cartella")
                 raise FileNotFoundError("Nessun file log trovato")
+            log_file_path = max(all_logs, key=os.path.getctime)
+            logger.info(f"File log più recente selezionato: {log_file_path}")
         else:
             log_file_path = log_files[0]
+            logger.info(f"File log con log_key selezionato: {log_file_path}")
 
-        # Leggi il contenuto del file log
-        try:
-            with open(log_file_path, "r", encoding="cp1252") as f:
-                lines = f.readlines()
-            logger.info(f"Lette {len(lines)} righe dal file log")
-        except Exception as e:
-            logger.error(f"Errore nella lettura del file log: {e}")
-            # Prova con encoding diversi
-            for encoding in ["utf-8", "latin-1", "cp1252"]:
-                try:
-                    with open(log_file_path, "r", encoding=encoding) as f:
-                        lines = f.readlines()
-                    logger.info(f"File log letto con encoding {encoding}")
-                    break
-                except:
-                    continue
-            else:
-                raise Exception("Impossibile leggere il file log con nessun encoding")
+        # Lettura del file log
+        logger.info("=== LETTURA FILE LOG ===")
+        lines = []
+        encoding_used = None
+        for enc in ["cp1252", "utf-8", "latin-1"]:
+            try:
+                logger.info(f"Tentativo lettura con encoding {enc}...")
+                with open(log_file_path, "r", encoding=enc) as f:
+                    lines = f.readlines()
+                encoding_used = enc
+                logger.info(f"✓ Lettura riuscita con encoding {enc}, {len(lines)} righe")
+                break
+            except Exception as e:
+                logger.warning(f"✗ Fallito encoding {enc}: {e}")
+                continue
+                
+        if not lines:
+            logger.error("Impossibile leggere il file log con nessun encoding")
+            raise Exception("Impossibile leggere il file log con nessun encoding")
 
-        # Debug: stampa alcune righe del log per capire il formato
-        logger.info("Prime 10 righe del log:")
-        for i, line in enumerate(lines[:10]):
-            logger.info(f"Riga {i}: {repr(line)}")
+        # Debug: stampa prime e ultime righe del log
+        logger.info("=== CONTENUTO LOG FILE (primi e ultimi estratti) ===")
+        for i in range(min(5, len(lines))):
+            logger.info(f"Log[{i}]: {repr(lines[i].strip())}")
+        if len(lines) > 10:
+            logger.info("... (righe intermedie omesse) ...")
+            for i in range(max(5, len(lines)-5), len(lines)):
+                logger.info(f"Log[{i}]: {repr(lines[i].strip())}")
 
-        # Parsing migliorato per elemento
+        logger.info("=== PARSING LOG PER ELEMENTI ===")
         current_id = None
         buffer = []
-        elements_processed = 0
+        start_patterns = ["Inizio processo elemento con ID"]
+        id_regex = re.compile(r"ID\s+(\d+)")  # manteniamo solo numeri per l'ID
         
-        # Pattern più flessibili per identificare l'inizio di un elemento
-        start_patterns = [
-            "Inizio processo elemento con ID",
-            "Processing element with ID",
-            "Elemento ID:",
-            "Flow ID:",
-            "Starting flow"
-        ]
-        
-        for line_num, line in enumerate(lines):
+        logger.info(f"Pattern di ricerca: {start_patterns}")
+        logger.info(f"Regex ID: {id_regex.pattern}")
+
+        for line_idx, line in enumerate(lines):
             line_clean = line.strip()
+            is_start = False
             
-            # Cerca pattern di inizio elemento
-            found_start = False
             for pattern in start_patterns:
                 if pattern.lower() in line_clean.lower():
-                    found_start = True
-                    # Estrai ID dalla riga
-                    parts = line_clean.split()
-                    if parts:
-                        # Prendi l'ultima parte che potrebbe essere l'ID
-                        potential_id = parts[-1].replace("/", "-")
+                    logger.info(f"Riga {line_idx}: Trovato pattern inizio - {repr(line_clean)}")
+                    match = id_regex.search(line_clean)
+                    if match:
+                        potential_id = match.group(1).strip()
+                        logger.info(f"  -> ID estratto: {repr(potential_id)}")
                         
-                        # Salva elemento precedente se esiste
+                        # Salva il buffer precedente se esiste
                         if current_id is not None:
-                            error_lines = [l for l in buffer if "ERROR" in l.upper()]
-                            warning_lines = [l for l in buffer if "WARNING" in l.upper() or "WARN" in l.upper()]
-                            cleaned_error_lines = [clean_log_line(l) for l in error_lines]
-                            cleaned_warning_lines = [clean_log_line(l) for l in warning_lines]
-                            # Determina il risultato basandosi sui log
-                            if error_lines:
-                                result = "Failed"
-                                to_add=cleaned_error_lines
-                            elif warning_lines:
-                                result = "Warning"
-                                to_add=cleaned_warning_lines
-                            else:
-                                result = "Success"
-                                to_add=""
-                            
-                            logger.info(f"Salvando dettagli per elemento {current_id}, errori: {len(error_lines)}, warnings: {len(warning_lines)}, result: {result}")
-                            
-                            try:
-                                crud.create_execution_detail(
-                                    db=db,
-                                    log_key=log_key,
-                                    element_id=current_id,
-                                    error_lines=to_add,
-                                    result=result
-                                )
-                                elements_processed += 1
-                                logger.info(f"Dettagli salvati per elemento {current_id}")
-                            except Exception as e:
-                                logger.error(f"Errore nel salvare dettagli per elemento {current_id}: {e}")
+                            logger.info(f"Processando buffer precedente per ID {current_id} ({len(buffer)} righe)")
+                            elements_processed += save_element_detail(current_id, buffer)
                         
-                        # Inizia nuovo elemento
+                        # Reset per il nuovo ID
                         buffer = []
                         current_id = potential_id
-                        logger.info(f"Trovato nuovo elemento: {current_id}")
+                        is_start = True
+                        logger.info(f"Nuovo elemento attivo: ID {current_id}")
+                    else:
+                        logger.warning(f"  -> Pattern trovato ma ID non estratto da: {repr(line_clean)}")
                     break
             
-            buffer.append(line)
+            # Aggiungi la riga al buffer solo se non è la riga di inizio
+            if not is_start and current_id is not None:
+                buffer.append(line)
+                logger.debug(f"Aggiunta al buffer ID {current_id}: {repr(line_clean)}")
 
         # Salva ultimo elemento
         if current_id is not None:
-            error_lines = [l for l in buffer if "ERROR" in l.upper()]
-            warning_lines = [l for l in buffer if "WARNING" in l.upper() or "WARN" in l.upper()]
-            cleaned_error_lines = [clean_log_line(l) for l in error_lines]
-            cleaned_warning_lines = [clean_log_line(l) for l in warning_lines]
-            # Determina il risultato basandosi sui log
-            if error_lines:
-                result = "Failed"
-                to_add=cleaned_error_lines
-            elif warning_lines:
-                result = "Warning"
-                to_add=cleaned_warning_lines
-            else:
-                result = "Success"
-                to_add=""
-
-            logger.info(f"Salvando ultimo elemento {current_id}, errori: {len(error_lines)}, warnings: {len(warning_lines)}, result: {result}")
-            
-            try:
-                crud.create_execution_detail(
-                    db=db,
-                    log_key=log_key,
-                    element_id=current_id,
-                    error_lines=to_add,
-                    result=result
-                )
-                elements_processed += 1
-                logger.info(f"Dettagli salvati per ultimo elemento {current_id}")
-            except Exception as e:
-                logger.error(f"Errore nel salvare dettagli per ultimo elemento {current_id}: {e}")
-
-        # Se non ha trovato elementi con i pattern, crea un dettaglio per ogni flow richiesto
-        if elements_processed == 0:
-            logger.warning("Nessun elemento trovato con i pattern di parsing, creando dettagli per ogni flow richiesto")
-            for flow in request.flows:
-                element_id = str(flow.id).replace("/", "-")
-                error_lines = [l for l in lines if "ERROR" in l.upper()]
-                warning_lines = [l for l in lines if "WARNING" in l.upper() or "WARN" in l.upper()]
-                
-                # Determina il risultato basandosi sui log globali
-                if error_lines:
-                    result = "Failed"
-                    error_lines_to_add=error_lines
-                elif warning_lines:
-                    result = "Warning"
-                    error_lines_to_add=warning_lines
-                else:
-                    result = "Success"
-                
-                try:
-                    crud.create_execution_detail(
-                        db=db,
-                        log_key=log_key,
-                        element_id=element_id,
-                        error_lines=error_lines_to_add,
-                        result=result
-                    )
-                    elements_processed += 1
-                    logger.info(f"Dettagli creati per flow {element_id}")
-                except Exception as e:
-                    logger.error(f"Errore nel creare dettagli per flow {element_id}: {e}")
-
-        error_lines_global = [l for l in lines if "ERROR" in l.upper()]
-        status = "Failed" if error_lines_global else "Success"
+            logger.info(f"Processando ultimo buffer per ID {current_id} ({len(buffer)} righe)")
+            elements_processed += save_element_detail(current_id, buffer)
         
-        logger.info(f"Elementi processati: {elements_processed}, Errori globali: {len(error_lines_global)}")
+        logger.info(f"=== FINE PARSING - Elementi processati: {elements_processed} ===")
+
+        # Stato globale
+        logger.info("=== DETERMINAZIONE STATO GLOBALE ===")
+        error_lines_global = [l for l in lines if "ERROR" in l.upper()]
+        logger.info(f"Righe con ERROR globali trovate: {len(error_lines_global)}")
+        for err_line in error_lines_global[:5]:  # mostra prime 5
+            logger.info(f"  ERROR: {repr(err_line.strip())}")
+            
+        status = "Failed" if error_lines_global else "Success"
+        logger.info(f"Stato globale determinato: {status}")
 
     except Exception as e:
-        logger.error(f"Errore durante l'esecuzione: {e}")
+        logger.error(f"=== ERRORE DURANTE L'ESECUZIONE ===")
+        logger.error(f"Tipo errore: {type(e).__name__}")
+        logger.error(f"Dettaglio errore: {str(e)}")
+        logger.error(f"Traceback completo:", exc_info=True)
+        
         status = "Failed"
         lines = [f"Errore imprevisto nell'API: {str(e)}"]
         
-        # Anche in caso di errore, crea dettagli per ogni flow
+        # Salva errori per tutti i flows
         for flow in request.flows:
             element_id = str(flow.id).replace("/", "-")
+            logger.info(f"Creazione dettaglio errore per flow {element_id}")
             try:
                 crud.create_execution_detail(
                     db=db,
                     log_key=log_key,
                     element_id=element_id,
                     error_lines=[f"Errore imprevisto nell'API: {str(e)}"],
-                    result="Failed"  # Errore imprevisto = sempre Failed
+                    result="Failed",
                 )
-                logger.info(f"Dettagli di errore creati per flow {element_id}")
+                logger.info(f"✓ Dettaglio errore salvato per {element_id}")
             except Exception as detail_error:
-                logger.error(f"Errore nel creare dettagli di errore per flow {element_id}: {detail_error}")
+                logger.error(f"✗ Errore nel creare dettagli di errore per flow {element_id}: {detail_error}")
 
     duration = int(time.time() - start_time)
     executed_by = current_user.username if current_user else "unknown"
+    
+    logger.info("=== SALVATAGGIO LOG DI ESECUZIONE ===")
+    logger.info(f"Durata: {duration}s")
+    logger.info(f"Eseguito da: {executed_by}")
+    logger.info(f"Stato finale: {status}")
 
-    # Salva log di esecuzione principale
     try:
         crud.create_execution_log(
             db=db,
@@ -384,12 +422,13 @@ def execute_selected_flows(
             details={"executed_by": executed_by, "params": request.params},
             log_key=log_key,
         )
-        logger.info(f"Log di esecuzione salvato con log_key: {log_key}")
+        logger.info("✓ Log di esecuzione salvato nel DB")
     except Exception as e:
-        logger.error(f"Errore nel salvare log di esecuzione: {e}")
+        logger.error(f"✗ Errore nel salvare log di esecuzione: {e}")
 
+    logger.info("=== FINE ESECUZIONE FLOWS ===")
     return {
         "status": "success",
         "message": "Esecuzione dei flussi richiesta.",
-        "results": [{"ids": flow_ids_str, "status": status, "log_key": log_key}]
+        "results": [{"ids": flow_ids_str, "status": status, "log_key": log_key}],
     }

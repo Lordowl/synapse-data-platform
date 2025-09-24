@@ -6,7 +6,9 @@ import logging
 from importlib.metadata import version, PackageNotFoundError
 import uvicorn
 import requests
-
+from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import Request
+from fastapi.responses import PlainTextResponse
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -93,7 +95,14 @@ app = FastAPI(
     description="API per la Synapse Data Platform.",
     version="1.0.0",
 )
-
+class IgnoreHMRMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.headers.get("x-vite-dev-server"):
+            return PlainTextResponse("Ignored HMR request", status_code=204)
+        if request.method == "OPTIONS":
+            return PlainTextResponse("OK", status_code=204)
+        return await call_next(request)
+app.add_middleware(IgnoreHMRMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[

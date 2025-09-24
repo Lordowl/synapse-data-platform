@@ -138,15 +138,25 @@ async def read_ini(user: dict = Depends(get_current_user)):
         if not os.path.exists(ini_path):
             raise HTTPException(status_code=404, detail=f"File INI non trovato: {ini_path}")
 
-        config = configparser.ConfigParser()
+        config = configparser.ConfigParser(allow_no_value=True)
         config.read(ini_path, encoding="utf-8")
-
-        # Include DEFAULT e le altre sezioni
+        def expand_env_vars(d):
+            result = {}
+            for k, v in d.items():
+                if v is not None:
+                    result[k] = os.path.expandvars(v)
+                else:
+                    result[k] = None
+            return result
+        # Include DEFAULT e le altre sezioni 
         ini_data = {}
-        if config.defaults():
-            ini_data["DEFAULT"] = dict(config.defaults())
+        ini_data["DEFAULT"] = expand_env_vars(config.defaults())
+
+# Altre sezioni
         for section in config.sections():
-            ini_data[section] = dict(config[section])
+            ini_data[section] = expand_env_vars(dict(config[section]))
+        
+        print(ini_data)
 
         return {"ini_path": ini_path, "data": ini_data}
 

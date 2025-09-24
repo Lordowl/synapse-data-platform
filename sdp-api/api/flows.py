@@ -77,7 +77,7 @@ class LogFilterRequest(BaseModel):
 def format_log(log: models.FlowExecutionHistory) -> FlowExecutionLog:
     """Helper per convertire un log FlowExecutionHistory in FlowExecutionLog."""
     # Genera un messaggio leggibile basato sui dettagli
-    message = f"Esecuzione flusso {log.flow_id_str}"
+    message = f"Esecuzione flusso"
     
     if log.status:
         message += f": {log.status}"
