@@ -1,10 +1,10 @@
+# sdp-api/api/settings_path.py
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 import logging
 import os
 import configparser
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -24,9 +24,6 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     return {"username": "admin"}
 
 
-
-
-
 @router.post("/folder/update")
 async def update_folder_path(data: FolderUpdate, user: dict = Depends(get_current_user)):
     folder = data.folder_path
@@ -43,11 +40,10 @@ async def update_folder_path(data: FolderUpdate, user: dict = Depends(get_curren
         if missing:
             raise HTTPException(
                 status_code=400,
-                detail=f"Percorsi mancanti: {missing}. "
-                       f"Devi predisporre correttamente la cartella prima di procedere."
+                detail=f"Percorsi mancanti: {missing}. Devi predisporre correttamente la cartella prima di procedere."
             )
 
-        logging.info(f"[Settings] Tutti i path obbligatori trovati in {folder}")
+        logging.info(f"[Settings] Tutti i path obbligatori trovati in {folder} ({format_datetime(now_in_timezone())})")
 
         # --- 3. Path del DB ---
         db_path = os.path.join(folder, "App", "Dashboard", "sdp.db")
@@ -56,30 +52,31 @@ async def update_folder_path(data: FolderUpdate, user: dict = Depends(get_curren
         new_db_url = f"sqlite:///{db_path}"
         if not config_manager.update_setting("DATABASE_URL", new_db_url):
             raise HTTPException(status_code=500, detail="Impossibile aggiornare DATABASE_URL")
+        logging.info(f"[Settings] DATABASE_URL aggiornata: {new_db_url} ({format_datetime(now_in_timezone())})")
 
-        logging.info(f"[Settings] DATABASE_URL aggiornata: {new_db_url}")
         # --- 4. Aggiorna SETTINGS_PATH ---
         if not config_manager.update_setting("SETTINGS_PATH", folder):
             raise HTTPException(status_code=500, detail="Impossibile aggiornare SETTINGS_PATH")
-        logging.info(f"[Settings] SETTINGS_PATH aggiornata: {folder}")
-        # --- 4. Verifica esistenza INI main_ingestion_SPK.ini ---  
+        logging.info(f"[Settings] SETTINGS_PATH aggiornata: {folder} ({format_datetime(now_in_timezone())})")
+
+        # --- 5. Verifica INI ---
         ini_path = os.path.join(folder, "App", "Ingestion", "main_ingestion_SPK.ini")
         if os.path.exists(ini_path):
-            logging.info(f"[Settings] INI trovato: {ini_path}")
+            logging.info(f"[Settings] INI trovato: {ini_path} ({format_datetime(now_in_timezone())})")
         else:
-            logging.warning(f"[Settings] INI non trovato: {ini_path}")
+            logging.warning(f"[Settings] INI non trovato: {ini_path} ({format_datetime(now_in_timezone())})")
 
-        # --- 5. Ricrea engine SQLAlchemy ---
+        # --- 6. Ricrea engine SQLAlchemy ---
         database.engine = create_engine(new_db_url, connect_args={"check_same_thread": False})
         database.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=database.engine)
         models.Base.metadata.create_all(bind=database.engine)
 
-        # --- 6. Crea admin se non presente ---
+        # --- 7. Crea admin se non presente ---
         db = database.SessionLocal()
         try:
             admin_user = crud.get_user_by_username(db, username="admin")
             if not admin_user:
-                logging.info("--- Creazione utente admin di default (admin/admin) ---")
+                logging.info(f"--- Creazione utente admin di default (admin/admin) ({format_datetime(now_in_timezone())}) ---")
                 default_admin_data = schemas.UserCreate(
                     username="admin",
                     password="admin",
@@ -91,7 +88,7 @@ async def update_folder_path(data: FolderUpdate, user: dict = Depends(get_curren
         finally:
             db.close()
 
-        logging.info(f"[Settings] Utente {user['username']} ha aggiornato folder, DB e file Ingestion")
+        logging.info(f"[Settings] Utente {user['username']} ha aggiornato folder, DB e file Ingestion ({format_datetime(now_in_timezone())})")
 
         return {
             "status": "success",
@@ -105,6 +102,8 @@ async def update_folder_path(data: FolderUpdate, user: dict = Depends(get_curren
     except Exception as e:
         logging.error(f"Errore nell'aggiornamento folder_path: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Errore interno")
+
+
 @router.get("/folder/current")
 async def get_current_folder(user: dict = Depends(get_current_user)):
     try:
@@ -112,10 +111,9 @@ async def get_current_folder(user: dict = Depends(get_current_user)):
         if not db_url:
             raise HTTPException(status_code=404, detail="Nessun folder salvato")
 
-        # Estraggo la parte di cartella dalla DATABASE_URL
         if db_url.startswith("sqlite:///"):
             db_path = db_url.replace("sqlite:///", "")
-            folder_path = os.path.dirname(os.path.dirname(db_path))  # risalgo a cartella base
+            folder_path = os.path.dirname(os.path.dirname(db_path))
         else:
             folder_path = None
 
@@ -123,6 +121,7 @@ async def get_current_folder(user: dict = Depends(get_current_user)):
     except Exception as e:
         logging.error(f"Errore recupero folder corrente: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Errore interno")
+
 
 @router.get("/folder/ini")
 async def read_ini(user: dict = Depends(get_current_user)):
@@ -140,27 +139,15 @@ async def read_ini(user: dict = Depends(get_current_user)):
 
         config = configparser.ConfigParser(allow_no_value=True)
         config.read(ini_path, encoding="utf-8")
-        def expand_env_vars(d):
-            result = {}
-            for k, v in d.items():
-                if v is not None:
-                    result[k] = os.path.expandvars(v)
-                else:
-                    result[k] = None
-            return result
-        # Include DEFAULT e le altre sezioni 
-        ini_data = {}
-        ini_data["DEFAULT"] = expand_env_vars(config.defaults())
 
-# Altre sezioni
+        def expand_env_vars(d):
+            return {k: os.path.expandvars(v) if v is not None else None for k, v in d.items()}
+
+        ini_data = {"DEFAULT": expand_env_vars(config.defaults())}
         for section in config.sections():
             ini_data[section] = expand_env_vars(dict(config[section]))
-        
-        print(ini_data)
-
         return {"ini_path": ini_path, "data": ini_data}
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logging.error(f"Errore lettura INI: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Errore lettura INI: {e}")

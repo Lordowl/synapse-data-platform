@@ -46,9 +46,10 @@ function Ingest() {
     selectedYear: currentYear.toString(),
   });
 
-  const { flowsData, logsData, historyData, isLoading, fetchInitialData, fetchLogs } =
+  const { flowsData, logsData,historyData, historyLatestData, isLoading, fetchInitialData, fetchLogs } =
     useIngestData(metadataFilePath);
-
+  console.log("LogsData direttamente da useIngestData:", logsData);
+  console.log("HistoryData direttamente da useIngestData:", historyData)
   const {
     selectedFlows,
     setSelectedFlows,
@@ -156,7 +157,7 @@ function Ingest() {
           />
         );
       case "logs":
-        console.log("history data dentro ingest ", historyData);
+        console.log("history data dentro ingest ", );
         return (
           <LogsTabContent
             logsData={logsData}

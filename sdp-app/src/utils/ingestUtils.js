@@ -50,16 +50,23 @@
     flowName: flow?.name || backendLog.element_id, // nome leggibile
     message:
       backendLog.details?.message ||
-      `Esecuzione flusso`,
+      `Esecuzione flusso: ${backendLog.status || 'Unknown'}`,
     level:
       backendLog.status?.toLowerCase() === "success"
         ? "success"
         : backendLog.status?.toLowerCase() === "failed"
         ? "error"
         : "info",
-    details: backendLog.details
-      ? JSON.stringify(backendLog.details, null, 2)
-      : null,
+    // 🔧 FIX: Gestisci details correttamente
+    details: backendLog.details ? (
+      // Se details è un oggetto con original_details, usa quello
+      backendLog.details.original_details || backendLog.details
+    ) : null,
     logKey, // <-- aggiunto logKey qui
+    // 🔧 AGGIUNGI: log_key direttamente accessibile
+    parsedLogKey: backendLog.details?.log_key || null,
+    // 🔧 AGGIUNGI: info di stato dal backend
+    status: backendLog.status,
+    duration: backendLog.duration_seconds,
   };
 };

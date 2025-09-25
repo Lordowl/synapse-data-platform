@@ -2,12 +2,11 @@
 import json
 from pathlib import Path
 from typing import List, Dict, Optional
-import datetime
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Security, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 
 from db.database import get_db
 from db import models
@@ -15,7 +14,6 @@ from core.security import get_current_active_admin
 
 router = APIRouter()
 
-# Percorso del file JSON dei flussi
 DATA_FILE = Path(__file__).parent.parent / "data" / "flows.json"
 
 
@@ -32,8 +30,8 @@ def get_all_flows():
         raise HTTPException(status_code=500, detail=f"Errore nella lettura del file dei flussi: {e}")
 
 
-@router.get("/history")
-def get_flows_history(db: Session = Depends(get_db)):
+@router.get("/historylatest")
+def get_flows_history_latest(db: Session = Depends(get_db)):
     """Restituisce l'ultima esecuzione per ogni element_id dalla tabella FlowExecutionDetail."""
     try:
         all_executions = db.query(models.FlowExecutionDetail).order_by(models.FlowExecutionDetail.timestamp.desc()).all()
@@ -44,6 +42,7 @@ def get_flows_history(db: Session = Depends(get_db)):
                     "timestamp": exec.timestamp.isoformat() if exec.timestamp else None,
                     "result": exec.result,  # usa result, non status
                     "error_lines": exec.error_lines or "",
+                    "log_key": exec.log_key,
                 }
         return history_map
     except Exception as e:
@@ -51,10 +50,30 @@ def get_flows_history(db: Session = Depends(get_db)):
         return {}
 
 
+@router.get("/history")
+def get_execution_details(db: Session = Depends(get_db)):
+    """Restituisce tutti i dettagli delle esecuzioni per ogni log_key."""
+    try:
+        all_executions = db.query(models.FlowExecutionDetail).order_by(models.FlowExecutionDetail.timestamp.desc()).all()
+        details_list = []
+        for exec in all_executions:
+            details_list.append({
+                "timestamp": exec.timestamp.isoformat() if exec.timestamp else None,
+                "result": exec.result,
+                "error_lines": exec.error_lines or "",
+                "log_key": exec.log_key,
+                "element_id": exec.element_id,
+            })
+        return details_list
+    except Exception as e:
+        print(f"Errore nel recuperare i dettagli delle esecuzioni: {e}")
+        return []
+
+
 # --- Schemi Pydantic ---
 class FlowExecutionLog(BaseModel):
     id: int
-    timestamp: datetime.datetime
+    timestamp: datetime
     element_id: str  # Manteniamo element_id per compatibilità frontend
     status: str
     duration_seconds: Optional[int]
@@ -68,21 +87,17 @@ class FlowExecutionLog(BaseModel):
 class LogFilterRequest(BaseModel):
     flow_id: Optional[str] = None
     status: Optional[str] = None
-    start_date: Optional[datetime.datetime] = None
-    end_date: Optional[datetime.datetime] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
     limit: Optional[int] = 200
 
 
-# --- Endpoint Logs (usa FlowExecutionHistory) ---
+# --- Helper ---
 def format_log(log: models.FlowExecutionHistory) -> FlowExecutionLog:
-    """Helper per convertire un log FlowExecutionHistory in FlowExecutionLog."""
-    # Genera un messaggio leggibile basato sui dettagli
+    """Converte un log FlowExecutionHistory in FlowExecutionLog con timestamp formattato."""
     message = f"Esecuzione flusso"
-    
     if log.status:
         message += f": {log.status}"
-    
-    # Aggiungi informazioni dai dettagli se disponibili
     if log.details and isinstance(log.details, dict):
         if 'processed_records' in log.details:
             message += f" - Record elaborati: {log.details['processed_records']}"
@@ -90,7 +105,7 @@ def format_log(log: models.FlowExecutionHistory) -> FlowExecutionLog:
             message += f" - Errori: {log.details['error_count']}"
         if 'error_message' in log.details:
             message += f" - {log.details['error_message']}"
-    
+
     return FlowExecutionLog(
         id=log.id,
         timestamp=log.timestamp,
