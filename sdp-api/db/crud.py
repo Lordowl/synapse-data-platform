@@ -106,3 +106,32 @@ def update_execution_log_status(db: Session, log_key: str, status: str):
         db.commit()
         db.refresh(record)
     return record
+
+
+def get_banks(db: Session):
+    return db.query(models.Bank).filter(models.Bank.is_active == True).all()
+
+def get_bank_by_value(db: Session, value: str):
+    return db.query(models.Bank).filter(models.Bank.value == value).first()
+
+def create_bank(db: Session, bank: schemas.BankCreate):
+    db_bank = models.Bank(value=bank.value, label=bank.label)
+    db.add(db_bank)
+    db.commit()
+    db.refresh(db_bank)
+    return db_bank
+
+def get_current_bank(db: Session):
+    return db.query(models.Bank).filter_by(is_current=True).first()
+
+def set_current_bank(db: Session, bank_value: str):
+    # Deseleziona tutte le banche
+    db.query(models.Bank).update({models.Bank.is_current: False})
+    # Seleziona la banca richiesta
+    bank = db.query(models.Bank).filter_by(value=bank_value).first()
+    if not bank:
+        return None
+    bank.is_current = True
+    db.commit()
+    db.refresh(bank)
+    return bank

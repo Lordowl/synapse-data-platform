@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
+import { DateTime } from "luxon";
 import "./LogsTab.css";
 
 function LogsTabContent({
@@ -18,9 +19,6 @@ function LogsTabContent({
   setLogLevelFilter,
   handleRefreshLogs,
 }) {
-  console.log("logs data dentro tab", logsData);
-  console.log("history data dentro tab", historyData);
-
   const [expandedCards, setExpandedCards] = useState({});
 
   useEffect(() => {
@@ -34,8 +32,6 @@ function LogsTabContent({
   };
 
   const groupedExecutions = useMemo(() => {
-    console.log("🔍 DEBUG historyData keys:", Object.keys(historyData));
-
     return logsData.map((log) => {
       const possibleKeys = [
         log.altroLogKey,
@@ -55,15 +51,6 @@ function LogsTabContent({
         }
       }
 
-      console.log(
-        `🔍 Log ${log.id}: possibleKeys=`,
-        possibleKeys,
-        "matchedKey=",
-        matchedKey,
-        "details found=",
-        details.length
-      );
-
       return {
         ...log,
         parsedLogKey: matchedKey || possibleKeys[0] || log.logKey,
@@ -75,33 +62,24 @@ function LogsTabContent({
     });
   }, [logsData, historyData]);
 
+  // Ricerca precisa per element_id: mostra tutta l'esecuzione se almeno un dettaglio corrisponde
   const filteredExecutions = useMemo(() => {
+    if (!logSearchTerm) return groupedExecutions;
+
+    const search = logSearchTerm.toString().toLowerCase();
+
     return groupedExecutions.filter((exec) => {
       const matchesLevel =
         logLevelFilter === "all" ||
         exec.overallResult === logLevelFilter.toLowerCase();
 
-      const matchesSearch =
-        (exec.logKey || "")
-          .toLowerCase()
-          .includes(logSearchTerm.toLowerCase()) ||
-        (exec.flowName || "")
-          .toLowerCase()
-          .includes(logSearchTerm.toLowerCase()) ||
-        (exec.flowId || "")
-          .toString()
-          .toLowerCase()
-          .includes(logSearchTerm.toLowerCase()) ||
-        (exec.message || "")
-          .toLowerCase()
-          .includes(logSearchTerm.toLowerCase()) ||
-        exec.details.some((detail) =>
-          (detail.error_lines || "")
-            .toLowerCase()
-            .includes(logSearchTerm.toLowerCase())
-        );
+      const hasMatchingDetail = exec.details.some(
+        (detail) =>
+          detail.element_id &&
+          detail.element_id.toString().toLowerCase() === search
+      );
 
-      return matchesLevel && matchesSearch;
+      return matchesLevel && hasMatchingDetail;
     });
   }, [groupedExecutions, logLevelFilter, logSearchTerm]);
 
@@ -135,15 +113,9 @@ function LogsTabContent({
 
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return "-";
-    const date = new Date(timestamp);
-    return date.toLocaleString("it-IT", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
+    return DateTime.fromISO(timestamp, { zone: "utc" })
+      .setZone("Europe/Rome")
+      .toLocaleString(DateTime.DATETIME_MED_WITH_SECONDS);
   };
 
   const getDetailsSummary = (details) => {
@@ -166,7 +138,7 @@ function LogsTabContent({
       <div className="logs-controls">
         <input
           type="text"
-          placeholder="Cerca per log key, flusso o messaggio di errore..."
+          placeholder="Cerca per ID elemento..."
           value={logSearchTerm}
           onChange={(e) => setLogSearchTerm(e.target.value)}
         />
@@ -211,12 +183,11 @@ function LogsTabContent({
 
                   <div className="execution-meta">
                     <span className="execution-summary">
-                      Eseceuzione avvenuta il "{formatTimestamp(exec.timestamp)}"
+                      Esecuzione avvenuta il "{formatTimestamp(exec.timestamp)}"
                       {exec.executedBy ? ` da "${exec.executedBy}"` : ""}
                       {exec.params && Object.keys(exec.params).length > 0
                         ? ` con parametri: ${Object.entries(exec.params)
                             .map(([key, value]) => {
-                              // mappa le chiavi interne a valori più leggibili
                               if (key === "selectedYear")
                                 return `anno ${value}`;
                               if (key === "selectedWeek")
@@ -265,9 +236,7 @@ function LogsTabContent({
                   {exec.details.map((detail, index) => (
                     <div
                       key={index}
-                      className={`detail-entry ${getResultClass(
-                        detail.result
-                      )}`}
+                      className={`detail-entry ${getResultClass(detail.result)}`}
                     >
                       <div className="entry-header">
                         {getResultIcon(detail.result)}

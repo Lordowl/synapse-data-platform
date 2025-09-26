@@ -162,3 +162,25 @@ body {
   padding-left: 18px;
   font-size: 0.9rem;
 }
+
+.bank-selection {
+  margin-bottom: 1rem;
+}
+
+.bank-selection label {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.bank-selection select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.bank-selection select:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+}

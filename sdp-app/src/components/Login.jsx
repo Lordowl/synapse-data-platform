@@ -7,7 +7,8 @@ function Login({ setIsAuthenticated }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [selectedFolder, setSelectedFolder] = useState("");
-  const [oldFolder, setOldFolder] = useState("");  // <-- dal backend
+  const [selectedBank, setSelectedBank] = useState("");
+  const [availableBanks, setAvailableBanks] = useState([]);
   const [apiAddress, setApiAddress] = useState("http://127.0.0.1");
   const [apiPort, setApiPort] = useState("8000");
   const [error, setError] = useState("");
@@ -16,41 +17,51 @@ function Login({ setIsAuthenticated }) {
 
   const baseURL = `${apiAddress}:${apiPort}/api/v1`;
 
-  // Al mount recuperiamo il folder dal backend
+  // Recupera folder corrente e banche disponibili
   useEffect(() => {
-  const fetchOldFolder = async () => {
-    try {
-      const token = sessionStorage.getItem("accessToken") || "";
-      const response = await fetch(`${baseURL}/folder/current`, {
-        headers: {
-          "Authorization": `Bearer ${token}`
+    const fetchInitialData = async () => {
+      try {
+        const token = sessionStorage.getItem("accessToken") || "";
+
+        // Folder corrente
+        const folderResp = await fetch(`${baseURL}/folder/current`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (folderResp.ok) {
+          const folderData = await folderResp.json();
+          if (folderData.folder_path) {
+            setSelectedFolder(folderData.folder_path);
+          }
         }
-      });
 
-      if (!response.ok) return;
-
-      const data = await response.json();
-      if (data?.folder_path) {
-        setOldFolder(data.folder_path);
-        setSelectedFolder(data.folder_path); // 👈 imposto direttamente il value
+        // Banche disponibili
+        const banksResp = await fetch(`${baseURL}/banks/available`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (banksResp.ok) {
+          const banksData = await banksResp.json();
+          setAvailableBanks(banksData.banks || []);
+          if (banksData.current_bank) {
+            setSelectedBank(banksData.current_bank);
+          }
+        }
+      } catch (err) {
+        console.error("Errore fetch dati iniziali:", err);
       }
-    } catch (err) {
-      console.error("Errore fetch old folder:", err);
-    }
-  };
+    };
 
-  fetchOldFolder();
-}, [baseURL]);
+    fetchInitialData();
+  }, [baseURL]);
 
+  // Seleziona cartella
   const handleFolderSelect = async () => {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: 'Seleziona Cartella API'
+      title: "Seleziona Cartella API",
     });
 
     if (!selected) return;
-
     const folderPath = Array.isArray(selected) ? selected[0] : selected;
     setSelectedFolder(folderPath);
 
@@ -59,27 +70,60 @@ function Login({ setIsAuthenticated }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${sessionStorage.getItem("accessToken") || ""}`
+          Authorization: `Bearer ${sessionStorage.getItem("accessToken") || ""}`,
         },
-        body: JSON.stringify({ folder_path: folderPath })
+        body: JSON.stringify({ folder_path: folderPath }),
       });
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.detail || "Errore nell'invio del folder path.");
+        throw new Error(data.detail || "Errore aggiornamento folder path");
       }
 
-      console.log("Folder path aggiornato correttamente!");
+      console.log("Folder aggiornato correttamente");
     } catch (err) {
-      console.error("Errore aggiornamento folder path:", err);
+      console.error("Errore aggiornamento folder:", err);
       setError(err.message);
     }
   };
 
+  // Cambia banca
+  const handleBankChange = async (bankValue) => {
+    setSelectedBank(bankValue);
+    try {
+      const token = sessionStorage.getItem("accessToken") || "";
+      const response = await fetch(`${baseURL}/banks/update`, { // <-- correzione banks
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ value: bankValue }), // backend si aspetta { value: "bank1" }
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || "Errore aggiornamento banca");
+      }
+
+      console.log("Banca aggiornata correttamente!");
+    } catch (err) {
+      console.error("Errore aggiornamento banca:", err);
+      setError(err.message);
+    }
+  };
+
+  // Login
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
     setLoading(true);
+
+    if (!selectedBank) {
+      setError("Seleziona una banca prima di procedere.");
+      setLoading(false);
+      return;
+    }
 
     const formData = new URLSearchParams();
     formData.append("username", username);
@@ -88,35 +132,47 @@ function Login({ setIsAuthenticated }) {
     try {
       const response = await fetch(`${baseURL}/auth/token`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: formData.toString(),
       });
 
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || "Username o password non validi.");
-      }
+      if (!response.ok) throw new Error(data.detail || "Username o password non validi");
 
       const token = data.access_token;
-
       sessionStorage.setItem("accessToken", token);
       sessionStorage.setItem("apiBaseURL", baseURL);
+      sessionStorage.setItem("selectedBank", selectedBank);
       setIsAuthenticated(true);
       navigate("/");
 
+      // Aggiorna folder e banca dopo login
+      const updatePromises = [];
       if (selectedFolder) {
-        await fetch(`${baseURL}/folder/update`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`,
-          },
-          body: JSON.stringify({ folder_path: selectedFolder }),
-        });
+        updatePromises.push(
+          fetch(`${baseURL}/folder/update`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ folder_path: selectedFolder }),
+          })
+        );
       }
+      if (selectedBank) {
+        updatePromises.push(
+          fetch(`${baseURL}/banks/update`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ value: selectedBank }),
+          })
+        );
+      }
+      await Promise.all(updatePromises);
     } catch (err) {
       console.error("Login Error:", err);
       setError(err.message || "Si è verificato un errore.");
@@ -131,20 +187,30 @@ function Login({ setIsAuthenticated }) {
       <form onSubmit={handleSubmit}>
         <div className="api-connection">
           <label htmlFor="apiFolder">API Folder</label>
-          <div className="api-address-port">
-            <div className="input-group">
-              <input
-                type="text"
-                id="apiFolder"
-                value={selectedFolder}
-                readOnly
-                disabled={loading}
-              />
-              <button type="button" onClick={handleFolderSelect} disabled={loading}>
-                Seleziona Cartella
-              </button>
-            </div>
+          <div className="input-group">
+            <input type="text" id="apiFolder" value={selectedFolder} readOnly disabled={loading} />
+            <button type="button" onClick={handleFolderSelect} disabled={loading}>
+              Seleziona Cartella
+            </button>
           </div>
+        </div>
+
+        <div className="bank-selection">
+          <label htmlFor="bankSelect">Banca</label>
+          <select
+            id="bankSelect"
+            value={selectedBank}
+            onChange={(e) => handleBankChange(e.target.value)}
+            disabled={loading}
+            required
+          >
+            <option value="">Seleziona una banca...</option>
+            {availableBanks.map((bank) => (
+              <option key={bank.value} value={bank.value}>
+                {bank.label}
+              </option>
+            ))}
+          </select>
         </div>
 
         <label>Username</label>
@@ -155,7 +221,9 @@ function Login({ setIsAuthenticated }) {
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           disabled={loading}
+          required
         />
+
         <label>Password</label>
         <input
           type="password"
@@ -164,6 +232,7 @@ function Login({ setIsAuthenticated }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={loading}
+          required
         />
 
         {error && <p className="error-message">{error}</p>}

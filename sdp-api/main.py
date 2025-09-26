@@ -3,6 +3,7 @@ import os
 import sys
 import subprocess
 import logging
+import json
 from importlib.metadata import version, PackageNotFoundError
 import uvicorn
 import requests
@@ -11,18 +12,19 @@ from fastapi import Request
 from fastapi.responses import PlainTextResponse
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-
+from db.init_banks import init_banks_from_file
 from db import models, crud, schemas
 from db.database import init_db, get_db
-from api import auth, users, tasks, audit, flows, settings_path
+from api import auth, users, tasks, audit, flows, settings_path, banks
 from core.config import settings, config_manager
-import logging
 
+# Logging
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 logger = logging.getLogger(__name__)
+
 # ----------------- Funzioni aggiornamento ----------------- #
 GITHUB_REPO_API = f"https://api.github.com/repos/{settings.github_repo}/releases/latest"
 
@@ -95,6 +97,7 @@ app = FastAPI(
     description="API per la Synapse Data Platform.",
     version="1.0.0",
 )
+
 class IgnoreHMRMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.headers.get("x-vite-dev-server"):
@@ -102,6 +105,7 @@ class IgnoreHMRMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS":
             return PlainTextResponse("OK", status_code=204)
         return await call_next(request)
+
 app.add_middleware(IgnoreHMRMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -123,6 +127,7 @@ api_router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
 api_router.include_router(audit.router, prefix="/audit", tags=["Audit"])
 api_router.include_router(flows.router, prefix="/flows", tags=["Flows"])
 api_router.include_router(settings_path.router)
+api_router.include_router(banks.router)
 app.include_router(api_router, prefix="/api/v1")
 
 # ----------------- Eventi di startup ----------------- #
@@ -139,14 +144,23 @@ def startup_event():
 
         # Percorsi richiesti
         ingestion_ps1 = os.path.join(base_folder, "Ingestion", "ingestion.ps1")
-        log_folder = os.path.join(base_folder, "Ingestion", "log_SPK")
-        ini_file = os.path.join(base_folder, "Ingestion", "main_ingestion_SPK.ini")
+        banks_file = os.path.join(base_folder, "Ingestion", "banks_default.json")
 
-        required_paths = [ingestion_ps1, log_folder, ini_file]
+        if not os.path.exists(ingestion_ps1) or not os.path.exists(banks_file):
+            logging.warning("[STARTUP] Alberatura incompleta (script o JSON mancante). Attendo /folder/update.")
+            logging.warning(f"[STARTUP] Mancano i seguenti file: {ingestion_ps1} o {banks_file}. Attendo /folder/update.")
+            return
 
-        # Se mancano file/cartelle → fermati
-        if not all(os.path.exists(p) for p in required_paths):
-            logging.warning("[STARTUP] Alberatura incompleta. Attendo /folder/update.")
+        # Leggi tutti i file .ini dal JSON
+        with open(banks_file, "r", encoding="utf-8") as f:
+            banks_data = json.load(f)
+
+        ini_paths = [os.path.join(base_folder, "Ingestion", bank["ini_path"]) for bank in banks_data]
+
+        # Controlla che tutti i .ini esistano
+        if not all(os.path.exists(p) for p in ini_paths):
+            missing = [p for p in ini_paths if not os.path.exists(p)]
+            logging.warning(f"[STARTUP] Mancano i seguenti file .ini: {missing}. Attendo /folder/update.")
             return
 
         # Se manca il DB → ricrealo
@@ -158,6 +172,8 @@ def startup_event():
     try:
         init_db(db_url)
         create_default_admin_if_not_exists()
+        # Passa direttamente i dati letti dal JSON
+        init_banks_from_file(banks_data)
         print(f"[STARTUP] Database inizializzato: {db_url}")
     except Exception as e:
         logging.error(f"[STARTUP] Errore nell'inizializzazione del DB: {e}", exc_info=True)

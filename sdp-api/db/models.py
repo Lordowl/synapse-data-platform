@@ -44,3 +44,14 @@ class FlowExecutionDetail(Base):
     result = Column(String)
     error_lines = Column(Text)  # salva come JSON o testo multilinea
     timestamp = Column(DateTime(timezone=True), server_default=func.now())  # <-- aggiunto
+
+
+class Bank(Base):
+    __tablename__ = "banks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    value = Column(String, unique=True, index=True, nullable=False)
+    label = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True)
+    ini_path = Column(String, nullable=True)  
+    is_current = Column(Boolean, default=False)

@@ -43,7 +43,7 @@ async def update_folder_path(data: FolderUpdate, user: dict = Depends(get_curren
                 detail=f"Percorsi mancanti: {missing}. Devi predisporre correttamente la cartella prima di procedere."
             )
 
-        logging.info(f"[Settings] Tutti i path obbligatori trovati in {folder} ({format_datetime(now_in_timezone())})")
+        logging.info(f"[Settings] Tutti i path obbligatori trovati in {folder} ")
 
         # --- 3. Path del DB ---
         db_path = os.path.join(folder, "App", "Dashboard", "sdp.db")
@@ -52,19 +52,19 @@ async def update_folder_path(data: FolderUpdate, user: dict = Depends(get_curren
         new_db_url = f"sqlite:///{db_path}"
         if not config_manager.update_setting("DATABASE_URL", new_db_url):
             raise HTTPException(status_code=500, detail="Impossibile aggiornare DATABASE_URL")
-        logging.info(f"[Settings] DATABASE_URL aggiornata: {new_db_url} ({format_datetime(now_in_timezone())})")
+        logging.info(f"[Settings] DATABASE_URL aggiornata: {new_db_url} ")
 
         # --- 4. Aggiorna SETTINGS_PATH ---
         if not config_manager.update_setting("SETTINGS_PATH", folder):
             raise HTTPException(status_code=500, detail="Impossibile aggiornare SETTINGS_PATH")
-        logging.info(f"[Settings] SETTINGS_PATH aggiornata: {folder} ({format_datetime(now_in_timezone())})")
+        logging.info(f"[Settings] SETTINGS_PATH aggiornata: {folder} ")
 
         # --- 5. Verifica INI ---
         ini_path = os.path.join(folder, "App", "Ingestion", "main_ingestion_SPK.ini")
         if os.path.exists(ini_path):
-            logging.info(f"[Settings] INI trovato: {ini_path} ({format_datetime(now_in_timezone())})")
+            logging.info(f"[Settings] INI trovato: {ini_path} ")
         else:
-            logging.warning(f"[Settings] INI non trovato: {ini_path} ({format_datetime(now_in_timezone())})")
+            logging.warning(f"[Settings] INI non trovato: {ini_path} ")
 
         # --- 6. Ricrea engine SQLAlchemy ---
         database.engine = create_engine(new_db_url, connect_args={"check_same_thread": False})
@@ -76,7 +76,7 @@ async def update_folder_path(data: FolderUpdate, user: dict = Depends(get_curren
         try:
             admin_user = crud.get_user_by_username(db, username="admin")
             if not admin_user:
-                logging.info(f"--- Creazione utente admin di default (admin/admin) ({format_datetime(now_in_timezone())}) ---")
+                logging.info(f"--- Creazione utente admin di default (admin/admin)  ---")
                 default_admin_data = schemas.UserCreate(
                     username="admin",
                     password="admin",
@@ -88,7 +88,7 @@ async def update_folder_path(data: FolderUpdate, user: dict = Depends(get_curren
         finally:
             db.close()
 
-        logging.info(f"[Settings] Utente {user['username']} ha aggiornato folder, DB e file Ingestion ({format_datetime(now_in_timezone())})")
+        logging.info(f"[Settings] Utente {user['username']} ha aggiornato folder, DB e file Ingestion ")
 
         return {
             "status": "success",

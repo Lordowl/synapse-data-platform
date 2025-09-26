@@ -60,3 +60,28 @@ class AuditLogInDB(AuditLogBase):
     class Config:
         from_attributes = True
         
+class BankBase(BaseModel):
+    value: str
+    label: str
+    ini_path: Optional[str] = None
+
+
+class BankCreate(BankBase):
+    pass  # eredita già value, label, ini_path
+
+
+class BankUpdate(BaseModel):
+    value: str
+
+
+class BankResponse(BankBase):
+    id: int
+    is_active: bool
+
+    class Config:
+        from_attributes = True  # ✅ compatibile con Pydantic v2
+
+
+class BanksListResponse(BaseModel):
+    banks: list[BankResponse]
+    current_bank: str | None
