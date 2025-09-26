@@ -29,9 +29,7 @@ function Login({ setIsAuthenticated }) {
         });
         if (folderResp.ok) {
           const folderData = await folderResp.json();
-          if (folderData.folder_path) {
-            setSelectedFolder(folderData.folder_path);
-          }
+          if (folderData.folder_path) setSelectedFolder(folderData.folder_path);
         }
 
         // Banche disponibili
@@ -41,9 +39,7 @@ function Login({ setIsAuthenticated }) {
         if (banksResp.ok) {
           const banksData = await banksResp.json();
           setAvailableBanks(banksData.banks || []);
-          if (banksData.current_bank) {
-            setSelectedBank(banksData.current_bank);
-          }
+          if (banksData.current_bank) setSelectedBank(banksData.current_bank);
         }
       } catch (err) {
         console.error("Errore fetch dati iniziali:", err);
@@ -62,15 +58,25 @@ function Login({ setIsAuthenticated }) {
     });
 
     if (!selected) return;
-    const folderPath = Array.isArray(selected) ? selected[0] : selected;
+    let folderPath = Array.isArray(selected) ? selected[0] : selected;
+
+    // Normalizza folder se necessario
+    if (!folderPath.endsWith("App\\Ingestion") && !folderPath.endsWith("App/Ingestion")) {
+      folderPath = `${folderPath}${folderPath.endsWith("\\") || folderPath.endsWith("/") ? "" : "\\"}App\\Ingestion`;
+    }
+
+    console.log("Invio folder a backend:", folderPath);
     setSelectedFolder(folderPath);
 
     try {
+      const token = sessionStorage.getItem("accessToken") || "";
+      if (!token) throw new Error("Token non presente, effettua prima il login");
+
       const response = await fetch(`${baseURL}/folder/update`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${sessionStorage.getItem("accessToken") || ""}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ folder_path: folderPath }),
       });
@@ -81,6 +87,7 @@ function Login({ setIsAuthenticated }) {
       }
 
       console.log("Folder aggiornato correttamente");
+      setError("");
     } catch (err) {
       console.error("Errore aggiornamento folder:", err);
       setError(err.message);
@@ -92,13 +99,13 @@ function Login({ setIsAuthenticated }) {
     setSelectedBank(bankValue);
     try {
       const token = sessionStorage.getItem("accessToken") || "";
-      const response = await fetch(`${baseURL}/banks/update`, { // <-- correzione banks
+      const response = await fetch(`${baseURL}/banks/update`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ value: bankValue }), // backend si aspetta { value: "bank1" }
+        body: JSON.stringify({ value: bankValue }),
       });
 
       if (!response.ok) {
@@ -107,6 +114,7 @@ function Login({ setIsAuthenticated }) {
       }
 
       console.log("Banca aggiornata correttamente!");
+      setError("");
     } catch (err) {
       console.error("Errore aggiornamento banca:", err);
       setError(err.message);
@@ -146,33 +154,40 @@ function Login({ setIsAuthenticated }) {
       setIsAuthenticated(true);
       navigate("/");
 
-      // Aggiorna folder e banca dopo login
-      const updatePromises = [];
+      // Aggiorna folder e banca sequenziale post-login
       if (selectedFolder) {
-        updatePromises.push(
-          fetch(`${baseURL}/folder/update`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ folder_path: selectedFolder }),
-          })
-        );
+        console.log("Aggiornamento folder post-login:", selectedFolder);
+        const folderResp = await fetch(`${baseURL}/folder/update`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ folder_path: selectedFolder }),
+        });
+        if (!folderResp.ok) {
+          const data = await folderResp.json();
+          throw new Error(data.detail || "Errore aggiornamento folder path post-login");
+        }
       }
+
       if (selectedBank) {
-        updatePromises.push(
-          fetch(`${baseURL}/banks/update`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ value: selectedBank }),
-          })
-        );
+        console.log("Aggiornamento banca post-login:", selectedBank);
+        const bankResp = await fetch(`${baseURL}/banks/update`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ value: selectedBank }),
+        });
+        if (!bankResp.ok) {
+          const data = await bankResp.json();
+          throw new Error(data.detail || "Errore aggiornamento banca post-login");
+        }
       }
-      await Promise.all(updatePromises);
+
+      console.log("Folder e banca aggiornati correttamente post-login");
     } catch (err) {
       console.error("Login Error:", err);
       setError(err.message || "Si è verificato un errore.");

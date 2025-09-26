@@ -1,9 +1,11 @@
 import os
 import secrets
 import logging
+import json
+import configparser
 from pathlib import Path
 from pydantic_settings import BaseSettings
-from pydantic import Field,validator
+from pydantic import Field
 from typing import List
 from dotenv import load_dotenv
 
@@ -54,6 +56,7 @@ CORS_ORIGINS=["*"]
     
     return env_file
 
+
 # Rileva se siamo durante l'installazione
 import traceback
 stack = traceback.extract_stack()
@@ -62,6 +65,7 @@ is_during_setup = any('setup.py' in frame.filename or 'setuptools' in frame.file
 # Solo se non siamo durante l'installazione
 if not is_during_setup:
     ensure_config_exists()
+
 
 class Settings(BaseSettings):
     # === SICUREZZA JWT ===
@@ -92,6 +96,7 @@ class Settings(BaseSettings):
         "case_sensitive": True,
         "extra": "ignore"
     }
+
 
 class ConfigManager:
     """Gestisce la configurazione dell'applicazione"""
@@ -171,6 +176,7 @@ class ConfigManager:
         except Exception as e:
             logging.error(f"Errore nell'aggiornamento dell'impostazione {key}: {e}")
             return False
+
     def get_setting(self, key: str) -> str | None:
         """Legge il valore di una chiave dal file di configurazione .env"""
         try:
@@ -187,6 +193,50 @@ class ConfigManager:
         except Exception as e:
             logging.error(f"Errore nel recupero dell'impostazione {key}: {e}")
             return None
+
+    def get_ini_contents(self) -> dict:
+        """
+        Legge tutti i file INI delle banche partendo dal folder impostato
+        in SETTINGS_PATH e restituisce un dizionario simile a quello
+        usato nel frontend (/folder/ini).
+        """
+        folder_path = self.get_setting("SETTINGS_PATH")
+        if not folder_path:
+            logging.warning("SETTINGS_PATH non configurato, impossibile leggere INI")
+            return {}
+
+        banks_file = Path(folder_path) / "App" / "Ingestion" / "banks_default.json"
+        if not banks_file.exists():
+            logging.warning(f"File banks_default.json non trovato: {banks_file}")
+            return {}
+
+        try:
+            with open(banks_file, "r", encoding="utf-8") as f:
+                banks_data = json.load(f)
+        except Exception as e:
+            logging.error(f"Errore caricamento JSON banche: {e}")
+            return {}
+
+        ini_contents = {}
+        for bank in banks_data:
+            ini_path = Path(folder_path) / "App" / "Ingestion" / bank["ini_path"]
+            if ini_path.exists():
+                config = configparser.ConfigParser(allow_no_value=True)
+                config.read(ini_path, encoding="utf-8")
+
+                def expand_env_vars(d):
+                    return {k: os.path.expandvars(v) if v is not None else None for k, v in d.items()}
+
+                bank_ini = {"DEFAULT": expand_env_vars(config.defaults())}
+                for section in config.sections():
+                    bank_ini[section] = expand_env_vars(dict(config[section]))
+                ini_contents[bank["value"]] = {"ini_path": str(ini_path), "data": bank_ini}
+            else:
+                ini_contents[bank["value"]] = {"ini_path": str(ini_path), "data": None}
+
+        return ini_contents
+
+
 # Creiamo le istanze che verranno importate
 try:
     settings = Settings()

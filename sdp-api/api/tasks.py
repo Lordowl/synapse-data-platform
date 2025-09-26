@@ -117,11 +117,11 @@ def execute_selected_flows(
     db: Session = Depends(get_db),
     current_user: models.User = Security(require_ingest_permission),
 ):
-    logger.info(f"=== INIZIO ESECUZIONE FLOWS ===")
+    logger.info("=== INIZIO ESECUZIONE FLOWS ===")
     logger.info(f"User: {current_user.username if current_user else 'unknown'}")
     logger.info(f"Flows richiesti: {[flow.id for flow in request.flows]}")
     logger.info(f"Parametri: {request.params}")
-    
+
     folder_path = config_manager.get_setting("SETTINGS_PATH")
     if not folder_path:
         logger.error("Folder base non configurato in settings_path")
@@ -132,10 +132,49 @@ def execute_selected_flows(
         logger.error(f"File .ps1 non trovato: {script_path}")
         raise HTTPException(500, "File di esecuzione .ps1 non trovato.")
 
+    # --- Recupero INI e filelog template ---
+    ini_contents = config_manager.get_ini_contents()
+
+    # Prendi la banca selezionata dai parametri della richiesta, altrimenti fallback sulla prima disponibile
+    selected_bank = request.params.get("selectedBank") if isinstance(request.params, dict) else None
+    if not selected_bank:
+        selected_bank = next(iter(ini_contents), None)
+
+    logger.info(f"Banca usata per estrarre filelog: {selected_bank}")
+
+    filelog_template = None
+    if selected_bank and ini_contents.get(selected_bank):
+        filelog_template = ini_contents[selected_bank].get("data", {}).get("DEFAULT", {}).get("filelog")
+
+    # Helper robusto per estrarre la cartella dal template filelog
+    def extract_folder_from_template(template: str) -> str | None:
+        if not template:
+            return None
+        # supporta sia backslash che slash
+        part = template.split("\\", 1)[0]
+        part = part.split("/", 1)[0]
+        return part or None
+
+    folder_name = extract_folder_from_template(filelog_template)
+    if folder_name:
+        log_folder = Path(folder_path) / "App" / "Ingestion" / folder_name
+    else:
+        log_folder = Path(folder_path) / "App" / "Ingestion" / "log"  # fallback generico
+
+    logger.info(f"Cartella log selezionata: {log_folder} (template: {filelog_template})")
+
+    # Assicuriamoci che la cartella esista (non la creiamo se vuota? qui la creiamo per sicurezza)
+    if not log_folder.exists():
+        logger.warning(f"La cartella log {log_folder} non esiste; la creo.")
+        try:
+            log_folder.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Impossibile creare la cartella log {log_folder}: {e}", exc_info=True)
+
     flow_ids_str = " ".join(str(flow.id).replace("/", "-") for flow in request.flows)
     log_key = uuid.uuid4().hex[:8]
     start_time = time.time()
-    
+
     logger.info(f"Flow IDs string: {flow_ids_str}")
     logger.info(f"Log key generato: {log_key}")
 
@@ -150,36 +189,49 @@ def execute_selected_flows(
     ]
     logger.info(f"Comando da eseguire: {' '.join(command_args)}")
 
-    # Funzione interna per salvare dettaglio elemento
-    def save_element_detail(element_id, buffer):
-        """Determina il risultato basandosi sull'ultima riga significativa e salva nel DB."""
+    # --- Funzione interna per salvare dettagli elemento (definita DOPO log_key) ---
+    def save_element_detail(element_id, buffer, script_failed=False):
         logger.info(f"--- ANALISI ELEMENTO {element_id} ---")
-        logger.info(f"Buffer contiene {len(buffer)} righe:")
-        
-        # Debug: stampa tutto il buffer
-        for i, buf_line in enumerate(buffer):
-            logger.info(f"  Buffer[{i}]: {repr(buf_line.strip())}")
-        
-        last_line = ""
+        result = "Success"
+        to_add = ""
+
         for prev_line in reversed(buffer):
             prev_line_clean = prev_line.strip()
-            if not prev_line_clean or "DEBUG" in prev_line_clean.upper():
+            if not prev_line_clean:
+                logger.debug(f"[{element_id}] Riga vuota ignorata")
                 continue
+
             upper_line = prev_line_clean.upper()
+            logger.debug(f"[{element_id}] Analizzo riga: {prev_line_clean}")
+
+            if "DEBUG" in upper_line:
+                logger.debug(f"[{element_id}] Riga DEBUG ignorata")
+                continue
+
+            if "INFO" in upper_line:
+                logger.debug(f"[{element_id}] Riga INFO ignorata")
+                continue
+
             if "ERROR" in upper_line:
                 result = "Failed"
-                to_add = clean_log_line(prev_line_clean)
+                to_add = prev_line_clean
+                logger.info(f"[{element_id}] Trovato ERRORE → Failed")
                 break
             elif "WARNING" in upper_line or "WARN" in upper_line:
                 result = "Warning"
-                to_add = clean_log_line(prev_line_clean)
+                to_add = prev_line_clean
+                logger.info(f"[{element_id}] Trovato WARNING → Warning")
                 break
-            else:
-                result = "Success"
-                to_add = ""
-        else:
-            result = "Success"
-            to_add = ""
+            elif any(word in upper_line for word in ["FAIL", "KO", "TERMINATE"]):
+                result = "Failed"
+                to_add = prev_line_clean
+                logger.info(f"[{element_id}] Trovato FAIL/KO/TERMINATE → Failed")
+                break
+
+        if result == "Success" and script_failed:
+            result = "Failed"
+            to_add = "Script principale fallito (return code diverso da 0)"
+            logger.warning(f"[{element_id}] Nessun errore trovato ma script fallito → Forced Failed")
 
         try:
             crud.create_execution_detail(
@@ -189,14 +241,18 @@ def execute_selected_flows(
                 error_lines=[to_add] if to_add else [],
                 result=result,
             )
-            logger.info(f"✓ Dettagli salvati nel DB per elemento {element_id}")
+            logger.info(f"[{element_id}] ✓ Dettagli salvati nel DB (risultato: {result})")
             return 1
         except Exception as e:
-            logger.error(f"✗ Errore nel salvare dettagli per elemento {element_id}: {e}")
+            logger.error(f"[{element_id}] ✗ Errore nel salvataggio dettagli: {e}")
             return 0
 
     elements_processed = 0
+    lines = []
+    status = "Failed"
+
     try:
+        # Esegui lo script
         result = subprocess.run(
             command_args,
             capture_output=True,
@@ -207,25 +263,37 @@ def execute_selected_flows(
             shell=False,
         )
         logger.info(f"Script completato - Return code: {result.returncode}")
+        logger.debug(f"STDOUT: {result.stdout}")
+        logger.debug(f"STDERR: {result.stderr}")
 
-        # Lettura log
-        log_folder = Path(folder_path) / "App" / "Ingestion" / "log_SPK"
-        log_files = glob.glob(str(log_folder / f"*_{log_key}.log"))
-        if not log_files:
-            all_logs = glob.glob(str(log_folder / "*.log"))
-            log_file_path = max(all_logs, key=os.path.getctime)
-        else:
+        # --- Ricerca file di log (prima prova con log_key, altrimenti fallback) ---
+        log_files = list(log_folder.glob(f"*_{log_key}.log"))
+        if log_files:
             log_file_path = log_files[0]
+            logger.info(f"File log trovato con log_key: {log_file_path}")
+        else:
+            all_logs = list(log_folder.glob("*.log"))
+            if not all_logs:
+                logger.error(f"Nessun file .log trovato in {log_folder}")
+                raise HTTPException(status_code=500, detail=f"Nessun file .log trovato in {log_folder}")
+            log_file_path = max(all_logs, key=os.path.getctime)
+            logger.warning(f"File log con log_key non trovato, uso fallback: {log_file_path}")
 
-        lines = []
+        # --- Lettura log (diverse codifiche) ---
         for enc in ["cp1252", "utf-8", "latin-1"]:
             try:
                 with open(log_file_path, "r", encoding=enc) as f:
                     lines = f.readlines()
+                logger.info(f"Lettura file log avvenuta con encoding {enc}")
                 break
-            except Exception:
-                continue
+            except Exception as e:
+                logger.debug(f"Impossibile leggere {log_file_path} con {enc}: {e}")
 
+        if not lines:
+            logger.warning(f"File log {log_file_path} letto ma vuoto o non decodificabile")
+            raise HTTPException(status_code=500, detail=f"Impossibile leggere il log: {log_file_path}")
+
+        # --- Analisi log e salvataggio dettagli ---
         current_id = None
         buffer = []
         start_patterns = ["Inizio processo elemento con ID"]
@@ -251,12 +319,11 @@ def execute_selected_flows(
 
         status = "Failed" if any("ERROR" in l.upper() for l in lines) else "Success"
 
+    except HTTPException:
+        # rilancia HTTPException così il client vede il dettaglio già formattato
+        raise
     except Exception as e:
-        logger.error(f"=== ERRORE DURANTE L'ESECUZIONE ===")
-        logger.error(f"Tipo errore: {type(e).__name__}")
-        logger.error(f"Dettaglio errore: {str(e)}")
-        logger.error(f"Traceback completo:", exc_info=True)
-        
+        logger.error("=== ERRORE DURANTE L'ESECUZIONE ===", exc_info=True)
         status = "Failed"
         lines = [f"Errore imprevisto nell'API: {str(e)}"]
         for flow in request.flows:
@@ -272,9 +339,9 @@ def execute_selected_flows(
             except Exception:
                 continue
 
+    # Salvataggio log di esecuzione aggregato
     duration = int(time.time() - start_time)
     executed_by = current_user.username if current_user else "unknown"
-
     try:
         crud.create_execution_log(
             db=db,
@@ -286,7 +353,7 @@ def execute_selected_flows(
         )
         logger.info("✓ Log di esecuzione salvato nel DB")
     except Exception as e:
-        logger.error(f"✗ Errore nel salvare log di esecuzione: {e}")
+        logger.error(f"✗ Errore nel salvare log di esecuzione: {e}", exc_info=True)
 
     logger.info("=== FINE ESECUZIONE FLOWS ===")
     return {

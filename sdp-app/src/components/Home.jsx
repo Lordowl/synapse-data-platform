@@ -3,10 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 import apiClient from "../api/apiClient";
 import "./Home.css";
 
-// Importa tutti i loghi
 import sparkasseLogo from "../assets/sparkasse.png";
 import civibankLogo from "../assets/civibank.png";
-import defaultLogo from "../assets/logo.png"; // logo di fallback
+import defaultLogo from "../assets/logo.png";
 
 function Home({ setIsAuthenticated }) {
   const [user, setUser] = useState(null);
@@ -15,7 +14,6 @@ function Home({ setIsAuthenticated }) {
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  // Mappa delle banche con i rispettivi loghi
   const bankLogos = {
     sparkasse: sparkasseLogo,
     civibank: civibankLogo,
@@ -24,31 +22,23 @@ function Home({ setIsAuthenticated }) {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 1️⃣ Recupero utente
         const responseUser = await apiClient.get("/users/me");
         setUser(responseUser.data);
 
-        // 2️⃣ Recupero file INI
         const baseURL = sessionStorage.getItem("apiBaseURL");
         const token = sessionStorage.getItem("accessToken");
 
         const responseIni = await fetch(`${baseURL}/folder/ini`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         });
 
-        if (!responseIni.ok) {
-          throw new Error("Errore nel recuperare il file INI");
-        }
+        if (!responseIni.ok) throw new Error("Errore nel recuperare il file INI");
 
         const iniJson = await responseIni.json();
-        setIniData(iniJson.data);
+        setIniData(iniJson.inis); // <-- aggiorniamo qui
       } catch (err) {
         console.error("Errore nel recuperare i dati:", err);
-        setError(
-          "Impossibile caricare i dati. Prova a fare di nuovo il login."
-        );
+        setError("Impossibile caricare i dati. Prova a fare di nuovo il login.");
       } finally {
         setLoading(false);
       }
@@ -67,6 +57,8 @@ function Home({ setIsAuthenticated }) {
 
   const selectedBank = sessionStorage.getItem("selectedBank");
   const logoToShow = bankLogos[selectedBank] || defaultLogo;
+
+  const currentIni = selectedBank && iniData ? iniData[selectedBank] : null;
 
   return (
     <div className="home-page-wrapper">
@@ -99,16 +91,16 @@ function Home({ setIsAuthenticated }) {
         {loading && <p>Caricamento dati INI...</p>}
 
         {!loading ? (
-          iniData?.DEFAULT?.filemetadati ? (
+          currentIni?.data?.DEFAULT?.filemetadati ? (
             <Link
               to="/ingest"
-              state={{ metadataFilePath: iniData.DEFAULT.filemetadati }}
+              state={{ metadataFilePath: currentIni.data.DEFAULT.filemetadati }}
             >
               <button className="btn">Ingest</button>
             </Link>
           ) : (
             <p className="error-message">
-              File INI non trovato o percorso mancante.
+              File INI non trovato o percorso mancante per la banca selezionata.
             </p>
           )
         ) : (
