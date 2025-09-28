@@ -1,7 +1,7 @@
 // src/api/apiClient.js
 import axios from 'axios';
 
-const API_URL = 'http://127.0.0.1:8000/api/v1';
+const API_URL = 'http://127.0.0.1:8001/api/v1';
 
 const apiClient = axios.create({
     baseURL: API_URL,
@@ -19,5 +19,10 @@ apiClient.interceptors.request.use(
     },
     (error) => Promise.reject(error)
 );
+
+// Funzione helper per ottenere il token
+apiClient.getToken = () => {
+    return sessionStorage.getItem('accessToken');
+};
 
 export default apiClient;

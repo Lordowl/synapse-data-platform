@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Bash(curl -s -X POST 'http://127.0.0.1:8000/api/v1/auth/token' -H 'Content-Type: application/x-www-form-urlencoded' -d 'username=admin&password=admin')",
+      "Bash(curl -X GET \"http://127.0.0.1:8000/api/v1/reportistica/\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc1OTA3NDk2Mn0.1iZgJZmfs3eXktwiM4K1J5UzzTL7GhhBLoWjhOe7dgY\")",
+      "Bash(.venv/Scripts/uvicorn main:app --reload --host 127.0.0.1 --port 8000)",
+      "Bash(curl:*)",
+      "Bash(.venv/Scripts/python:*)",
+      "Bash(taskkill:*)",
+      "Bash(.venv/Scripts/uvicorn main:app --reload --host 127.0.0.1 --port 8001)",
+      "Bash(npm run lint)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
