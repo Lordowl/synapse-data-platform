@@ -4,9 +4,9 @@ from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 # Importa i moduli del nostro progetto
-from db import models,crud
+from db import models, crud, schemas
 from db.database import engine , SessionLocal
-from api import auth, users, tasks, audit, flows
+from api import auth, users, tasks, audit, flows, reportistica, repo_update
 
 # Questo comando crea le tabelle nel database (se non esistono già)
 # quando l'applicazione si avvia. Includerà la nuova tabella 'audit_logs'.
@@ -63,8 +63,9 @@ api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 api_router.include_router(users.router) # users.router ha già il suo prefisso "/users"
 api_router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
 api_router.include_router(audit.router, prefix="/audit", tags=["Audit"]) # Includi il nuovo router
-api_router.include_router(flows.router, prefix="/flows", tags=["Flows"]) 
-api_router.include_router(tasks.router)
+api_router.include_router(flows.router, prefix="/flows", tags=["Flows"])
+api_router.include_router(reportistica.router, prefix="/reportistica", tags=["Reportistica"])
+api_router.include_router(repo_update.router, prefix="/repo-update", tags=["RepoUpdate"])
 
 # Infine, includiamo il nostro router principale nell'app, con il prefisso globale.
 app.include_router(api_router, prefix="/api/v1")

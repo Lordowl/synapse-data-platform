@@ -72,3 +72,99 @@ def delete_user(db: Session, user_id: int):
     db.delete(db_user)
     db.commit()
     return db_user
+
+# --- CRUD operations for Reportistica ---
+
+def get_reportistica_items(db: Session, skip: int = 0, limit: int = 100):
+    """Recupera tutti gli elementi di reportistica."""
+    return db.query(models.Reportistica).offset(skip).limit(limit).all()
+
+def get_reportistica_by_id(db: Session, reportistica_id: int):
+    """Recupera un elemento di reportistica per ID."""
+    return db.query(models.Reportistica).filter(models.Reportistica.id == reportistica_id).first()
+
+def get_reportistica_by_nome_file(db: Session, nome_file: str):
+    """Recupera un elemento di reportistica per nome file."""
+    return db.query(models.Reportistica).filter(models.Reportistica.nome_file == nome_file).first()
+
+def create_reportistica(db: Session, reportistica: schemas.ReportisticaCreate):
+    """Crea un nuovo elemento di reportistica."""
+    db_reportistica = models.Reportistica(**reportistica.model_dump())
+    db.add(db_reportistica)
+    db.commit()
+    db.refresh(db_reportistica)
+    return db_reportistica
+
+def update_reportistica(db: Session, reportistica_id: int, reportistica_data: schemas.ReportisticaUpdate):
+    """Aggiorna un elemento di reportistica."""
+    update_data = reportistica_data.model_dump(exclude_unset=True)
+
+    if not update_data:
+        return get_reportistica_by_id(db, reportistica_id)
+
+    db.query(models.Reportistica).filter(models.Reportistica.id == reportistica_id).update(
+        values=update_data,
+        synchronize_session=False
+    )
+
+    db.commit()
+    return get_reportistica_by_id(db, reportistica_id)
+
+def delete_reportistica(db: Session, reportistica_id: int):
+    """Cancella un elemento di reportistica."""
+    db_reportistica = get_reportistica_by_id(db, reportistica_id)
+    if not db_reportistica:
+        return None
+    db.delete(db_reportistica)
+    db.commit()
+    return db_reportistica
+
+def get_reportistica_by_filters(db: Session, banca: str = None, anno: int = None, settimana: int = None, package: str = None):
+    """Recupera elementi di reportistica con filtri."""
+    query = db.query(models.Reportistica)
+
+    if banca:
+        query = query.filter(models.Reportistica.banca == banca)
+    if anno:
+        query = query.filter(models.Reportistica.anno == anno)
+    if settimana:
+        query = query.filter(models.Reportistica.settimana == settimana)
+    if package:
+        query = query.filter(models.Reportistica.package == package)
+
+    return query.all()
+
+# --- CRUD operations for RepoUpdateInfo ---
+
+def get_repo_update_info(db: Session):
+    """Recupera l'unica riga di repo_update_info."""
+    return db.query(models.RepoUpdateInfo).first()
+
+def create_repo_update_info(db: Session, repo_info: schemas.RepoUpdateInfoCreate):
+    """Crea un nuovo record repo_update_info."""
+    db_repo_info = models.RepoUpdateInfo(**repo_info.model_dump())
+    db.add(db_repo_info)
+    db.commit()
+    db.refresh(db_repo_info)
+    return db_repo_info
+
+def update_repo_update_info(db: Session, repo_info_data: schemas.RepoUpdateInfoUpdate):
+    """Aggiorna l'unica riga di repo_update_info."""
+    # Trova la prima (e unica) riga
+    existing_repo_info = get_repo_update_info(db)
+
+    if not existing_repo_info:
+        # Se non esiste, crea una nuova riga
+        create_data = schemas.RepoUpdateInfoCreate(**repo_info_data.model_dump(exclude_unset=True))
+        return create_repo_update_info(db, create_data)
+
+    # Aggiorna i dati esistenti
+    update_data = repo_info_data.model_dump(exclude_unset=True)
+    if update_data:
+        db.query(models.RepoUpdateInfo).filter(models.RepoUpdateInfo.id == existing_repo_info.id).update(
+            values=update_data,
+            synchronize_session=False
+        )
+        db.commit()
+
+    return get_repo_update_info(db)
