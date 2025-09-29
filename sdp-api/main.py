@@ -29,13 +29,13 @@ from core.config import settings, config_manager
 
 # Logging
 logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 # ----------------- Funzioni aggiornamento ----------------- #
 GITHUB_REPO_API = f"https://api.github.com/repos/{settings.github_repo}/releases/latest"
+
 
 def get_latest_version():
     try:
@@ -46,23 +46,38 @@ def get_latest_version():
         logging.error(f"[Updater] Errore nel recupero versione: {e}", exc_info=True)
         return None
 
+
 def get_current_version():
     try:
         return version("sdp-api")
     except PackageNotFoundError:
         return "0.0.0-dev"
     except Exception as e:
-        logging.error(f"[Updater] Errore nel recupero versione locale: {e}", exc_info=True)
+        logging.error(
+            f"[Updater] Errore nel recupero versione locale: {e}", exc_info=True
+        )
         return "0.0.0"
+
 
 def upgrade_package(asset_url):
     try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", asset_url, "--force-reinstall", "--no-deps"])
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                asset_url,
+                "--force-reinstall",
+                "--no-deps",
+            ]
+        )
         logging.info("[Updater] Aggiornamento completato.")
         return True
     except subprocess.CalledProcessError as e:
         logging.error(f"[Updater] Errore durante l'aggiornamento: {e}", exc_info=True)
         return False
+
 
 def check_and_update():
     if not settings.auto_update_check:
@@ -81,31 +96,45 @@ def check_and_update():
             if asset_url:
                 upgrade_package(asset_url)
         except Exception as e:
-            logging.error(f"[Updater] Errore durante richiesta GitHub: {e}", exc_info=True)
+            logging.error(
+                f"[Updater] Errore durante richiesta GitHub: {e}", exc_info=True
+            )
+
 
 # ----------------- Funzioni database ----------------- #
 def create_default_admin_if_not_exists():
     db = get_db().__next__()
     try:
-        admin_user = crud.get_user_by_username(db, username="admin")
-        if not admin_user:
-            default_admin_data = schemas.UserCreate(
-                username="admin",
-                password="admin",
-                email="admin@example.com",
-                role="admin",
-                permissions=[]
-            )
-            crud.create_user(db, user=default_admin_data)
+        for bank in crud.get_banks(db):
+            username = f"admin_{bank.value.lower()}"
+            email = f"admin@{bank.value.lower()}.example.com"
+            
+            # Controllo sia username che email
+            admin_user = crud.get_user_by_username(db, username=username)
+            if not admin_user:
+                admin_user = crud.get_user_by_email(db, email=email)
+            
+            if not admin_user:
+                default_admin_data = schemas.UserCreate(
+                    username=username,
+                    password="admin",
+                    email=email,
+                    role="admin",
+                    permissions=[],
+                )
+                crud.create_user(db, user=default_admin_data, bank=bank.value)
+                logger.info(f"[STARTUP] Admin creato per la banca '{bank.value}'")
+            else:
+                logger.info(f"[STARTUP] Admin già presente per la banca '{bank.value}'")
     finally:
         db.close()
-
 # ----------------- FastAPI app ----------------- #
 app = FastAPI(
     title="Synapse Data Platform API",
     description="API per la Synapse Data Platform.",
     version="1.0.0",
 )
+
 
 class IgnoreHMRMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -114,6 +143,7 @@ class IgnoreHMRMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS":
             return PlainTextResponse("OK", status_code=204)
         return await call_next(request)
+
 
 app.add_middleware(IgnoreHMRMiddleware)
 app.add_middleware(
@@ -145,12 +175,15 @@ api_router.include_router(settings_path.router)
 api_router.include_router(banks.router)
 app.include_router(api_router, prefix="/api/v1")
 
+
 # ----------------- Eventi di startup ----------------- #
 @app.on_event("startup")
 def startup_event():
     db_url = settings.DATABASE_URL
     if not db_url:
-        logging.warning("[STARTUP] Nessun DATABASE_URL configurato. Attendo /folder/update.")
+        logging.warning(
+            "[STARTUP] Nessun DATABASE_URL configurato. Attendo /folder/update."
+        )
         return
 
     if db_url.startswith("sqlite:///"):
@@ -162,20 +195,29 @@ def startup_event():
         banks_file = os.path.join(base_folder, "Ingestion", "banks_default.json")
 
         if not os.path.exists(ingestion_ps1) or not os.path.exists(banks_file):
-            logging.warning("[STARTUP] Alberatura incompleta (script o JSON mancante). Attendo /folder/update.")
-            logging.warning(f"[STARTUP] Mancano i seguenti file: {ingestion_ps1} o {banks_file}. Attendo /folder/update.")
+            logging.warning(
+                "[STARTUP] Alberatura incompleta (script o JSON mancante). Attendo /folder/update."
+            )
+            logging.warning(
+                f"[STARTUP] Mancano i seguenti file: {ingestion_ps1} o {banks_file}. Attendo /folder/update."
+            )
             return
 
         # Leggi tutti i file .ini dal JSON
         with open(banks_file, "r", encoding="utf-8") as f:
             banks_data = json.load(f)
 
-        ini_paths = [os.path.join(base_folder, "Ingestion", bank["ini_path"]) for bank in banks_data]
+        ini_paths = [
+            os.path.join(base_folder, "Ingestion", bank["ini_path"])
+            for bank in banks_data
+        ]
 
         # Controlla che tutti i .ini esistano
         if not all(os.path.exists(p) for p in ini_paths):
             missing = [p for p in ini_paths if not os.path.exists(p)]
-            logging.warning(f"[STARTUP] Mancano i seguenti file .ini: {missing}. Attendo /folder/update.")
+            logging.warning(
+                f"[STARTUP] Mancano i seguenti file .ini: {missing}. Attendo /folder/update."
+            )
             return
 
         # Se manca il DB → ricrealo
@@ -191,7 +233,9 @@ def startup_event():
         init_banks_from_file(banks_data)
         print(f"[STARTUP] Database inizializzato: {db_url}")
     except Exception as e:
-        logging.error(f"[STARTUP] Errore nell'inizializzazione del DB: {e}", exc_info=True)
+        logging.error(
+            f"[STARTUP] Errore nell'inizializzazione del DB: {e}", exc_info=True
+        )
 
 
 # ----------------- Endpoints generali ----------------- #
@@ -199,28 +243,32 @@ def startup_event():
 def read_root():
     return {"message": "Welcome! Navigate to /docs for the API documentation."}
 
+
 @app.get("/healthcheck", tags=["Health Check"])
 def health_check():
     return {"status": "ok"}
+
 
 @app.get("/config", tags=["Config"])
 def get_config_info():
     return {
         "config_file": str(config_manager.get_config_path()),
         "version": get_current_version(),
-        "auto_update_enabled": settings.auto_update_check
+        "auto_update_enabled": settings.auto_update_check,
     }
+
 
 # ----------------- Main CLI ----------------- #
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description='Synapse Data Platform API Server')
-    parser.add_argument('--host', default=settings.host)
-    parser.add_argument('--port', type=int, default=settings.port)
-    parser.add_argument('--reload', action='store_true')
-    parser.add_argument('--no-update-check', action='store_true')
-    parser.add_argument('--config', action='store_true')
-    parser.add_argument('--regenerate-secret', action='store_true')
+
+    parser = argparse.ArgumentParser(description="Synapse Data Platform API Server")
+    parser.add_argument("--host", default=settings.host)
+    parser.add_argument("--port", type=int, default=settings.port)
+    parser.add_argument("--reload", action="store_true")
+    parser.add_argument("--no-update-check", action="store_true")
+    parser.add_argument("--config", action="store_true")
+    parser.add_argument("--regenerate-secret", action="store_true")
     args = parser.parse_args()
 
     # Comandi speciali
@@ -239,6 +287,7 @@ def main():
         uvicorn.run("main:app", host=args.host, port=args.port, reload=True)
     else:
         uvicorn.run(app, host=args.host, port=args.port)
+
 
 if __name__ == "__main__":
     main()

@@ -61,8 +61,13 @@ function Login({ setIsAuthenticated }) {
     let folderPath = Array.isArray(selected) ? selected[0] : selected;
 
     // Normalizza folder se necessario
-    if (!folderPath.endsWith("App\\Ingestion") && !folderPath.endsWith("App/Ingestion")) {
-      folderPath = `${folderPath}${folderPath.endsWith("\\") || folderPath.endsWith("/") ? "" : "\\"}App\\Ingestion`;
+    if (
+      !folderPath.endsWith("App\\Ingestion") &&
+      !folderPath.endsWith("App/Ingestion")
+    ) {
+      folderPath = `${folderPath}${
+        folderPath.endsWith("\\") || folderPath.endsWith("/") ? "" : "\\"
+      }App\\Ingestion`;
     }
 
     console.log("Invio folder a backend:", folderPath);
@@ -70,7 +75,8 @@ function Login({ setIsAuthenticated }) {
 
     try {
       const token = sessionStorage.getItem("accessToken") || "";
-      if (!token) throw new Error("Token non presente, effettua prima il login");
+      if (!token)
+        throw new Error("Token non presente, effettua prima il login");
 
       const response = await fetch(`${baseURL}/folder/update`, {
         method: "POST",
@@ -136,7 +142,12 @@ function Login({ setIsAuthenticated }) {
     const formData = new URLSearchParams();
     formData.append("username", username);
     formData.append("password", password);
-
+    formData.append("bank", selectedBank); // <-- invio della banca al backend
+    console.log("Invio login con:", {
+  username,
+  password,
+  bank: selectedBank
+});
     try {
       const response = await fetch(`${baseURL}/auth/token`, {
         method: "POST",
@@ -145,7 +156,8 @@ function Login({ setIsAuthenticated }) {
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "Username o password non validi");
+      if (!response.ok)
+        throw new Error(data.detail || "Username o password non validi");
 
       const token = data.access_token;
       sessionStorage.setItem("accessToken", token);
@@ -154,7 +166,7 @@ function Login({ setIsAuthenticated }) {
       setIsAuthenticated(true);
       navigate("/");
 
-      // Aggiorna folder e banca sequenziale post-login
+      // Aggiornamento folder post-login
       if (selectedFolder) {
         console.log("Aggiornamento folder post-login:", selectedFolder);
         const folderResp = await fetch(`${baseURL}/folder/update`, {
@@ -167,24 +179,25 @@ function Login({ setIsAuthenticated }) {
         });
         if (!folderResp.ok) {
           const data = await folderResp.json();
-          throw new Error(data.detail || "Errore aggiornamento folder path post-login");
+          throw new Error(
+            data.detail || "Errore aggiornamento folder path post-login"
+          );
         }
       }
 
-      if (selectedBank) {
-        console.log("Aggiornamento banca post-login:", selectedBank);
-        const bankResp = await fetch(`${baseURL}/banks/update`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ value: selectedBank }),
-        });
-        if (!bankResp.ok) {
-          const data = await bankResp.json();
-          throw new Error(data.detail || "Errore aggiornamento banca post-login");
-        }
+      // Aggiornamento banca post-login
+      console.log("Aggiornamento banca post-login:", selectedBank);
+      const bankResp = await fetch(`${baseURL}/banks/update`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ value: selectedBank }),
+      });
+      if (!bankResp.ok) {
+        const data = await bankResp.json();
+        throw new Error(data.detail || "Errore aggiornamento banca post-login");
       }
 
       console.log("Folder e banca aggiornati correttamente post-login");
@@ -203,8 +216,18 @@ function Login({ setIsAuthenticated }) {
         <div className="api-connection">
           <label htmlFor="apiFolder">API Folder</label>
           <div className="input-group">
-            <input type="text" id="apiFolder" value={selectedFolder} readOnly disabled={loading} />
-            <button type="button" onClick={handleFolderSelect} disabled={loading}>
+            <input
+              type="text"
+              id="apiFolder"
+              value={selectedFolder}
+              readOnly
+              disabled={loading}
+            />
+            <button
+              type="button"
+              onClick={handleFolderSelect}
+              disabled={loading}
+            >
               Seleziona Cartella
             </button>
           </div>

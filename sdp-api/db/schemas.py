@@ -36,7 +36,8 @@ class Token(BaseModel):
 
 # Schema per i dati contenuti nel payload del token JWT
 class TokenData(BaseModel):
-    username: Optional[str] = None
+    username: str | None = None
+    bank: str | None = None   # <-- aggiunto
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None

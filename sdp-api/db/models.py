@@ -1,3 +1,4 @@
+from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Boolean, ForeignKey, func
 from sqlalchemy import (
     Column,
     Integer,
@@ -14,16 +15,18 @@ from .database import Base
 
 
 class User(Base):
-    # Nome della tabella nel database
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String, nullable=False)
-    # Aggiungiamo un campo "role" per la gestione dei permessi
-    role = Column(String, default="user")  # Esempi: 'user', 'admin'
+    role = Column(String, default="user")
     is_active = Column(Boolean, default=True)
+    permissions = Column(JSON, nullable=False, server_default='[]')
+    bank = Column(String, index=True, nullable=True)  # nuova colonna per filtrare dati per banca
+
+
     permissions = Column(JSON, nullable=False, server_default="[]")
     # --- AGGIUNGI QUESTA NUOVA CLASSE ---
 
@@ -36,6 +39,9 @@ class AuditLog(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     action = Column(String, index=True, nullable=False)
     details = Column(JSON, nullable=True)
+    bank = Column(String, index=True, nullable=True)  # nuova colonna
+
+
 
 
 class FlowExecutionHistory(Base):
@@ -46,6 +52,7 @@ class FlowExecutionHistory(Base):
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(String)  # "Success" / "Failed"
     duration_seconds = Column(Integer)
+    log_key = Column(String, unique=True, index=True)
     details = Column(JSON, nullable=True)  # Dettagli extra
 
 
@@ -76,6 +83,7 @@ class RepoUpdateInfo(Base):
     semaforo = Column(Integer, nullable=True)
     log_key = Column(String, unique=True, index=True)  # serve per collegare i dettagli
     details = Column(JSON, nullable=True)
+    bank = Column(String, index=True, nullable=True)  # nuova colonna
 
 
 class FlowExecutionDetail(Base):
@@ -85,6 +93,9 @@ class FlowExecutionDetail(Base):
     log_key = Column(String, index=True)
     element_id = Column(String)
     result = Column(String)
+    error_lines = Column(Text)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    bank = Column(String, index=True, nullable=True)  # nuova colonna
     error_lines = Column(Text)  # salva come JSON o testo multilinea
     timestamp = Column(
         DateTime(timezone=True), server_default=func.now()

@@ -9,8 +9,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from db.database import get_db
-from db import models
-from core.security import get_current_active_admin
+from db import models, crud
+from core.security import get_current_user, get_current_active_admin
 
 router = APIRouter()
 
@@ -31,16 +31,24 @@ def get_all_flows():
 
 
 @router.get("/historylatest")
-def get_flows_history_latest(db: Session = Depends(get_db)):
-    """Restituisce l'ultima esecuzione per ogni element_id dalla tabella FlowExecutionDetail."""
+def get_flows_history_latest(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Restituisce l'ultima esecuzione per ogni element_id filtrata per bank."""
     try:
-        all_executions = db.query(models.FlowExecutionDetail).order_by(models.FlowExecutionDetail.timestamp.desc()).all()
+        all_executions = (
+            db.query(models.FlowExecutionDetail)
+            .filter(models.FlowExecutionDetail.bank == current_user.bank)
+            .order_by(models.FlowExecutionDetail.timestamp.desc())
+            .all()
+        )
         history_map = {}
         for exec in all_executions:
             if exec.element_id not in history_map:
                 history_map[exec.element_id] = {
                     "timestamp": exec.timestamp.isoformat() if exec.timestamp else None,
-                    "result": exec.result,  # usa result, non status
+                    "result": exec.result,
                     "error_lines": exec.error_lines or "",
                     "log_key": exec.log_key,
                 }
@@ -51,10 +59,18 @@ def get_flows_history_latest(db: Session = Depends(get_db)):
 
 
 @router.get("/history")
-def get_execution_details(db: Session = Depends(get_db)):
-    """Restituisce tutti i dettagli delle esecuzioni per ogni log_key."""
+def get_execution_details(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Restituisce tutti i dettagli delle esecuzioni filtrati per bank."""
     try:
-        all_executions = db.query(models.FlowExecutionDetail).order_by(models.FlowExecutionDetail.timestamp.desc()).all()
+        all_executions = (
+            db.query(models.FlowExecutionDetail)
+            .filter(models.FlowExecutionDetail.bank == current_user.bank)
+            .order_by(models.FlowExecutionDetail.timestamp.desc())
+            .all()
+        )
         details_list = []
         for exec in all_executions:
             details_list.append({
@@ -74,7 +90,7 @@ def get_execution_details(db: Session = Depends(get_db)):
 class FlowExecutionLog(BaseModel):
     id: int
     timestamp: datetime
-    element_id: str  # Manteniamo element_id per compatibilità frontend
+    element_id: str
     status: str
     duration_seconds: Optional[int]
     details: Optional[Dict]
@@ -109,7 +125,7 @@ def format_log(log: models.FlowExecutionHistory) -> FlowExecutionLog:
     return FlowExecutionLog(
         id=log.id,
         timestamp=log.timestamp,
-        element_id=log.flow_id_str,  # Il frontend si aspetta element_id
+        element_id=log.flow_id_str,
         status=log.status or "unknown",
         duration_seconds=log.duration_seconds,
         details={
@@ -123,12 +139,20 @@ def format_log(log: models.FlowExecutionHistory) -> FlowExecutionLog:
 
 
 @router.get("/logs", response_model=List[FlowExecutionLog])
-def get_execution_logs(db: Session = Depends(get_db), limit: int = 200):
-    """Restituisce gli ultimi N log di esecuzione dei flussi dalla FlowExecutionHistory."""
+def get_execution_logs(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    limit: int = 200
+):
+    """Restituisce gli ultimi N log filtrati per bank."""
     try:
-        logs = db.query(models.FlowExecutionHistory).order_by(
-            models.FlowExecutionHistory.id.desc()
-        ).limit(limit).all()
+        logs = (
+            db.query(models.FlowExecutionHistory)
+            .filter(models.FlowExecutionHistory.bank == current_user.bank)
+            .order_by(models.FlowExecutionHistory.id.desc())
+            .limit(limit)
+            .all()
+        )
         return [format_log(log) for log in logs]
     except Exception as e:
         print(f"Errore nel recuperare i log di esecuzione: {e}")
@@ -140,7 +164,7 @@ def clear_execution_logs(
     db: Session = Depends(get_db), 
     admin_user: models.User = Security(get_current_active_admin)
 ):
-    """Cancella tutti i log di esecuzione dalla FlowExecutionHistory."""
+    """Cancella tutti i log di esecuzione (admin)."""
     try:
         count_before = db.query(models.FlowExecutionHistory).count()
         db.query(models.FlowExecutionHistory).delete()
@@ -156,10 +180,14 @@ def clear_execution_logs(
 
 
 @router.post("/logs/search", response_model=List[FlowExecutionLog])
-def search_execution_logs(filter_request: LogFilterRequest, db: Session = Depends(get_db)):
-    """Cerca nei log di esecuzione con filtri opzionali nella FlowExecutionHistory."""
+def search_execution_logs(
+    filter_request: LogFilterRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Cerca nei log di esecuzione con filtri opzionali, solo per la bank dell'utente."""
     try:
-        query = db.query(models.FlowExecutionHistory)
+        query = db.query(models.FlowExecutionHistory).filter(models.FlowExecutionHistory.bank == current_user.bank)
 
         if filter_request.flow_id:
             query = query.filter(models.FlowExecutionHistory.flow_id_str.contains(filter_request.flow_id))
