@@ -28,7 +28,7 @@ Nuova cartella
 # ===================================
 # Dipendenze Node
 sdp-app/node_modules/
-
+sdp-app/src-tauri/Cargo.toml
 # File di build di Vite/React
 sdp-app/dist/
 sdp-app/build/

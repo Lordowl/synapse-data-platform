@@ -1,3 +1,13 @@
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+pydantic[email]
+python-jose
+passlib
+pydantic-settings
+python-multipart
+bcrypt
 fastapi>=0.100.0
 uvicorn[standard]>=0.20.0
 sqlalchemy>=2.0.0

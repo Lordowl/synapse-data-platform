@@ -6,6 +6,7 @@ api/auth.py
 api/banks.py
 api/flows.py
 api/settings_path.py
+api/flows.py
 api/tasks.py
 api/users.py
 core/__init__.py
@@ -22,6 +23,8 @@ scripts/__init__.py
 scripts/addbank.py
 scripts/generate_flows_from_excel.py
 scripts/reset.py
+scripts/generate_flows_from_excel.py
+scripts/sample_script.py
 sdp_api.egg-info/PKG-INFO
 sdp_api.egg-info/SOURCES.txt
 sdp_api.egg-info/dependency_links.txt

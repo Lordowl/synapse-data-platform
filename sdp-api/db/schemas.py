@@ -59,6 +59,60 @@ class AuditLogInDB(AuditLogBase):
 
     class Config:
         from_attributes = True
+
+# --- Schemi per Reportistica ---
+
+class ReportisticaBase(BaseModel):
+    banca: Optional[str] = None
+    anno: Optional[int] = None
+    settimana: Optional[int] = None
+    nome_file: str
+    package: Optional[str] = None
+    disponibilita_server: Optional[bool] = False
+    ultima_modifica: Optional[datetime] = None
+    dettagli: Optional[str] = None
+
+class ReportisticaCreate(ReportisticaBase):
+    pass
+
+class ReportisticaUpdate(BaseModel):
+    banca: Optional[str] = None
+    anno: Optional[int] = None
+    settimana: Optional[int] = None
+    nome_file: Optional[str] = None
+    package: Optional[str] = None
+    disponibilita_server: Optional[bool] = None
+    ultima_modifica: Optional[datetime] = None
+    dettagli: Optional[str] = None
+
+class ReportisticaInDB(ReportisticaBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# --- Schemi per RepoUpdateInfo ---
+
+class RepoUpdateInfoBase(BaseModel):
+    settimana: Optional[int] = None
+    anno: Optional[int] = None
+    semaforo: Optional[int] = None
+
+class RepoUpdateInfoCreate(RepoUpdateInfoBase):
+    pass
+
+class RepoUpdateInfoUpdate(BaseModel):
+    settimana: Optional[int] = None
+    anno: Optional[int] = None
+    semaforo: Optional[int] = None
+
+class RepoUpdateInfoInDB(RepoUpdateInfoBase):
+    id: int
+
+    class Config:
+        from_attributes = True
         
 class BankBase(BaseModel):
     value: str

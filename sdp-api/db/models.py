@@ -1,3 +1,4 @@
+from sqlalchemy import Column, Integer, String, Boolean, JSON, ForeignKey, DateTime, Text
 from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Boolean,ForeignKey,func, result_tuple
 from sqlalchemy.sql import func
 from .database import Base
@@ -31,6 +32,30 @@ class FlowExecutionHistory(Base):
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(String)  # "Success" / "Failed"
     duration_seconds = Column(Integer)
+    details = Column(JSON, nullable=True) # Dettagli extra
+
+class Reportistica(Base):
+    __tablename__ = "reportistica"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    banca = Column(String, nullable=True)
+    anno = Column(Integer, nullable=True)
+    settimana = Column(Integer, nullable=True)
+    nome_file = Column(String, unique=True, nullable=False)
+    package = Column(String, nullable=True)
+    disponibilita_server = Column(Boolean, default=False)
+    ultima_modifica = Column(DateTime(timezone=True), nullable=True)
+    dettagli = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class RepoUpdateInfo(Base):
+    __tablename__ = "repo_update_info"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    settimana = Column(Integer, nullable=True)
+    anno = Column(Integer, nullable=True)
+    semaforo = Column(Integer, nullable=True)
     log_key = Column(String, unique=True, index=True)  # serve per collegare i dettagli
     details = Column(JSON, nullable=True)
 
