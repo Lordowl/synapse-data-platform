@@ -176,6 +176,10 @@ export const useIngestData = (metadataFilePath) => {
         return finalLog;
       });
 
+      console.log("📊 FINAL FRONTEND LOGS:");
+      console.log("frontendLogs length:", frontendLogs.length);
+      console.log("frontendLogs sample:", frontendLogs.slice(0, 2));
+
       setLogsData(frontendLogs);
 
       // aggiorna anche flowsData con ultimo stato

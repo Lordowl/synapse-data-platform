@@ -230,9 +230,9 @@ class ConfigManager:
                 bank_ini = {"DEFAULT": expand_env_vars(config.defaults())}
                 for section in config.sections():
                     bank_ini[section] = expand_env_vars(dict(config[section]))
-                ini_contents[bank["value"]] = {"ini_path": str(ini_path), "data": bank_ini}
+                ini_contents[bank["label"]] = {"ini_path": str(ini_path), "data": bank_ini}
             else:
-                ini_contents[bank["value"]] = {"ini_path": str(ini_path), "data": None}
+                ini_contents[bank["label"]] = {"ini_path": str(ini_path), "data": None}
 
         return ini_contents
 

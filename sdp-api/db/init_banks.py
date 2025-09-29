@@ -13,7 +13,7 @@ def init_banks_from_file(banks_data):
     db = next(get_db())
     try:
         for bank in banks_data:
-            exists = db.query(models.Bank).filter_by(value=bank["value"]).first()
+            exists = db.query(models.Bank).filter_by(label=bank["label"]).first()
             if not exists:
                 db.add(models.Bank(**bank))
         db.commit()

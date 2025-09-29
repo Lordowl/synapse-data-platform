@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Database, BarChart3, Settings, LogOut, User, Building } from "lucide-react";
 import apiClient from "../api/apiClient";
 import "./Home.css";
 
@@ -15,27 +16,21 @@ function Home({ setIsAuthenticated }) {
   const navigate = useNavigate();
 
   const bankLogos = {
-    sparkasse: sparkasseLogo,
-    civibank: civibankLogo,
+    Sparkasse: sparkasseLogo,
+    CiviBank: civibankLogo,
   };
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const responseUser = await apiClient.get("/users/me");
+        // Usa apiClient per entrambe le chiamate per coerenza
+        const [responseUser, responseIni] = await Promise.all([
+          apiClient.get("/users/me"),
+          apiClient.get("/folder/ini")
+        ]);
+
         setUser(responseUser.data);
-
-        const baseURL = sessionStorage.getItem("apiBaseURL");
-        const token = sessionStorage.getItem("accessToken");
-
-        const responseIni = await fetch(`${baseURL}/folder/ini`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!responseIni.ok) throw new Error("Errore nel recuperare il file INI");
-
-        const iniJson = await responseIni.json();
-        setIniData(iniJson.inis); // <-- aggiorniamo qui
+        setIniData(responseIni.data.inis);
       } catch (err) {
         console.error("Errore nel recuperare i dati:", err);
         setError("Impossibile caricare i dati. Prova a fare di nuovo il login.");
@@ -68,54 +63,80 @@ function Home({ setIsAuthenticated }) {
       </div>
 
       <div className="user-info-box">
-        {loading && <p>Caricamento profilo...</p>}
+        {loading && (
+          <div className="loading-state">
+            <User className="loading-icon" />
+            <p>Caricamento profilo...</p>
+          </div>
+        )}
         {error && <p className="error-message">{error}</p>}
         {user && (
-          <>
-            <p>
-              Benvenuto, <strong>{user.username}</strong>!
-            </p>
-            <p>
-              Ruolo: <em>{user.role}</em>
-            </p>
+          <div className="user-details">
+            <div className="user-item">
+              <User size={20} />
+              <span>Benvenuto, <strong>{user.username}</strong>!</span>
+            </div>
+            <div className="user-item">
+              <Settings size={20} />
+              <span>Ruolo: <em>{user.role}</em></span>
+            </div>
             {selectedBank && (
-              <p>
-                Banca selezionata: <strong>{selectedBank}</strong>
-              </p>
+              <div className="user-item">
+                <Building size={20} />
+                <span>Banca: <strong>{selectedBank}</strong></span>
+              </div>
             )}
-          </>
+          </div>
         )}
       </div>
 
       <div className="home-button-container">
-        {loading && <p>Caricamento dati INI...</p>}
-
-        {!loading ? (
-          currentIni?.data?.DEFAULT?.filemetadati ? (
-            <Link
-              to="/ingest"
-              state={{ metadataFilePath: currentIni.data.DEFAULT.filemetadati }}
-            >
-              <button className="btn">Ingest</button>
-            </Link>
+        <div className="main-actions">
+          {!loading ? (
+            currentIni?.data?.DEFAULT?.filemetadati ? (
+              <Link
+                to="/ingest"
+                state={{ metadataFilePath: currentIni.data.DEFAULT.filemetadati }}
+                className="nav-link"
+              >
+                <button className="btn btn-primary">
+                  <Database size={20} />
+                  <span>Ingest</span>
+                </button>
+              </Link>
+            ) : (
+              <div className="error-state">
+                <p className="error-message">
+                  File INI non trovato o percorso mancante per la banca selezionata.
+                </p>
+              </div>
+            )
           ) : (
-            <p className="error-message">
-              File INI non trovato o percorso mancante per la banca selezionata.
-            </p>
-          )
-        ) : (
-          <p>Caricamento dati INI...</p>
-        )}
+            <div className="loading-state">
+              <Database className="loading-icon" />
+              <p>Caricamento dati INI...</p>
+            </div>
+          )}
 
-        <Link to="/report">
-          <button className="btn">Report</button>
-        </Link>
-        <Link to="/settings">
-          <button className="btn">Settings</button>
-        </Link>
-        <div className="logout-container">
-          <button className="btn" onClick={handleLogout}>
-            Logout
+          <Link to="/report" className="nav-link">
+            <button className="btn btn-primary">
+              <BarChart3 size={20} />
+              <span>Report</span>
+            </button>
+          </Link>
+        </div>
+
+        <div className="secondary-actions">
+          <Link to="/settings" className="nav-link">
+            <button className="btn btn-outline">
+              <Settings size={20} />
+              <span>Settings</span>
+            </button>
+          </Link>
+
+          <button className="btn btn-danger logout-btn" onClick={handleLogout}>
+            <LogOut size={20} />
+            <span>Logout</span>
           </button>
         </div>
       </div>

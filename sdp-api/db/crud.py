@@ -1,3 +1,4 @@
+from sqlalchemy import label
 from sqlalchemy.orm import Session
 from . import models, schemas
 from core.security import get_password_hash
@@ -110,11 +111,9 @@ def get_flows_by_bank(db: Session, bank: str):
 def get_banks(db: Session):
     return db.query(models.Bank).filter(models.Bank.is_active == True).all()
 
-def get_bank_by_value(db: Session, value: str):
-    return db.query(models.Bank).filter(models.Bank.value == value).first()
 
 def create_bank(db: Session, bank: schemas.BankCreate):
-    db_bank = models.Bank(value=bank.value, label=bank.label)
+    db_bank = models.Bank(label=bank.label)
     db.add(db_bank)
     db.commit()
     db.refresh(db_bank)
@@ -123,9 +122,9 @@ def create_bank(db: Session, bank: schemas.BankCreate):
 def get_current_bank(db: Session):
     return db.query(models.Bank).filter_by(is_current=True).first()
 
-def set_current_bank(db: Session, bank_value: str):
+def set_current_bank(db: Session, bank_label: str):
     db.query(models.Bank).update({models.Bank.is_current: False})
-    bank = db.query(models.Bank).filter_by(value=bank_value).first()
+    bank = db.query(models.Bank).filter_by(label=bank_label).first()
     if not bank:
         return None
     bank.is_current = True

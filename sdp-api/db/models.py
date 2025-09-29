@@ -54,6 +54,7 @@ class FlowExecutionHistory(Base):
     duration_seconds = Column(Integer)
     log_key = Column(String, unique=True, index=True)
     details = Column(JSON, nullable=True)  # Dettagli extra
+    bank = Column(String, index=True, nullable=True)  # nuova colonna
 
 
 class Reportistica(Base):
@@ -106,7 +107,6 @@ class Bank(Base):
     __tablename__ = "banks"
 
     id = Column(Integer, primary_key=True, index=True)
-    value = Column(String, unique=True, index=True, nullable=False)
     label = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     ini_path = Column(String, nullable=True)

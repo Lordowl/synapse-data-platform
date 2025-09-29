@@ -161,9 +161,9 @@ async def read_ini(user: dict = Depends(get_current_user)):
                 bank_ini = {"DEFAULT": expand_env_vars(config.defaults())}
                 for section in config.sections():
                     bank_ini[section] = expand_env_vars(dict(config[section]))
-                ini_contents[bank["value"]] = {"ini_path": ini_path, "data": bank_ini}
+                ini_contents[bank["label"]] = {"ini_path": ini_path, "data": bank_ini}
             else:
-                ini_contents[bank["value"]] = {"ini_path": ini_path, "data": None}
+                ini_contents[bank["label"]] = {"ini_path": ini_path, "data": None}
 
         return {"inis": ini_contents}
 

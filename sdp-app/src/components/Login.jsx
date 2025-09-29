@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
+import { FolderOpen, Building, User, Lock, LogIn, Loader2 } from "lucide-react";
+import apiClient from "../api/apiClient";
 import "./Login.css";
 
 function Login({ setIsAuthenticated }) {
@@ -21,25 +23,21 @@ function Login({ setIsAuthenticated }) {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const token = sessionStorage.getItem("accessToken") || "";
-
         // Folder corrente
-        const folderResp = await fetch(`${baseURL}/folder/current`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (folderResp.ok) {
-          const folderData = await folderResp.json();
-          if (folderData.folder_path) setSelectedFolder(folderData.folder_path);
+        try {
+          const folderData = await apiClient.get("/folder/current");
+          if (folderData.data.folder_path) setSelectedFolder(folderData.data.folder_path);
+        } catch {
+          console.log("Nessun folder configurato o token non valido");
         }
 
         // Banche disponibili
-        const banksResp = await fetch(`${baseURL}/banks/available`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (banksResp.ok) {
-          const banksData = await banksResp.json();
-          setAvailableBanks(banksData.banks || []);
-          if (banksData.current_bank) setSelectedBank(banksData.current_bank);
+        try {
+          const banksData = await apiClient.get("/banks/available");
+          setAvailableBanks(banksData.data.banks || []);
+          if (banksData.data.current_bank) setSelectedBank(banksData.data.current_bank);
+        } catch {
+          console.log("Nessuna banca configurata o token non valido");
         }
       } catch (err) {
         console.error("Errore fetch dati iniziali:", err);
@@ -47,7 +45,7 @@ function Login({ setIsAuthenticated }) {
     };
 
     fetchInitialData();
-  }, [baseURL]);
+  }, []);
 
   // Seleziona cartella
   const handleFolderSelect = async () => {
@@ -60,70 +58,36 @@ function Login({ setIsAuthenticated }) {
     if (!selected) return;
     let folderPath = Array.isArray(selected) ? selected[0] : selected;
 
-    // Normalizza folder se necessario
-    if (
-      !folderPath.endsWith("App\\Ingestion") &&
-      !folderPath.endsWith("App/Ingestion")
-    ) {
-      folderPath = `${folderPath}${
-        folderPath.endsWith("\\") || folderPath.endsWith("/") ? "" : "\\"
-      }App\\Ingestion`;
+    if (!folderPath.endsWith("App\\Ingestion") && !folderPath.endsWith("App/Ingestion")) {
+      folderPath = `${folderPath}${folderPath.endsWith("\\") || folderPath.endsWith("/") ? "" : "\\"}App\\Ingestion`;
     }
 
-    console.log("Invio folder a backend:", folderPath);
     setSelectedFolder(folderPath);
 
     try {
       const token = sessionStorage.getItem("accessToken") || "";
-      if (!token)
-        throw new Error("Token non presente, effettua prima il login");
+      if (!token) throw new Error("Token non presente, effettua prima il login");
 
-      const response = await fetch(`${baseURL}/folder/update`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ folder_path: folderPath }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || "Errore aggiornamento folder path");
-      }
-
-      console.log("Folder aggiornato correttamente");
+      await apiClient.post("/folder/update", { folder_path: folderPath });
       setError("");
     } catch (err) {
       console.error("Errore aggiornamento folder:", err);
-      setError(err.message);
+      setError(err.response?.data?.detail || err.message);
     }
   };
 
   // Cambia banca
-  const handleBankChange = async (bankValue) => {
-    setSelectedBank(bankValue);
+  const handleBankChange = async (bankLabel) => {
+    setSelectedBank(bankLabel);
     try {
       const token = sessionStorage.getItem("accessToken") || "";
-      const response = await fetch(`${baseURL}/banks/update`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ value: bankValue }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || "Errore aggiornamento banca");
+      if (token) {
+        await apiClient.post("/banks/update", { label: bankLabel });
       }
-
-      console.log("Banca aggiornata correttamente!");
       setError("");
     } catch (err) {
       console.error("Errore aggiornamento banca:", err);
-      setError(err.message);
+      setError(err.response?.data?.detail || err.message);
     }
   };
 
@@ -142,12 +106,8 @@ function Login({ setIsAuthenticated }) {
     const formData = new URLSearchParams();
     formData.append("username", username);
     formData.append("password", password);
-    formData.append("bank", selectedBank); // <-- invio della banca al backend
-    console.log("Invio login con:", {
-  username,
-  password,
-  bank: selectedBank
-});
+    formData.append("bank", selectedBank); // ora invia label
+
     try {
       const response = await fetch(`${baseURL}/auth/token`, {
         method: "POST",
@@ -156,51 +116,25 @@ function Login({ setIsAuthenticated }) {
       });
 
       const data = await response.json();
-      if (!response.ok)
-        throw new Error(data.detail || "Username o password non validi");
+      if (!response.ok) throw new Error(data.detail || "Username o password non validi");
 
       const token = data.access_token;
       sessionStorage.setItem("accessToken", token);
       sessionStorage.setItem("apiBaseURL", baseURL);
       sessionStorage.setItem("selectedBank", selectedBank);
+
+      apiClient.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+      // Aggiornamento folder e banca post-login
+      try {
+        if (selectedFolder) await apiClient.post("/folder/update", { folder_path: selectedFolder });
+        await apiClient.post("/banks/update", { label: selectedBank });
+      } catch (updateErr) {
+        console.warn("Errore aggiornamento post-login:", updateErr);
+      }
+
       setIsAuthenticated(true);
       navigate("/");
-
-      // Aggiornamento folder post-login
-      if (selectedFolder) {
-        console.log("Aggiornamento folder post-login:", selectedFolder);
-        const folderResp = await fetch(`${baseURL}/folder/update`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ folder_path: selectedFolder }),
-        });
-        if (!folderResp.ok) {
-          const data = await folderResp.json();
-          throw new Error(
-            data.detail || "Errore aggiornamento folder path post-login"
-          );
-        }
-      }
-
-      // Aggiornamento banca post-login
-      console.log("Aggiornamento banca post-login:", selectedBank);
-      const bankResp = await fetch(`${baseURL}/banks/update`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ value: selectedBank }),
-      });
-      if (!bankResp.ok) {
-        const data = await bankResp.json();
-        throw new Error(data.detail || "Errore aggiornamento banca post-login");
-      }
-
-      console.log("Folder e banca aggiornati correttamente post-login");
     } catch (err) {
       console.error("Login Error:", err);
       setError(err.message || "Si è verificato un errore.");
@@ -214,7 +148,10 @@ function Login({ setIsAuthenticated }) {
       <h2 className="title">Welcome back!</h2>
       <form onSubmit={handleSubmit}>
         <div className="api-connection">
-          <label htmlFor="apiFolder">API Folder</label>
+          <label htmlFor="apiFolder">
+            <FolderOpen size={16} />
+            API Folder
+          </label>
           <div className="input-group">
             <input
               type="text"
@@ -222,61 +159,96 @@ function Login({ setIsAuthenticated }) {
               value={selectedFolder}
               readOnly
               disabled={loading}
+              placeholder="Seleziona la cartella di configurazione..."
             />
             <button
               type="button"
               onClick={handleFolderSelect}
               disabled={loading}
+              className="folder-select-btn"
             >
-              Seleziona Cartella
+              <FolderOpen size={16} />
+              Seleziona
             </button>
           </div>
         </div>
 
         <div className="bank-selection">
-          <label htmlFor="bankSelect">Banca</label>
-          <select
-            id="bankSelect"
-            value={selectedBank}
-            onChange={(e) => handleBankChange(e.target.value)}
-            disabled={loading}
-            required
-          >
-            <option value="">Seleziona una banca...</option>
-            {availableBanks.map((bank) => (
-              <option key={bank.value} value={bank.value}>
-                {bank.label}
-              </option>
-            ))}
-          </select>
+          <label htmlFor="bankSelect">
+            <Building size={16} />
+            Banca
+          </label>
+          <div className="select-wrapper">
+            <Building size={16} className="select-icon" />
+            <select
+              id="bankSelect"
+              value={selectedBank}
+              onChange={(e) => handleBankChange(e.target.value)}
+              disabled={loading}
+              required
+            >
+              <option value="">Seleziona una banca...</option>
+              {availableBanks.map((bank) => (
+                <option key={bank.value} value={bank.label}>
+                  {bank.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        <label>Username</label>
-        <input
-          type="text"
-          placeholder="Username"
-          id="username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          disabled={loading}
-          required
-        />
+        <div className="input-field">
+          <label htmlFor="username">
+            <User size={16} />
+            Username
+          </label>
+          <div className="input-wrapper">
+            <User size={16} className="input-icon" />
+            <input
+              type="text"
+              placeholder="Inserisci username"
+              id="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              disabled={loading}
+              required
+            />
+          </div>
+        </div>
 
-        <label>Password</label>
-        <input
-          type="password"
-          placeholder="Password"
-          id="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          disabled={loading}
-          required
-        />
+        <div className="input-field">
+          <label htmlFor="password">
+            <Lock size={16} />
+            Password
+          </label>
+          <div className="input-wrapper">
+            <Lock size={16} className="input-icon" />
+            <input
+              type="password"
+              placeholder="Inserisci password"
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
+              required
+            />
+          </div>
+        </div>
 
-        {error && <p className="error-message">{error}</p>}
+        {error && <div className="error-message">{error}</div>}
 
-        <button type="submit" disabled={loading}>
-          {loading ? "Accesso in corso..." : "Login"}
+        <button type="submit" disabled={loading} className="login-btn">
+          {loading ? (
+            <>
+              <Loader2 size={16} className="loading-spin" />
+              Accesso in corso...
+            </>
+          ) : (
+            <>
+              <LogIn size={16} />
+              Login
+            </>
+          )}
         </button>
       </form>
     </div>

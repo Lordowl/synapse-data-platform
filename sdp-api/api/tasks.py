@@ -107,56 +107,45 @@ def execute_selected_flows(
     current_user: models.User = Security(require_ingest_permission),
 ):
     logger.info("=== INIZIO ESECUZIONE FLOWS ===")
-    logger.info(f"User: {current_user.username}")
-
-    # Selezione banca
-    selected_bank = request.params.get("selectedBank") if isinstance(request.params, dict) else None
-    if not selected_bank:
-        selected_bank = getattr(current_user, "current_bank", None)
-        if not selected_bank:
-            raise HTTPException(400, "Nessuna banca selezionata e l'utente non ha banca predefinita.")
-
-    logger.info(f"Banca selezionata per l'esecuzione: {selected_bank}")
+    executed_by = current_user.username if current_user else "unknown"
+    logger.info(f"User: {executed_by}")
+    logger.info(f"Flows richiesti: {[flow.id for flow in request.flows]}")
+    logger.info(f"Parametri: {request.params}")
 
     folder_path = config_manager.get_setting("SETTINGS_PATH")
+    if not folder_path:
+        logger.error("Folder base non configurato in settings_path")
+        raise HTTPException(500, "Folder base non configurato in settings_path")
+
     script_path = Path(folder_path) / "App" / "Ingestion" / "ingestion.ps1"
     if not script_path.is_file():
+        logger.error(f"File .ps1 non trovato: {script_path}")
         raise HTTPException(500, "File di esecuzione .ps1 non trovato.")
 
-    # Costruzione flow_ids e log_key
-    flow_ids_str = " ".join(str(flow.id).replace("/", "-") for flow in request.flows)
-    log_key = uuid.uuid4().hex[:8]
-    start_time = time.time()
-
-    # Funzione interna per salvare dettagli elemento con banca
-    def save_element_detail(element_id, buffer, result="Success"):
-        try:
-            crud.create_execution_detail(
-                db=db,
-                log_key=log_key,
-                element_id=element_id,
-                error_lines=[line for line in buffer if line.strip()],
-                result=result,
-                bank=selected_bank
-            )
-        except Exception as e:
-            logger.error(f"Errore nel salvataggio dettagli: {e}")
-
-    # --- Recupero cartelle log e filelog template ---
+    # Recupero INI e template log
     ini_contents = config_manager.get_ini_contents()
-    filelog_template = None
-    if selected_bank and ini_contents.get(selected_bank):
-        filelog_template = ini_contents[selected_bank].get("data", {}).get("DEFAULT", {}).get("filelog")
+    selected_bank = request.params.get("selectedBank") if isinstance(request.params, dict) else None
+    if not selected_bank:
+        selected_bank = next(iter(ini_contents), None)
+    filelog_template = ini_contents.get(selected_bank, {}).get("data", {}).get("DEFAULT", {}).get("filelog")
 
-    folder_name = None
-    if filelog_template:
-        folder_name = filelog_template.split("\\")[0].split("/")[0]
+    def extract_folder_from_template(template: str) -> str | None:
+        if not template:
+            return None
+        part = template.split("\\", 1)[0].split("/", 1)[0]
+        return part or None
 
+    folder_name = extract_folder_from_template(filelog_template)
     log_folder = Path(folder_path) / "App" / "Ingestion" / (folder_name or "log")
     if not log_folder.exists():
         log_folder.mkdir(parents=True, exist_ok=True)
+        logger.warning(f"Cartella log creata: {log_folder}")
 
-    # Comando powershell
+    flow_ids_str = " ".join(str(flow.id).replace("/", "-") for flow in request.flows)
+    log_key = uuid.uuid4().hex[:8]
+    start_time = time.time()
+    logger.info(f"Flow IDs string: {flow_ids_str}, Log key: {log_key}")
+
     command_args = [
         "powershell.exe",
         "-ExecutionPolicy", "Bypass",
@@ -166,11 +155,46 @@ def execute_selected_flows(
         "-settimana", str(request.params.get("selectedWeek", "")),
         "-log_key", log_key,
     ]
-    logger.info(f"Comando da eseguire: {' '.join(command_args)}")
+    logger.info(f"Comando esecuzione: {' '.join(command_args)}")
 
-    lines = []
-    status = "Failed"
+    # --- Funzione per salvare dettagli per elemento ---
+    def save_element_detail(element_id, buffer, script_failed=False):
+        result = "Success"
+        to_add = ""
+        for prev_line in reversed(buffer):
+            line = prev_line.strip()
+            if not line or "DEBUG" in line.upper() or "INFO" in line.upper():
+                continue
+            line_upper = line.upper()
+            if "ERROR" in line_upper or any(word in line_upper for word in ["FAIL", "KO", "TERMINATE"]):
+                result = "Failed"
+                to_add = line
+                break
+            elif "WARNING" in line_upper or "WARN" in line_upper:
+                result = "Warning"
+                to_add = line
+                break
 
+        if result == "Success" and script_failed:
+            result = "Failed"
+            to_add = "Script principale fallito (return code diverso da 0)"
+
+        try:
+            crud.create_execution_detail(
+                db=db,
+                log_key=log_key,
+                element_id=element_id,
+                error_lines=[to_add] if to_add else [],
+                result=result,
+                bank=current_user.bank,
+            )
+        except Exception as e:
+            logger.error(f"Errore nel salvare dettagli elemento {element_id}: {e}")
+
+        return result  # restituisce stato dell'elemento
+
+    elements_results = []
+    all_lines = []
     try:
         result = subprocess.run(
             command_args,
@@ -192,51 +216,80 @@ def execute_selected_flows(
             if not all_logs:
                 raise HTTPException(500, f"Nessun file .log trovato in {log_folder}")
             log_file_path = max(all_logs, key=os.path.getctime)
-
         # Lettura log
         for enc in ["cp1252", "utf-8", "latin-1"]:
             try:
                 with open(log_file_path, "r", encoding=enc) as f:
-                    lines = f.readlines()
+                    raw_lines = f.readlines()
                 break
             except Exception:
                 continue
-        if not lines:
+        if not raw_lines:
             raise HTTPException(500, f"Impossibile leggere il log: {log_file_path}")
 
-        # Analisi log e salvataggio dettagli
+        # Pulizia dei numeri di riga da tutte le righe del log
+        import re
+        def clean_log_line(line):
+            """Rimuove numeri di riga dall'inizio della riga."""
+            if not line:
+                return line
+            # Rimuove pattern come "123:", "123-", "123 " all'inizio della riga
+            cleaned = re.sub(r'^\s*\d+[\s\-:]+', '', line)
+            return cleaned if cleaned else line
+
+        all_lines = [clean_log_line(line) for line in raw_lines]
+
+        # Analisi log per elementi
         current_id = None
         buffer = []
         start_patterns = ["Inizio processo elemento con ID"]
         id_regex = re.compile(r"ID\s+(\d+)")
-        for line in lines:
+        for line in all_lines:
             line_clean = line.strip()
             for pattern in start_patterns:
                 if pattern.lower() in line_clean.lower():
                     match = id_regex.search(line_clean)
                     if match:
-                        potential_id = match.group(1).strip()
                         if current_id is not None:
-                            save_element_detail(current_id, buffer)
+                            elem_status = save_element_detail(current_id, buffer, script_failed=(result.returncode != 0))
+                            elements_results.append(elem_status)
                         buffer = []
-                        current_id = potential_id
+                        current_id = match.group(1).strip()
                     break
             else:
                 if current_id is not None:
                     buffer.append(line)
-        if current_id is not None:
-            save_element_detail(current_id, buffer)
+        if current_id:
+            elem_status = save_element_detail(current_id, buffer, script_failed=(result.returncode != 0))
+            elements_results.append(elem_status)
 
-        status = "Failed" if any("ERROR" in l.upper() for l in lines) else "Success"
+        # --- Determinazione stato globale ---
+        if "Failed" in elements_results or result.returncode != 0:
+            status = "Failed"
+        elif "Warning" in elements_results:
+            status = "Warning"
+        else:
+            status = "Success"
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Errore durante l'esecuzione", exc_info=True)
+        logger.error(f"Errore imprevisto durante esecuzione: {e}", exc_info=True)
         status = "Failed"
+        all_lines = [f"Errore imprevisto nell'API: {str(e)}"]
         for flow in request.flows:
             element_id = str(flow.id).replace("/", "-")
-            save_element_detail(element_id, [f"Errore imprevisto: {str(e)}"], result="Failed")
+            try:
+                crud.create_execution_detail(
+                    db=db,
+                    log_key=log_key,
+                    element_id=element_id,
+                    error_lines=[f"Errore imprevisto nell'API: {str(e)}"],
+                    result="Failed",
+                    bank=current_user.bank,
+                )
+            except Exception:
+                continue
 
     # Salvataggio log aggregato
     duration = int(time.time() - start_time)
@@ -246,9 +299,9 @@ def execute_selected_flows(
             flow_id_str=flow_ids_str,
             status=status,
             duration_seconds=duration,
-            details={"executed_by": current_user.username, "params": request.params},
+            details={"executed_by": executed_by, "params": request.params},
             log_key=log_key,
-            bank=selected_bank
+            bank=current_user.bank,
         )
     except Exception as e:
         logger.error(f"Errore nel salvare log di esecuzione: {e}", exc_info=True)

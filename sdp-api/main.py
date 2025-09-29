@@ -1,30 +1,32 @@
-# main.py
 import os
 import sys
 import subprocess
 import logging
 import json
 from importlib.metadata import version, PackageNotFoundError
+
 import uvicorn
 import requests
-from starlette.middleware.base import BaseHTTPMiddleware
-from fastapi import Request
+from fastapi import FastAPI, APIRouter, Request
 from fastapi.responses import PlainTextResponse
-from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
-# Importa i moduli del nostro progetto
+# Importa moduli del progetto
 from db import models, crud, schemas
-from db.database import engine , SessionLocal
-from api import auth, users, tasks, audit, flows, reportistica, repo_update
-
-# Questo comando crea le tabelle nel database (se non esistono già)
-# quando l'applicazione si avvia. Includerà la nuova tabella 'audit_logs'.
-models.Base.metadata.create_all(bind=engine)
+from db.database import engine, SessionLocal, init_db, get_db
 from db.init_banks import init_banks_from_file
-from db import models, crud, schemas
-from db.database import init_db, get_db
-from api import auth, users, tasks, audit, flows, settings_path, banks
+from api import (
+    auth,
+    users,
+    tasks,
+    audit,
+    flows,
+    reportistica,
+    repo_update,
+    settings_path,
+    banks,
+)
 from core.config import settings, config_manager
 
 # Logging
@@ -106,8 +108,8 @@ def create_default_admin_if_not_exists():
     db = get_db().__next__()
     try:
         for bank in crud.get_banks(db):
-            username = f"admin_{bank.value.lower()}"
-            email = f"admin@{bank.value.lower()}.example.com"
+            username = f"admin_{bank.label.lower()}"
+            email = f"admin@{bank.label.lower()}.example.com"
             
             # Controllo sia username che email
             admin_user = crud.get_user_by_username(db, username=username)
@@ -122,10 +124,10 @@ def create_default_admin_if_not_exists():
                     role="admin",
                     permissions=[],
                 )
-                crud.create_user(db, user=default_admin_data, bank=bank.value)
-                logger.info(f"[STARTUP] Admin creato per la banca '{bank.value}'")
+                crud.create_user(db, user=default_admin_data, bank=bank.label)
+                logger.info(f"[STARTUP] Admin creato per la banca '{bank.label}'")
             else:
-                logger.info(f"[STARTUP] Admin già presente per la banca '{bank.value}'")
+                logger.info(f"[STARTUP] Admin già presente per la banca '{bank.label}'")
     finally:
         db.close()
 # ----------------- FastAPI app ----------------- #

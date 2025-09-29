@@ -23,6 +23,7 @@ sdp-api/dist
 sdp-api/build
 sdp-api/sdp-api.egg-info
 Nuova cartella
+.claude
 # ===================================
 # FRONTEND - sdp-app (Tauri/React)
 # ===================================

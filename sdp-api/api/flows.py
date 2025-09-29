@@ -203,3 +203,55 @@ def search_execution_logs(
     except Exception as e:
         print(f"Errore nella ricerca dei log: {e}")
         raise HTTPException(status_code=500, detail="Errore nella ricerca dei log")
+
+
+@router.get("/debug/counts")
+def get_debug_counts(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Endpoint di debug per verificare i conteggi delle tabelle."""
+    try:
+        history_count = db.query(models.FlowExecutionHistory).filter(
+            models.FlowExecutionHistory.bank == current_user.bank
+        ).count()
+
+        detail_count = db.query(models.FlowExecutionDetail).filter(
+            models.FlowExecutionDetail.bank == current_user.bank
+        ).count()
+
+        # Esempi di dati
+        sample_history = db.query(models.FlowExecutionHistory).filter(
+            models.FlowExecutionHistory.bank == current_user.bank
+        ).order_by(models.FlowExecutionHistory.id.desc()).limit(3).all()
+
+        sample_details = db.query(models.FlowExecutionDetail).filter(
+            models.FlowExecutionDetail.bank == current_user.bank
+        ).order_by(models.FlowExecutionDetail.id.desc()).limit(3).all()
+
+        return {
+            "bank": current_user.bank,
+            "history_count": history_count,
+            "detail_count": detail_count,
+            "sample_history": [
+                {
+                    "id": h.id,
+                    "flow_id_str": h.flow_id_str,
+                    "log_key": h.log_key,
+                    "status": h.status,
+                    "timestamp": h.timestamp.isoformat() if h.timestamp else None
+                } for h in sample_history
+            ],
+            "sample_details": [
+                {
+                    "id": d.id,
+                    "log_key": d.log_key,
+                    "element_id": d.element_id,
+                    "result": d.result,
+                    "timestamp": d.timestamp.isoformat() if d.timestamp else None
+                } for d in sample_details
+            ]
+        }
+    except Exception as e:
+        print(f"Errore nel debug counts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

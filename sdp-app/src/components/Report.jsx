@@ -29,65 +29,7 @@ const PERIODICITY_CONFIG = {
   }
 };
 
-// --- Dati di Esempio Unificati (mappati alla nuova struttura DB) ---
-const initialReportTasks = [
-  {
-    id: 1,
-    banca: "Sparkasse",
-    anno: 2024,
-    settimana: 39,
-    nome_file: "Clienti_ERP_S39.xlsx",
-    package: "Anagrafiche Core",
-    disponibilita_server: true,
-    ultima_modifica: "2024-09-28T08:00:00Z",
-    dettagli: "OK - Aggiornato alla settimana corretta, record presenti.",
-    created_at: "2024-09-01T10:00:00Z",
-    updated_at: "2024-09-28T08:00:00Z",
-    selected: false,
-  },
-  {
-    id: 2,
-    banca: "Sparkasse",
-    anno: 2024,
-    settimana: 39,
-    nome_file: "Inventario_S39.csv",
-    package: "Logistica",
-    disponibilita_server: true,
-    ultima_modifica: "2024-09-28T08:30:00Z",
-    dettagli: "ATTENZIONE: Campo settimana mancante nel file!",
-    created_at: "2024-09-01T10:00:00Z",
-    updated_at: "2024-09-28T08:30:00Z",
-    selected: false,
-  },
-  {
-    id: 3,
-    banca: "Sparkasse",
-    anno: 2024,
-    settimana: null,
-    nome_file: "Report_Vendite_M09.xlsx",
-    package: "Commerciale",
-    disponibilita_server: false,
-    ultima_modifica: null,
-    dettagli: "File non prodotto da IRION per il mese corrente.",
-    created_at: "2024-09-01T10:00:00Z",
-    updated_at: "2024-09-28T08:00:00Z",
-    selected: false,
-  },
-  {
-    id: 4,
-    banca: "CiviBank",
-    anno: 2024,
-    settimana: null,
-    nome_file: "Budget_Analisi_M09.xlsx",
-    package: "Controllo Gestione",
-    disponibilita_server: true,
-    ultima_modifica: "2024-09-15T10:30:00Z",
-    dettagli: "File aggiornato correttamente per il mese.",
-    created_at: "2024-09-01T10:00:00Z",
-    updated_at: "2024-09-15T10:30:00Z",
-    selected: false,
-  }
-];
+// Rimuovi i dati di esempio - ora usa solo dati reali dall'API
 
 // --- Funzioni Helper per la nuova struttura ---
 const getDisponibilitaServerBadge = (disponibilita_server) => {
@@ -141,12 +83,16 @@ function Report() {
   const currentPeriodicity = searchParams.get('type') || 'settimanale';
   const periodicityConfig = PERIODICITY_CONFIG[currentPeriodicity] || PERIODICITY_CONFIG.settimanale;
 
-  const [filters, setFilters] = useState({
-    banca: "Tutti",
-    package: "Tutti",
-    // Filtri dinamici basati sulla periodicità (solo mese per report mensili)
-    ...periodicityConfig.defaultFilters,
-    periodicity: currentPeriodicity // Mantieni per retrocompatibilità
+  const [filters, setFilters] = useState(() => {
+    // Imposta automaticamente la banca selezionata dal sessionStorage
+    const selectedBank = sessionStorage.getItem("selectedBank");
+    return {
+      banca: selectedBank || "Tutti",
+      package: "Tutti",
+      // Filtri dinamici basati sulla periodicità (solo mese per report mensili)
+      ...periodicityConfig.defaultFilters,
+      periodicity: currentPeriodicity // Mantieni per retrocompatibilità
+    };
   });
 
   const [reportTasks, setReportTasks] = useState([]);
@@ -184,8 +130,16 @@ function Report() {
 
   // Estrai valori univoci per i dropdown dai dati
   const uniqueBanks = useMemo(() => {
+    // La banca è già filtrata dalla query, quindi mostra solo quella selezionata
+    const selectedBank = sessionStorage.getItem("selectedBank");
     const banks = [...new Set(reportTasks.map(task => task.banca).filter(Boolean))];
-    return ["Tutti", ...banks];
+
+    // Se abbiamo una banca selezionata e i dati sono filtrati, mostra solo quella
+    if (selectedBank && banks.length > 0) {
+      return banks.includes(selectedBank) ? [selectedBank] : banks;
+    }
+
+    return banks;
   }, [reportTasks]);
 
   const uniquePackages = useMemo(() => {
@@ -206,59 +160,45 @@ function Report() {
   // Funzione per caricare le informazioni di repo update
   const fetchRepoUpdateInfo = useCallback(async () => {
     try {
-      const token = apiClient.getToken();
-      const response = await fetch("http://127.0.0.1:8001/api/v1/repo-update/", {
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json"
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setRepoUpdateInfo(data);
-      } else {
-        console.error("Errore nel caricamento repo update info:", response.status);
-        // Mantiene i valori di default se non riesce a caricare
-      }
+      const response = await apiClient.get("/repo-update/");
+      setRepoUpdateInfo(response.data);
     } catch (error) {
       console.error("Errore nella fetch repo update info:", error);
       // Mantiene i valori di default se non riesce a caricare
     }
   }, []);
 
+  // Ref per tenere traccia se è il primo caricamento
+  const isInitialLoad = useRef(true);
+
   // Fetch reportistica data from API
   useEffect(() => {
-    const isInitialLoad = { current: true };
-
-    const authenticateAndFetchData = async () => {
+    const fetchData = async () => {
       try {
-        // Only show loading spinner on initial load
+        // Mostra loading spinner solo al primo caricamento
         if (isInitialLoad.current) {
           setLoading(true);
         }
 
-        // Always get a fresh token to avoid expiration issues
-        const authResponse = await apiClient.post('/auth/token',
-          'username=admin&password=admin',
-          { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-        );
-        const token = authResponse.data.access_token;
-        sessionStorage.setItem('accessToken', token);
+        // Recupera la banca selezionata dal sessionStorage
+        const selectedBank = sessionStorage.getItem("selectedBank");
 
-        // Now fetch the reportistica data
-        const response = await apiClient.get('/reportistica/');
+        // Costruisce la query con il filtro per banca se disponibile
+        let queryUrl = '/reportistica/';
+        if (selectedBank) {
+          queryUrl += `?banca=${encodeURIComponent(selectedBank)}`;
+        }
+
+        const response = await apiClient.get(queryUrl);
         setReportTasks(response.data);
-
-        // Fetch repo update info
         await fetchRepoUpdateInfo();
+
       } catch (error) {
         console.error('Error fetching reportistica data:', error);
 
-        // Only show toast on initial load to avoid spam
+        // Mostra toast di errore solo al primo caricamento
         if (isInitialLoad.current) {
           showToast('Errore nel caricamento dei dati reportistica', 'error');
-          // If auth fails, set empty data to avoid infinite loading
           setReportTasks([]);
         }
       } finally {
@@ -269,17 +209,17 @@ function Report() {
       }
     };
 
-    // Fetch data initially
-    authenticateAndFetchData();
+    // Carica dati immediatamente
+    fetchData();
 
-    // Set up polling every 3 seconds
+    // Configura polling ogni 3 secondi
     const interval = setInterval(() => {
-      authenticateAndFetchData();
+      fetchData();
     }, 3000);
 
     // Cleanup interval on unmount
     return () => clearInterval(interval);
-  }, [fetchRepoUpdateInfo, showToast]);
+  }, []);
 
   // Status basato sul semaforo dal repo_update_info
   const semaphoreStatus = useMemo(() => {
@@ -314,8 +254,10 @@ function Report() {
         (currentPeriodicity === 'settimanale' && isWeeklyTask) ||
         (currentPeriodicity === 'mensile' && isMonthlyTask);
 
-      // Filtro per banca (gestisce valori null)
-      const matchesBanca = !filters.banca || filters.banca === "Tutti" || task.banca === filters.banca || (!task.banca && filters.banca === "Tutti");
+      // Filtro per banca: ora i dati sono già filtrati dalla query API,
+      // quindi questo filtro frontend è principalmente per consistenza dell'UI
+      const selectedBank = sessionStorage.getItem("selectedBank");
+      const matchesBanca = !selectedBank || !filters.banca || filters.banca === "Tutti" || task.banca === filters.banca;
 
       // Filtro per package
       const matchesPackage = !filters.package || filters.package === "Tutti" || task.package === filters.package;
@@ -344,50 +286,34 @@ function Report() {
     }
   };
   
-  const simulateApiCall = (duration = 1500) => 
-    new Promise(resolve => setTimeout(resolve, duration));
-
   const handleGlobalAction = async (actionName) => {
     if (actionName === 'esegui' && selectedTaskIds.size === 0) {
       showToast("Nessun task selezionato per l'esecuzione.", "warning");
       return;
     }
-    
+
     setLoadingActions(prev => ({ ...prev, global: actionName }));
     showToast(`Avvio azione globale '${actionName}'...`, "info");
-    await simulateApiCall(2500 + Math.random() * 2000);
 
-    if (actionName === 'esegui') {
-      setReportTasks(prevTasks => prevTasks.map(t => {
-        if (selectedTaskIds.has(t.id)) {
-          if (t.serverStatus !== 'presente' && t.serverStatus !== 'mancante_no_dati_irion') 
-            return {...t, serverStatus: 'presente', serverCheckDetails: 'Verifica OK tramite ESEGUI'};
-          if (t.sharepointStatus !== 'copiato_ok') 
-            return {...t, sharepointStatus: 'copiato_ok', sharepointCopyDate: new Date().toISOString()};
-          if (t.powerBIStatus !== 'importato_precheck') 
-            return {...t, powerBIStatus: 'importato_precheck'};
-        }
-        return t;
-      }));
-      showToast(`Esecuzione ${selectedTaskIds.size} task completata.`, "success");
-      setSelectedTaskIds(new Set());
-    } else if (actionName === 'creaPeriodo') {
-      setReportTasks(prevTasks => prevTasks.map(t => 
-        (selectedTaskIds.has(t.id) && t.serverStatus === 'mancante_no_dati_irion') ? 
-        {...t, serverStatus: 'presente', serverCheckDetails: `${periodicityConfig.timeLabel} creata per file mancante`} : t
-      ));
-      showToast(`Azione 'Crea ${periodicityConfig.timeLabel}' applicata ai task selezionati.`, "success");
-    } else {
-      showToast(`Azione globale '${actionName}' completata (simulazione).`, "success");
+    try {
+      // Qui andrà la logica per chiamare le API reali
+      // Per ora solo un messaggio di conferma
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      showToast(`Azione '${actionName}' completata.`, "success");
+
+      if (actionName === 'esegui') {
+        setSelectedTaskIds(new Set());
+      }
+    } catch (error) {
+      console.error('Errore nell\'azione:', error);
+      showToast(`Errore nell'esecuzione di '${actionName}'.`, "error");
+    } finally {
+      setLoadingActions(prev => ({ ...prev, global: null }));
     }
-    setLoadingActions(prev => ({ ...prev, global: null }));
   };
 
   const allTasksSelected = filteredReportTasks.length > 0 && selectedTaskIds.size === filteredReportTasks.length;
   const isAnyTaskSelected = selectedTaskIds.size > 0;
-  const canImportPBI = filteredReportTasks.length > 0 && filteredReportTasks.every(task => 
-    task.sharepointStatus === 'copiato_ok' || task.serverStatus === 'mancante_no_dati_irion'
-  );
 
   // Icona dinamica per il tipo di report
   const ReportIcon = periodicityConfig.icon;
@@ -413,10 +339,13 @@ function Report() {
               </div>
             </div>
             {/* Pulsante Indietro rimane qui, i pulsanti di periodicità sono stati spostati */}
-            <button 
-              onClick={() => navigate("/home")} 
-              className="btn btn-outline report-header-back-button" 
-              disabled={loadingActions.global !== null || loadingActions.taskAction !== null}
+            <button
+              onClick={() => {
+                console.log("Navigating back to /home...");
+                navigate("/home", { replace: true });
+              }}
+              className="btn btn-outline report-header-back-button"
+              disabled={loadingActions.global !== null}
             >
               ← Indietro
             </button>

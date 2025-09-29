@@ -32,7 +32,17 @@ function LogsTabContent({
   };
 
   const groupedExecutions = useMemo(() => {
-    return logsData.map((log) => {
+    console.group("🔍 DEBUG: GroupedExecutions Processing");
+    console.log("📊 Input data:");
+    console.log("logsData length:", logsData.length);
+    console.log("logsData sample:", logsData.slice(0, 2));
+    console.log("historyData keys:", Object.keys(historyData));
+    console.log("historyData sample entries:", Object.values(historyData).slice(0, 2));
+
+    const processed = logsData.map((log, index) => {
+      console.log(`\n--- Processing log ${index + 1}/${logsData.length} ---`);
+      console.log("Log object:", log);
+
       const possibleKeys = [
         log.altroLogKey,
         log.parsedLogKey,
@@ -40,18 +50,24 @@ function LogsTabContent({
         log.flowId && log.timestamp ? `${log.flowId}-${log.timestamp}` : null,
       ].filter(Boolean);
 
+      console.log("Possible keys:", possibleKeys);
+
       let details = [];
       let matchedKey = null;
 
       for (const key of possibleKeys) {
+        console.log(`Checking key: "${key}"`);
         if (historyData[key] && historyData[key].length > 0) {
           details = historyData[key];
           matchedKey = key;
+          console.log(`✅ Found match! Key: "${key}", Details count: ${details.length}`);
           break;
+        } else {
+          console.log(`❌ No match for key: "${key}"`);
         }
       }
 
-      return {
+      const result = {
         ...log,
         parsedLogKey: matchedKey || possibleKeys[0] || log.logKey,
         overallResult: extractResultFromMessage(log.message),
@@ -59,28 +75,93 @@ function LogsTabContent({
           (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
         ),
       };
+
+      console.log("Final result for this log:", {
+        parsedLogKey: result.parsedLogKey,
+        overallResult: result.overallResult,
+        detailsCount: result.details.length
+      });
+
+      return result;
     });
+
+    console.log("📊 Final processed executions:", processed.length);
+    console.log("Executions with details:", processed.filter(e => e.details.length > 0).length);
+    console.log("Executions without details:", processed.filter(e => e.details.length === 0).length);
+    console.groupEnd();
+
+    return processed;
   }, [logsData, historyData]);
 
   // Ricerca precisa per element_id: mostra tutta l'esecuzione se almeno un dettaglio corrisponde
   const filteredExecutions = useMemo(() => {
-    if (!logSearchTerm) return groupedExecutions;
+    console.group("🔍 DEBUG: Filtering Executions");
+    console.log("Input:");
+    console.log("groupedExecutions length:", groupedExecutions.length);
+    console.log("logSearchTerm:", logSearchTerm);
+    console.log("logLevelFilter:", logLevelFilter);
+
+    // 🔧 FIX: Sempre filtrare per livello, anche senza termine di ricerca
+    if (!logSearchTerm) {
+      console.log("No search term, filtering by level only");
+
+      const levelFiltered = groupedExecutions.filter((exec) => {
+        const matchesLevel =
+          logLevelFilter === "all" ||
+          exec.overallResult === logLevelFilter.toLowerCase();
+        return matchesLevel;
+      });
+
+      console.log("Level-only filtered executions:", levelFiltered.length);
+      console.groupEnd();
+      return levelFiltered;
+    }
 
     const search = logSearchTerm.toString().toLowerCase();
+    console.log("Searching for:", search);
 
-    return groupedExecutions.filter((exec) => {
+    const filtered = groupedExecutions.filter((exec, index) => {
+      console.log(`\n--- Filtering execution ${index + 1} ---`);
+      console.log("Execution:", exec);
+
       const matchesLevel =
         logLevelFilter === "all" ||
         exec.overallResult === logLevelFilter.toLowerCase();
 
+      console.log("Level match:", matchesLevel, "(level filter:", logLevelFilter, ", exec result:", exec.overallResult, ")");
+
+      // 🔧 FIX: Cercare non solo nei dettagli, ma anche nel flowId principale e nel messaggio
       const hasMatchingDetail = exec.details.some(
-        (detail) =>
-          detail.element_id &&
-          detail.element_id.toString().toLowerCase() === search
+        (detail) => {
+          const elementIdMatch = detail.element_id &&
+            detail.element_id.toString().toLowerCase() === search;
+          console.log("Detail element_id:", detail.element_id, "matches search:", elementIdMatch);
+          return elementIdMatch;
+        }
       );
 
-      return matchesLevel && hasMatchingDetail;
+      const flowIdMatches = exec.flowId &&
+        exec.flowId.toString().toLowerCase().includes(search);
+
+      const messageMatches = exec.message &&
+        exec.message.toString().toLowerCase().includes(search);
+
+      console.log("Has matching detail:", hasMatchingDetail);
+      console.log("FlowId matches:", flowIdMatches);
+      console.log("Message matches:", messageMatches);
+
+      const hasAnyMatch = hasMatchingDetail || flowIdMatches || messageMatches;
+      const finalMatch = matchesLevel && hasAnyMatch;
+      console.log("Final match result:", finalMatch);
+
+      return finalMatch;
     });
+
+    console.log("📊 Filtering results:");
+    console.log("Filtered executions:", filtered.length);
+    console.groupEnd();
+
+    return filtered;
   }, [groupedExecutions, logLevelFilter, logSearchTerm]);
 
   const getResultIcon = (result) => {
@@ -117,6 +198,7 @@ function LogsTabContent({
       .setZone("Europe/Rome")
       .toLocaleString(DateTime.DATETIME_MED_WITH_SECONDS);
   };
+
 
   const getDetailsSummary = (details) => {
     return details.reduce((acc, detail) => {
@@ -267,6 +349,14 @@ function LogsTabContent({
               {exec.details.length === 0 && (
                 <div className="no-details">
                   <p>Nessun dettaglio disponibile per questa esecuzione</p>
+                  <div className="execution-basic-info">
+                    <p><strong>Flow ID:</strong> {exec.flowId || "N/A"}</p>
+                    <p><strong>Status:</strong> {exec.overallResult || "N/A"}</p>
+                    <p><strong>Log Key:</strong> {exec.logKey || exec.parsedLogKey || "N/A"}</p>
+                    {exec.message && (
+                      <p><strong>Messaggio:</strong> {exec.message}</p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

@@ -1,186 +1,261 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap');
+/* Login.css - Aligned with global neumorphic theme */
 
-/* Variabili di colore */
-:root {
-    --bg-color: #ECF0F3; /* Sfondo principale */
-    --text-color: #333; /* Testo principale */
-    --accent-color: #79A5EC; /* Colore di accento */
-    --shadow-light: #FFFFFF; /* Ombra chiara */
-    --shadow-dark: #D1D9E6; /* Ombra scura */
-    --btn-bg: #D1D9E6; /* Sfondo per i pulsanti */
-    --btn-text: #333; /* Colore del testo per i pulsanti */
-    --input-shadow-dark: #C1C7D6; /* Ombra scura per gli input (meno intensa) */
-    --input-shadow-light: #FAFCFE; /* Ombra chiara per gli input (meno intensa) */
-}
-
-/* Reset e impostazioni base */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-body {
-    font-family: 'Poppins', sans-serif;
-    background-color: var(--bg-color);
-    color: var(--text-color);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-}
-
-/* Contenitore principale */
+/* Login page container */
 .login-page {
-    width: 400px;
-    max-width: 90%;
-    padding: 2rem;
-    border-radius: 30px;
-    background-color: var(--bg-color);
-    box-shadow: 6px 6px 12px var(--shadow-dark),
-                -6px -6px 12px var(--shadow-light);
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+  padding: var(--space-8);
+  border-radius: var(--rounded-3xl);
+  background-color: var(--primary-bg);
+  box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+              calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
-.login-page > .title {
-    text-align: center;
-    margin-bottom: 2rem;
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: var(--text-color);
+.login-page .title {
+  text-align: center;
+  margin-bottom: var(--space-8);
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-color);
 }
 
-/* Form */
+/* Form styles */
+.login-page form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* Labels with icons */
 .login-page form label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  font-weight: 600;
+  color: var(--text-color);
+  font-size: var(--text-sm);
 }
 
-.login-page form input {
-    width: 100%;
-    padding: 1rem;
-    margin-bottom: 1.5rem;
-    border: none;
-    border-radius: 20px;
-    background-color: var(--bg-color);
-    color: var(--text-color);
-    /* Riduzione dell'intensità delle ombre interne degli input */
-    box-shadow: inset 1px 1px 3px var(--input-shadow-dark),
-                inset -1px -1px 3px var(--input-shadow-light);
-    outline: none;
+/* Input field containers */
+.input-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
-/* Button */
-.login-page form button {
-    width: 100%;
-    padding: 1rem;
-    border: none;
-    border-radius: 20px;
-    /* Colori e ombre per un pulsante più evidente */
-    background-color: var(--btn-bg);
-    color: var(--btn-text);
-    font-weight: 600;
-    box-shadow: 5px 5px 10px var(--shadow-dark),
-                -5px -5px 10px var(--shadow-light);
-    cursor: pointer;
-    transition: all 0.3s ease;
-    outline: none;
-    /* Leggero ingrandimento e cambio di ombre all'hover */
+/* Input wrapper with icons */
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
 }
-.login-page form button:hover {
-    transform: scale(1.03); /* Leggero ingrandimento */
-    box-shadow: inset 2px 2px 5px var(--shadow-dark),
-                inset -2px -2px 5px var(--shadow-light);
+
+.input-wrapper .input-icon {
+  position: absolute;
+  left: var(--space-3);
+  color: var(--text-muted);
+  z-index: 1;
+}
+
+.input-wrapper input {
+  width: 100%;
+  padding: var(--space-3) var(--space-3) var(--space-3) calc(var(--space-8) + var(--space-2));
+  border: none;
+  border-radius: var(--rounded-full);
+  background-color: var(--primary-bg);
+  color: var(--text-color);
+  box-shadow: inset var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+              inset calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+  outline: none;
+  font-size: var(--text-base);
+}
+
+.input-wrapper input:focus {
+  box-shadow: inset calc(var(--shadow-distance) * 1.5) calc(var(--shadow-distance) * 1.5) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+              inset calc(var(--shadow-distance) * -1.5) calc(var(--shadow-distance) * -1.5) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+}
+
+.input-wrapper input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Login button */
+.login-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-6);
+  border: none;
+  border-radius: var(--rounded-full);
+  background: var(--primary-bg);
+  color: var(--text-color);
+  font-weight: 600;
+  font-size: var(--text-base);
+  box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+              calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  outline: none;
+}
+
+.login-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  color: var(--accent-color-primary-btn);
+}
+
+.login-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: inset calc(var(--shadow-distance) / 2) calc(var(--shadow-distance) / 2) var(--shadow-distance) var(--neomorphic-dark),
+              inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2) var(--shadow-distance) var(--neomorphic-light);
+}
+
+.login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.loading-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* API Connection Section */
 .api-connection {
-    margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
-.api-connection > label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 500;
-    color: var(--text-color);
+.input-group {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
 }
 
-.api-address-port {
-    display: flex;
-    gap: 1rem;
+.input-group input {
+  flex: 1;
+  padding: var(--space-3);
+  border: none;
+  border-radius: var(--rounded-full);
+  background-color: var(--primary-bg);
+  color: var(--text-color);
+  box-shadow: inset var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+              inset calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+  outline: none;
+  font-size: var(--text-base);
 }
 
-.api-address-port input {
-    width: 100%;
-    padding: 1rem;
-    margin-bottom: 1.5rem;
-    border: none;
-    border-radius: 20px;
-    background-color: var(--bg-color);
-    color: var(--text-color);
-    box-shadow: inset 1px 1px 3px var(--input-shadow-dark),
-                inset -1px -1px 3px var(--input-shadow-light);
-    outline: none;
+.input-group input::placeholder {
+  color: var(--text-muted);
 }
 
-.api-address-port input::placeholder {
-    color: #777; /* Placeholder text color */
+.folder-select-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-radius: var(--rounded-full);
+  background: var(--primary-bg);
+  color: var(--text-color);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+              calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  outline: none;
+  white-space: nowrap;
+}
+
+.folder-select-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  color: var(--accent-color-primary-btn);
+}
+
+.folder-select-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: inset calc(var(--shadow-distance) / 2) calc(var(--shadow-distance) / 2) var(--shadow-distance) var(--neomorphic-dark),
+              inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2) var(--shadow-distance) var(--neomorphic-light);
+}
+
+.folder-select-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Error Message */
 .error-message {
-    color: #E44D26; /* Vivace e visibile */
-    padding: 10px;
-    margin-top: 0.5rem;
-    text-align: center;
+  color: var(--error-color, #ef4444);
+  background: var(--primary-bg);
+  padding: var(--space-3);
+  border-radius: var(--rounded-lg);
+  border-left: 4px solid var(--error-color, #ef4444);
+  font-size: var(--text-sm);
+  text-align: center;
+  box-shadow: inset var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+              inset calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
 }
 
-.status-indicator {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  margin-right: 8px;
-  vertical-align: middle;
-}
-
-.status-indicator.ok {
-  background-color: green;
-}
-
-.status-indicator.loading {
-  background-color: yellow;
-}
-
-.status-indicator.error {
-  background-color: red;
-}
-
-.error-list {
-  color: red;
-  margin-top: 4px;
-  padding-left: 18px;
-  font-size: 0.9rem;
-}
-
+/* Bank selection */
 .bank-selection {
-  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
-.bank-selection label {
-  display: block;
-  margin-bottom: 0.5rem;
+.select-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 
-.bank-selection select {
+.select-wrapper .select-icon {
+  position: absolute;
+  left: var(--space-3);
+  color: var(--text-muted);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.select-wrapper select {
   width: 100%;
-  padding: 0.5rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
+  padding: var(--space-3) var(--space-3) var(--space-3) calc(var(--space-8) + var(--space-2));
+  border: none;
+  border-radius: var(--rounded-full);
+  background-color: var(--primary-bg);
+  color: var(--text-color);
+  box-shadow: inset var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+              inset calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+  outline: none;
+  font-size: var(--text-base);
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right var(--space-3) center;
+  background-repeat: no-repeat;
+  background-size: 16px;
 }
 
-.bank-selection select:disabled {
-  background-color: #f5f5f5;
+.select-wrapper select:focus {
+  box-shadow: inset calc(var(--shadow-distance) * 1.5) calc(var(--shadow-distance) * 1.5) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+              inset calc(var(--shadow-distance) * -1.5) calc(var(--shadow-distance) * -1.5) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+}
+
+.select-wrapper select:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }

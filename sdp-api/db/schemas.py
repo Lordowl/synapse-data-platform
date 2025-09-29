@@ -116,17 +116,16 @@ class RepoUpdateInfoInDB(RepoUpdateInfoBase):
         from_attributes = True
         
 class BankBase(BaseModel):
-    value: str
     label: str
     ini_path: Optional[str] = None
 
 
 class BankCreate(BankBase):
-    pass  # eredita già value, label, ini_path
+    pass  
 
 
 class BankUpdate(BaseModel):
-    value: str
+    label: str
 
 
 class BankResponse(BankBase):

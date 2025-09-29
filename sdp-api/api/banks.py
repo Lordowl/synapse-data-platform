@@ -10,12 +10,12 @@ router = APIRouter(prefix="/banks", tags=["Banks"])
 def get_available_banks(db: Session = Depends(get_db)):
     banks = crud.get_banks(db)
     current = crud.get_current_bank(db)
-    current_bank = current.value if current else None
+    current_bank = current.label if current else None
     return {"banks": banks, "current_bank": current_bank}
 
 @router.post("/update")
 def update_bank(bank: schemas.BankUpdate, db: Session = Depends(get_db)):
-    updated_bank = crud.set_current_bank(db, bank.value)
+    updated_bank = crud.set_current_bank(db, bank.label)
     if not updated_bank:
         raise HTTPException(status_code=404, detail="Banca non trovata")
     return {"message": f"Banca aggiornata a {updated_bank.label}"}
@@ -23,7 +23,6 @@ def update_bank(bank: schemas.BankUpdate, db: Session = Depends(get_db)):
 @router.post("/add")
 def add_bank(bank: BankCreate, db: Session = Depends(get_db)):
     new_bank = models.Bank(
-        value=bank.value,
         label=bank.label,
         ini_path=bank.ini_path
     )
