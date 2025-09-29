@@ -1,7 +1,17 @@
-from sqlalchemy import Column, Integer, String, Boolean, JSON, ForeignKey, DateTime, Text
-from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Boolean,ForeignKey,func, result_tuple
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Boolean,
+    JSON,
+    ForeignKey,
+    DateTime,
+    Text,
+    func,
+)
 from sqlalchemy.sql import func
 from .database import Base
+
 
 class User(Base):
     # Nome della tabella nel database
@@ -14,8 +24,10 @@ class User(Base):
     # Aggiungiamo un campo "role" per la gestione dei permessi
     role = Column(String, default="user")  # Esempi: 'user', 'admin'
     is_active = Column(Boolean, default=True)
-    permissions = Column(JSON, nullable=False, server_default='[]')
+    permissions = Column(JSON, nullable=False, server_default="[]")
     # --- AGGIUNGI QUESTA NUOVA CLASSE ---
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
@@ -24,6 +36,8 @@ class AuditLog(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     action = Column(String, index=True, nullable=False)
     details = Column(JSON, nullable=True)
+
+
 class FlowExecutionHistory(Base):
     __tablename__ = "flow_execution_history"
 
@@ -32,7 +46,8 @@ class FlowExecutionHistory(Base):
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(String)  # "Success" / "Failed"
     duration_seconds = Column(Integer)
-    details = Column(JSON, nullable=True) # Dettagli extra
+    details = Column(JSON, nullable=True)  # Dettagli extra
+
 
 class Reportistica(Base):
     __tablename__ = "reportistica"
@@ -47,7 +62,10 @@ class Reportistica(Base):
     ultima_modifica = Column(DateTime(timezone=True), nullable=True)
     dettagli = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
 
 class RepoUpdateInfo(Base):
     __tablename__ = "repo_update_info"
@@ -68,7 +86,9 @@ class FlowExecutionDetail(Base):
     element_id = Column(String)
     result = Column(String)
     error_lines = Column(Text)  # salva come JSON o testo multilinea
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())  # <-- aggiunto
+    timestamp = Column(
+        DateTime(timezone=True), server_default=func.now()
+    )  # <-- aggiunto
 
 
 class Bank(Base):
@@ -78,5 +98,5 @@ class Bank(Base):
     value = Column(String, unique=True, index=True, nullable=False)
     label = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
-    ini_path = Column(String, nullable=True)  
+    ini_path = Column(String, nullable=True)
     is_current = Column(Boolean, default=False)
