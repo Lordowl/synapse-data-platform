@@ -46,10 +46,7 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ],
-    "updater": {
-      "active": true
-    }
+    ]
   },
   "plugins": {
     "updater": {
@@ -58,7 +55,7 @@
       "endpoints": [
   "https://github.com/Lordowl/synapse-data-updates/releases/latest/download/latest.json"
 ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUxQzhBRDAyMDVDM0E3MTkKUldRWnA4TUZBcTNJVWYvekpSZEdVUEt2bHA1VGhxL1JqVjlJWG1SRlZ1SlZ2akVQbUtrdGFqbS8K="
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUzQjg0MDRDQTQzQkQ1QjIKUldTeTFUdWtURUM0VTlzUWw0ZC85QkR4Q1dicm9PT1hpa09ibzhJM0VwYklXQWZZZzlzYjdmN0gK"
     }
   }
 }
