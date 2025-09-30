@@ -6,8 +6,11 @@ import {
   Clock,
   ChevronDown,
   ChevronRight,
+  FileText,
 } from "lucide-react";
 import { DateTime } from "luxon";
+import { toast } from "react-toastify";
+import apiClient from "../api/apiClient";
 import "./LogsTab.css";
 
 function LogsTabContent({
@@ -215,6 +218,25 @@ function LogsTabContent({
     }));
   };
 
+  const handleOpenLogFile = async (logKey) => {
+    try {
+      const selectedBank = sessionStorage.getItem("selectedBank");
+      if (!selectedBank) {
+        toast.error("Nessuna banca selezionata.");
+        return;
+      }
+
+      await apiClient.post("/folder/open-log", {
+        log_key: logKey,
+        bank: selectedBank
+      });
+      toast.success("File di log aperto con successo!");
+    } catch (error) {
+      console.error("Errore nell'apertura del file di log:", error);
+      toast.error(error.response?.data?.detail || "Impossibile aprire il file di log.");
+    }
+  };
+
   return (
     <div className="logs-tab-content">
       <div className="logs-controls">
@@ -261,6 +283,16 @@ function LogsTabContent({
                     >
                       {exec.overallResult.toUpperCase()}
                     </span>
+                    {(exec.logKey || exec.parsedLogKey) && (
+                      <button
+                        className="open-log-button"
+                        onClick={() => handleOpenLogFile(exec.logKey || exec.parsedLogKey)}
+                        title="Apri file di log"
+                      >
+                        <FileText size={16} />
+                        <span>Apri Log</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="execution-meta">

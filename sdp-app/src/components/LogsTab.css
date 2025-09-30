@@ -412,3 +412,28 @@
   align-items: center;
   gap: 12px; /* distanza automatica tra ID e stato */
 }
+
+.open-log-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: #17a2b8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background-color 0.2s;
+  white-space: nowrap;
+  margin-left: 8px;
+}
+
+.open-log-button:hover {
+  background-color: #138496;
+}
+
+.open-log-button svg {
+  width: 16px;
+  height: 16px;
+}

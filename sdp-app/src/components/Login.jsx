@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
 import { FolderOpen, Building, User, Lock, LogIn, Loader2 } from "lucide-react";
+import axios from "axios";
 import apiClient from "../api/apiClient";
 import "./Login.css";
 
@@ -23,21 +24,27 @@ function Login({ setIsAuthenticated }) {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
+        // Crea un client axios temporaneo senza autenticazione
+        const tempClient = axios.create({
+          baseURL: baseURL,
+          headers: { 'Content-Type': 'application/json' },
+        });
+
         // Folder corrente
         try {
-          const folderData = await apiClient.get("/folder/current");
+          const folderData = await tempClient.get("/folder/current");
           if (folderData.data.folder_path) setSelectedFolder(folderData.data.folder_path);
         } catch {
-          console.log("Nessun folder configurato o token non valido");
+          console.log("Nessun folder configurato");
         }
 
         // Banche disponibili
         try {
-          const banksData = await apiClient.get("/banks/available");
+          const banksData = await tempClient.get("/banks/available");
           setAvailableBanks(banksData.data.banks || []);
           if (banksData.data.current_bank) setSelectedBank(banksData.data.current_bank);
         } catch {
-          console.log("Nessuna banca configurata o token non valido");
+          console.log("Nessuna banca configurata");
         }
       } catch (err) {
         console.error("Errore fetch dati iniziali:", err);
@@ -45,7 +52,7 @@ function Login({ setIsAuthenticated }) {
     };
 
     fetchInitialData();
-  }, []);
+  }, [baseURL]);
 
   // Seleziona cartella
   const handleFolderSelect = async () => {
@@ -64,12 +71,39 @@ function Login({ setIsAuthenticated }) {
 
     setSelectedFolder(folderPath);
 
+    // Aggiorna il folder sul backend (ora è pubblico, non serve token)
     try {
-      const token = sessionStorage.getItem("accessToken") || "";
-      if (!token) throw new Error("Token non presente, effettua prima il login");
+      // Crea un client axios temporaneo per questa chiamata pre-login
+      const tempClient = axios.create({
+        baseURL: baseURL,
+        headers: { 'Content-Type': 'application/json' },
+      });
 
-      await apiClient.post("/folder/update", { folder_path: folderPath });
+      const response = await tempClient.post("/folder/update", { folder_path: folderPath });
+
+      // Mostra informazioni sugli account admin creati
+      if (response.data.admin_accounts && response.data.admin_accounts.length > 0) {
+        console.log("📋 Account admin creati:");
+        response.data.admin_accounts.forEach(account => {
+          console.log(`   🏦 ${account.bank}: ${account.username} / ${account.password}`);
+        });
+      }
+
+      // Dopo aver aggiornato il folder, ricarica le banche disponibili
+      try {
+        const banksData = await tempClient.get("/banks/available");
+        setAvailableBanks(banksData.data.banks || []);
+        if (banksData.data.current_bank) setSelectedBank(banksData.data.current_bank);
+      } catch {
+        console.log("Errore caricamento banche");
+      }
+
       setError("");
+
+      // Mostra messaggio di successo con info sugli admin
+      if (response.data.note) {
+        console.log("✅ " + response.data.note);
+      }
     } catch (err) {
       console.error("Errore aggiornamento folder:", err);
       setError(err.response?.data?.detail || err.message);

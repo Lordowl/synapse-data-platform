@@ -5,7 +5,6 @@ import { useNavigate } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
 import apiClient from "../api/apiClient";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { invoke } from "@tauri-apps/api/core"
 import {
   Settings as SettingsIcon,
   Users,
@@ -28,18 +27,15 @@ import "./Settings.css";
 
 // --- Tab "File Metadati" ---
 function MetadataFileTabContent({
-  metadataFilePath,
-  setMetadataFilePath,
-  onOpenSharePoint,
-  onSave,
-  isSaving,
-  onLoadFromFile,
+  metadataPathFromIni,
+  onOpenMetadataFile,
+  loadingStates,
 }) {
   return (
     <div className="tab-content-padding">
       <div className="tab-content-header">
         <Database className="tab-content-icon" />
-        <h2 className="tab-content-title">Ingestion</h2>
+        <h2 className="tab-content-title">File Metadati</h2>
       </div>
       <div className="metadata-grid">
         <div className="metadata-card">
@@ -47,33 +43,25 @@ function MetadataFileTabContent({
             <div className="metadata-card-icon-bg metadata-card-icon-bg-green">
               <Database className="metadata-card-icon metadata-card-icon-green" />
             </div>
-            <h3 className="metadata-card-title">File Sorgente Metadati</h3>
+            <h3 className="metadata-card-title">Percorso File Metadati</h3>
           </div>
           <p className="metadata-card-description">
-            Percorso del file principale dei metadati (es. .xlsx, .csv).
+            Visualizza il percorso del file metadati referenziato nel file INI della banca selezionata.
           </p>
           <input
             type="text"
-            value={metadataFilePath}
-            onChange={(e) => setMetadataFilePath(e.target.value)}
-            placeholder="Percorso file metadati"
+            value={metadataPathFromIni || ""}
             className="form-input"
-            disabled={isSaving}
+            disabled
+            placeholder="Nessun percorso configurato"
           />
           <div className="metadata-card-input-group">
             <button
-              onClick={() => onOpenSharePoint("metadata_file")}
+              onClick={onOpenMetadataFile}
               className="btn btn-outline w-full"
-              disabled={isSaving}
+              disabled={loadingStates?.loadingConfigFile || !metadataPathFromIni}
             >
-              <ExternalLink className="btn-icon-md" /> Apri SharePoint
-            </button>
-            <button
-              onClick={onLoadFromFile}
-              className="btn btn-outline w-full"
-              disabled={isSaving}
-            >
-              <Upload className="btn-icon-md" /> Carica File
+              <ExternalLink className="btn-icon-md" /> Apri File Metadati
             </button>
           </div>
         </div>
@@ -457,10 +445,10 @@ function PermissionsTabContent({
   );
 }
 
-// --- Tab Config File (Solo Path e Apri) ---
+// --- Tab Config File (Solo INI) ---
 function ConfigFileTabContent({
   iniPath, // Riceve il percorso del file INI
-  onOpenFile, // Funzione per aprire il file
+  onOpenIniFile, // Funzione per aprire il file INI
   loadingStates,
 }) {
   const anyConfigActionLoading = loadingStates.loadingConfigFile;
@@ -481,7 +469,7 @@ function ConfigFileTabContent({
             <h3 className="metadata-card-title">Percorso File INI</h3>
           </div>
           <p className="metadata-card-description">
-            Visualizza il percorso del file di configurazione INI.
+            Visualizza il percorso del file di configurazione INI della banca selezionata.
           </p>
           <input
             type="text"
@@ -491,11 +479,11 @@ function ConfigFileTabContent({
           />
           <div className="metadata-card-input-group">
             <button
-              onClick={onOpenFile}
+              onClick={onOpenIniFile}
               className="btn btn-outline w-full"
-              disabled={anyConfigActionLoading}
+              disabled={anyConfigActionLoading || !iniPath}
             >
-              <ExternalLink className="btn-icon-md" /> Apri File
+              <ExternalLink className="btn-icon-md" /> Apri File INI
             </button>
           </div>
         </div>
@@ -603,6 +591,7 @@ function Settings() {
   const [activeTab, setActiveTab] = useState("metadata_file");
   const [permissions, setPermissions] = useState([]);
   const [iniPath, setIniPath] = useState(""); // Stato per il percorso del file INI
+  const [metadataPath, setMetadataPath] = useState(""); // Stato per il percorso del file metadati
   const [logEntries, setLogEntries] = useState([]);
 
   const [permissionSearchTerm, setPermissionSearchTerm] = useState("");
@@ -631,14 +620,23 @@ function Settings() {
   });
   const [createError, setCreateError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
- const fetchIniPath = useCallback(async () => {
+  const fetchIniPath = useCallback(async () => {
     setLoadingStates(prev => ({ ...prev, loadingConfigFile: true }));
     try {
-      const response = await apiClient.get("/folder/ini");
+      const selectedBank = sessionStorage.getItem("selectedBank");
+      if (!selectedBank) {
+        toast.error("Nessuna banca selezionata.");
+        return;
+      }
+
+      const response = await apiClient.get("/folder/ini-path", {
+        params: { bank: selectedBank }
+      });
       setIniPath(response.data.ini_path); // Salva il percorso del file INI
+      setMetadataPath(response.data.metadata_path); // Salva il percorso del file metadati
     } catch (error) {
-      console.error("Errore nel recupero del file INI:", error);
-      toast.error("Impossibile caricare il percorso del file di configurazione.");
+      console.error("Errore nel recupero dei percorsi dei file:", error);
+      toast.error("Impossibile caricare i percorsi dei file di configurazione.");
     } finally {
       setLoadingStates(prev => ({ ...prev, loadingConfigFile: false }));
     }
@@ -691,8 +689,8 @@ function Settings() {
     fetchInitialData();
   }, [navigate]);
   useEffect(() => {
-    // Chiama fetchIniContent solo se il tab attivo è "config"
-    if (activeTab === "config") {
+    // Chiama fetchIniPath se il tab attivo è "config" o "metadata_file"
+    if (activeTab === "config" || activeTab === "metadata_file") {
       fetchIniPath();
     }
   }, [activeTab, fetchIniPath]);
@@ -836,12 +834,23 @@ function Settings() {
     }
   };
 
-    const handleOpenFile = async () => {
+  const handleOpenIniFile = async () => {
     try {
-      await invoke("open_file", { path: iniPath });
+      await apiClient.post("/folder/open-file", { file_path: iniPath });
+      toast.success("File INI aperto con successo!");
     } catch (error) {
-      console.error("Errore nell'apertura del file:", error);
-      toast.error("Impossibile aprire il file.");
+      console.error("Errore nell'apertura del file INI:", error);
+      toast.error(error.response?.data?.detail || "Impossibile aprire il file INI.");
+    }
+  };
+
+  const handleOpenMetadataFile = async () => {
+    try {
+      await apiClient.post("/folder/open-file", { file_path: metadataPath });
+      toast.success("File metadati aperto con successo!");
+    } catch (error) {
+      console.error("Errore nell'apertura del file metadati:", error);
+      toast.error(error.response?.data?.detail || "Impossibile aprire il file metadati.");
     }
   };
 
@@ -871,12 +880,9 @@ function Settings() {
       case "metadata_file":
         return (
           <MetadataFileTabContent
-            metadataFilePath={metadataFilePath}
-            setMetadataFilePath={setMetadataFilePath}
-            onSave={handleSaveMetadataFile}
-            isSaving={loadingStates.savingMetadataFile}
-            onOpenSharePoint={handleOpenSharePoint}
-            onLoadFromFile={handleLoadFileFromDialog}
+            metadataPathFromIni={metadataPath}
+            onOpenMetadataFile={handleOpenMetadataFile}
+            loadingStates={loadingStates}
           />
         );
       case "permissions":
@@ -903,7 +909,7 @@ function Settings() {
         return (
           <ConfigFileTabContent
             iniPath={iniPath} // Passa il percorso del file INI
-            onOpenFile={handleOpenFile} // Passa la funzione per aprire il file
+            onOpenIniFile={handleOpenIniFile} // Passa la funzione per aprire il file INI
             loadingStates={loadingStates}
           />
         );

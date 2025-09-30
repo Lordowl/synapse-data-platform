@@ -32,3 +32,14 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def get_db_optional():
+    """Versione opzionale di get_db che restituisce None se il DB non è inizializzato"""
+    if SessionLocal is None:
+        yield None
+    else:
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()

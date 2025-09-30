@@ -138,16 +138,6 @@ app = FastAPI(
 )
 
 
-class IgnoreHMRMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        if request.headers.get("x-vite-dev-server"):
-            return PlainTextResponse("Ignored HMR request", status_code=204)
-        if request.method == "OPTIONS":
-            return PlainTextResponse("OK", status_code=204)
-        return await call_next(request)
-
-
-app.add_middleware(IgnoreHMRMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -155,10 +145,13 @@ app.add_middleware(
         "http://127.0.0.1:1420",
         "http://localhost:3000",
         "http://tauri.localhost",
+        "https://tauri.localhost",
+        "tauri://localhost",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 api_router = APIRouter()
