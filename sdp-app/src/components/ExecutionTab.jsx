@@ -95,9 +95,10 @@ function ExecutionTabContent({
                   disabled={displayedFlows.length === 0 || isExecuting}
                 />
               </th>
-              <th onClick={() => !isExecuting && requestSort("name")}>Nome Flusso {getSortIcon("name")}</th>
-              <th onClick={() => !isExecuting && requestSort("package")}>Package {getSortIcon("package")}</th>
               <th onClick={() => !isExecuting && requestSort("id")}>ID -SEQ {getSortIcon("id")}</th>
+              <th onClick={() => !isExecuting && requestSort("anno")}>Anno {getSortIcon("anno")}</th>
+              <th onClick={() => !isExecuting && requestSort("settimana")}>Settimana {getSortIcon("settimana")}</th>
+              <th onClick={() => !isExecuting && requestSort("name")}>Nome Flusso {getSortIcon("name")}</th>
               <th onClick={() => !isExecuting && requestSort("lastRun")}>Ultima Esecuzione {getSortIcon("lastRun")}</th>
               <th onClick={() => !isExecuting && requestSort("result")}>Risultato {getSortIcon("result")}</th>
               <th>Dettagli</th>
@@ -115,9 +116,10 @@ function ExecutionTabContent({
                     disabled={isExecuting}
                   />
                 </td>
-                <td data-label="Flusso">{flow.name || <span className="muted-text italic">{flow.id}</span>}</td>
-                <td data-label="Package">{flow.package}</td>
                 <td data-label="ID Univoco"><span className="muted-text">{flow.id}</span></td>
+                <td data-label="Anno">{flow.anno || "N/A"}</td>
+                <td data-label="Settimana">{flow.settimana || "N/A"}</td>
+                <td data-label="Flusso">{flow.name || <span className="muted-text italic">{flow.id}</span>}</td>
                 <td data-label="Ultima Esecuzione">{flow.lastRun ? new Date(flow.lastRun).toLocaleString("it-IT") : "N/A"}</td>
                 <td data-label="Risultato"><span className={`status-badge ${getStatusBadgeColor(flow.result)}`}>{flow.result || "N/A"}</span></td>
                 <td data-label="Dettagli">{flow.detail ? <pre className="flow-detail-content">{flow.detail}</pre> : <span className="muted-text italic">Nessun dettaglio</span>}</td>
@@ -125,7 +127,7 @@ function ExecutionTabContent({
             ))}
             {displayedFlows.length === 0 && (
               <tr>
-                <td colSpan="7" className="text-center muted-text">
+                <td colSpan="8" className="text-center muted-text">
                   Nessun flusso dati trovato per i filtri selezionati.
                 </td>
               </tr>

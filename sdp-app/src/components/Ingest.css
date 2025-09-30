@@ -220,51 +220,63 @@
   white-space: nowrap;
 }
 
-/* Colonna 2: Nome Flusso (può andare a capo) */
+/* Colonna 2: ID -Seq */
 .ingest-table th:nth-child(2),
 .ingest-table td:nth-child(2) {
-  width: 35%;
+  width: 10%;
+  min-width: 120px;
+  white-space: nowrap;
+  overflow: visible;
+  text-align: center;
+}
+
+/* Colonna 3: Anno */
+.ingest-table th:nth-child(3),
+.ingest-table td:nth-child(3) {
+  width: 12%;
+  min-width: 90px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+/* Colonna 4: Settimana */
+.ingest-table th:nth-child(4),
+.ingest-table td:nth-child(4) {
+  width: 13%;
+  min-width: 100px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+/* Colonna 5: Nome Flusso (può andare a capo) */
+.ingest-table th:nth-child(5),
+.ingest-table td:nth-child(5) {
+  width: 30%;
   min-width: 200px;
 }
 
 /* Solo per la colonna del nome permettiamo il text wrapping */
-.ingest-table td:nth-child(2) {
+.ingest-table td:nth-child(5) {
   white-space: normal;
   word-wrap: break-word;
   line-height: 1.4;
 }
 
-/* Colonna 3: Package */
-.ingest-table th:nth-child(3),
-.ingest-table td:nth-child(3) {
-  width: 20%;
-  min-width: 120px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-/* Colonna 4: ID -Seq */
-.ingest-table th:nth-child(4),
-.ingest-table td:nth-child(4) {
-  width: 15%;
-  min-width: 100px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-/* Colonna 5: Ultima Esecuzione */
-.ingest-table th:nth-child(5),
-.ingest-table td:nth-child(5) {
+/* Colonna 6: Ultima Esecuzione */
+.ingest-table th:nth-child(6),
+.ingest-table td:nth-child(6) {
   width: 20%;
   min-width: 150px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-/* Colonna 6: Risultato (badge) */
-.ingest-table th:nth-child(6),
-.ingest-table td:nth-child(6) {
-  width: 10%;
+/* Colonna 7: Risultato (badge) */
+.ingest-table th:nth-child(7),
+.ingest-table td:nth-child(7) {
+  width: 12%;
   min-width: 100px;
   text-align: center;
   white-space: nowrap;
@@ -327,9 +339,9 @@ th:has-text("Dettagli") {
   text-align: left;
   vertical-align: top;
 }
-/* Colonna 7: Dettagli */
-.ingest-table th:nth-child(7),
-.ingest-table td:nth-child(7) {
+/* Colonna 8: Dettagli */
+.ingest-table th:nth-child(8),
+.ingest-table td:nth-child(8) {
   width: 25%;
   min-width: 200px;
   max-width: 400px;

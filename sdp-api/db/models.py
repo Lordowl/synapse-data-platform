@@ -55,6 +55,8 @@ class FlowExecutionHistory(Base):
     log_key = Column(String, unique=True, index=True)
     details = Column(JSON, nullable=True)  # Dettagli extra
     bank = Column(String, index=True, nullable=True)  # nuova colonna
+    anno = Column(Integer, nullable=True)  # anno di esecuzione
+    settimana = Column(Integer, nullable=True)  # settimana di esecuzione
 
 
 class Reportistica(Base):
@@ -97,10 +99,8 @@ class FlowExecutionDetail(Base):
     error_lines = Column(Text)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     bank = Column(String, index=True, nullable=True)  # nuova colonna
-    error_lines = Column(Text)  # salva come JSON o testo multilinea
-    timestamp = Column(
-        DateTime(timezone=True), server_default=func.now()
-    )  # <-- aggiunto
+    anno = Column(Integer, nullable=True)  # anno di esecuzione
+    settimana = Column(Integer, nullable=True)  # settimana di esecuzione
 
 
 class Bank(Base):

@@ -68,5 +68,8 @@
     // 🔧 AGGIUNGI: info di stato dal backend
     status: backendLog.status,
     duration: backendLog.duration_seconds,
+    // 🔧 AGGIUNGI: anno e settimana dal backend
+    anno: backendLog.details?.anno || null,
+    settimana: backendLog.details?.settimana || null,
   };
 };

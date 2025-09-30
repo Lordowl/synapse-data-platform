@@ -63,14 +63,16 @@ def delete_user(db: Session, user_id: int):
 # ------------------ FLOW EXECUTION ------------------
 def create_execution_log(db: Session, flow_id_str: str, status: str,
                          duration_seconds: int, details: dict, log_key: str,
-                         bank: str):
+                         bank: str, anno: int = None, settimana: int = None):
     record = models.FlowExecutionHistory(
         flow_id_str=flow_id_str,
         status=status,
         duration_seconds=duration_seconds,
         details=details,
         log_key=log_key,
-        bank=bank
+        bank=bank,
+        anno=anno,
+        settimana=settimana
     )
     db.add(record)
     db.commit()
@@ -79,13 +81,15 @@ def create_execution_log(db: Session, flow_id_str: str, status: str,
 
 def create_execution_detail(db: Session, log_key: str, element_id: str,
                             error_lines: list, result: str = "Success",
-                            bank: str | None = None):
+                            bank: str | None = None, anno: int = None, settimana: int = None):
     detail = models.FlowExecutionDetail(
         log_key=log_key,
         element_id=element_id,
         result=result,
         error_lines="\n".join(error_lines),
-        bank=bank
+        bank=bank,
+        anno=anno,
+        settimana=settimana
     )
     db.add(detail)
     db.commit()

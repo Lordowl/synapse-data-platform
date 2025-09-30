@@ -51,6 +51,8 @@ def get_flows_history_latest(
                     "result": exec.result,
                     "error_lines": exec.error_lines or "",
                     "log_key": exec.log_key,
+                    "anno": exec.anno,
+                    "settimana": exec.settimana,
                 }
         return history_map
     except Exception as e:
@@ -79,6 +81,8 @@ def get_execution_details(
                 "error_lines": exec.error_lines or "",
                 "log_key": exec.log_key,
                 "element_id": exec.element_id,
+                "anno": exec.anno,
+                "settimana": exec.settimana,
             })
         return details_list
     except Exception as e:
@@ -133,6 +137,8 @@ def format_log(log: models.FlowExecutionHistory) -> FlowExecutionLog:
             "status": log.status,
             "log_key": log.log_key,
             "message": message,
+            "anno": log.anno,
+            "settimana": log.settimana,
             "original_details": log.details or {}
         }
     )
@@ -239,7 +245,9 @@ def get_debug_counts(
                     "flow_id_str": h.flow_id_str,
                     "log_key": h.log_key,
                     "status": h.status,
-                    "timestamp": h.timestamp.isoformat() if h.timestamp else None
+                    "timestamp": h.timestamp.isoformat() if h.timestamp else None,
+                    "anno": h.anno,
+                    "settimana": h.settimana
                 } for h in sample_history
             ],
             "sample_details": [
@@ -248,7 +256,9 @@ def get_debug_counts(
                     "log_key": d.log_key,
                     "element_id": d.element_id,
                     "result": d.result,
-                    "timestamp": d.timestamp.isoformat() if d.timestamp else None
+                    "timestamp": d.timestamp.isoformat() if d.timestamp else None,
+                    "anno": d.anno,
+                    "settimana": d.settimana
                 } for d in sample_details
             ]
         }

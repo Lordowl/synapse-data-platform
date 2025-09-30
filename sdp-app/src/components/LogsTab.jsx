@@ -267,6 +267,7 @@ function LogsTabContent({
                     <span className="execution-summary">
                       Esecuzione avvenuta il "{formatTimestamp(exec.timestamp)}"
                       {exec.executedBy ? ` da "${exec.executedBy}"` : ""}
+                      {exec.anno || exec.settimana ? ` - Anno: ${exec.anno || 'N/A'}, Settimana: ${exec.settimana || 'N/A'}` : ""}
                       {exec.params && Object.keys(exec.params).length > 0
                         ? ` con parametri: ${Object.entries(exec.params)
                             .map(([key, value]) => {
@@ -352,6 +353,8 @@ function LogsTabContent({
                   <div className="execution-basic-info">
                     <p><strong>Flow ID:</strong> {exec.flowId || "N/A"}</p>
                     <p><strong>Status:</strong> {exec.overallResult || "N/A"}</p>
+                    <p><strong>Anno:</strong> {exec.anno || "N/A"}</p>
+                    <p><strong>Settimana:</strong> {exec.settimana || "N/A"}</p>
                     <p><strong>Log Key:</strong> {exec.logKey || exec.parsedLogKey || "N/A"}</p>
                     {exec.message && (
                       <p><strong>Messaggio:</strong> {exec.message}</p>

@@ -1,4 +1,4 @@
-Metadata-Version: 2.4
+Metadata-Version: 2.1
 Name: sdp-api
 Version: 0.1.0
 Summary: Synapse Data Platform API
@@ -11,17 +11,5 @@ Classifier: Programming Language :: Python :: 3
 Classifier: Programming Language :: Python :: 3.11
 Classifier: Programming Language :: Python :: 3.12
 Requires-Python: >=3.11.8
-Requires-Dist: fastapi
-Requires-Dist: uvicorn
-Requires-Dist: sqlalchemy
-Requires-Dist: pydantic
-Requires-Dist: pydantic[email]
-Requires-Dist: python-jose
-Requires-Dist: passlib
-Requires-Dist: pydantic-settings
-Requires-Dist: python-multipart
-Requires-Dist: bcrypt
-Dynamic: requires-dist
-Dynamic: requires-python
 
 API per la Synapse Data Platform.

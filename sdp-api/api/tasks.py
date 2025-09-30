@@ -144,15 +144,22 @@ def execute_selected_flows(
     flow_ids_str = " ".join(str(flow.id).replace("/", "-") for flow in request.flows)
     log_key = uuid.uuid4().hex[:8]
     start_time = time.time()
-    logger.info(f"Flow IDs string: {flow_ids_str}, Log key: {log_key}")
+
+    # Estrazione di anno e settimana dai parametri
+    anno = request.params.get("selectedYear")
+    settimana = request.params.get("selectedWeek")
+    anno_int = int(anno) if anno and str(anno).isdigit() else None
+    settimana_int = int(settimana) if settimana and str(settimana).isdigit() else None
+
+    logger.info(f"Flow IDs string: {flow_ids_str}, Log key: {log_key}, Anno: {anno_int}, Settimana: {settimana_int}")
 
     command_args = [
         "powershell.exe",
         "-ExecutionPolicy", "Bypass",
         "-File", str(script_path),
         "-id", flow_ids_str,
-        "-anno", str(request.params.get("selectedYear", "")),
-        "-settimana", str(request.params.get("selectedWeek", "")),
+        "-anno", str(anno or ""),
+        "-settimana", str(settimana or ""),
         "-log_key", log_key,
     ]
     logger.info(f"Comando esecuzione: {' '.join(command_args)}")
@@ -187,6 +194,8 @@ def execute_selected_flows(
                 error_lines=[to_add] if to_add else [],
                 result=result,
                 bank=current_user.bank,
+                anno=anno_int,
+                settimana=settimana_int,
             )
         except Exception as e:
             logger.error(f"Errore nel salvare dettagli elemento {element_id}: {e}")
@@ -287,6 +296,8 @@ def execute_selected_flows(
                     error_lines=[f"Errore imprevisto nell'API: {str(e)}"],
                     result="Failed",
                     bank=current_user.bank,
+                    anno=anno_int,
+                    settimana=settimana_int,
                 )
             except Exception:
                 continue
@@ -302,6 +313,8 @@ def execute_selected_flows(
             details={"executed_by": executed_by, "params": request.params},
             log_key=log_key,
             bank=current_user.bank,
+            anno=anno_int,
+            settimana=settimana_int,
         )
     except Exception as e:
         logger.error(f"Errore nel salvare log di esecuzione: {e}", exc_info=True)

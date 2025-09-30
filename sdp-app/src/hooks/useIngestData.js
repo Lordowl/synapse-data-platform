@@ -88,6 +88,8 @@ export const useIngestData = (metadataFilePath) => {
             result: executionHistory.result || "N/A",
             detail: executionHistory.error_lines || "",
             duration: executionHistory.duration || null,
+            anno: executionHistory.anno || null,
+            settimana: executionHistory.settimana || null,
           };
         });
 
@@ -198,6 +200,8 @@ export const useIngestData = (metadataFilePath) => {
               result: logEntry.result || flow.result,
               detail: logEntry.detail || flow.detail,
               duration: logEntry.duration || flow.duration,
+              anno: logEntry.anno || flow.anno,
+              settimana: logEntry.settimana || flow.settimana,
             };
           }
           return flow;

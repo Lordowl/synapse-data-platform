@@ -140,6 +140,10 @@ function Home({ setIsAuthenticated }) {
           </button>
         </div>
       </div>
+
+      <div className="version-footer">
+        <small style={{color: '#666', fontSize: '12px'}}>Versione 0.2.1 - Patch di test autoupdate</small>
+      </div>
     </div>
   );
 }
