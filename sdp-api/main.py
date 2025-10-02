@@ -13,20 +13,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 # Importa moduli del progetto
-from db import models, crud, schemas
-from db.database import engine, SessionLocal, init_db, get_db
+from db import models, crud
+import db.schemas as schemas
+# Import database functions from db package (not db.database)
+from db import engine, SessionLocal, init_db, get_db
 from db.init_banks import init_banks_from_file
-from api import (
-    auth,
-    users,
-    tasks,
-    audit,
-    flows,
-    reportistica,
-    repo_update,
-    settings_path,
-    banks,
-)
+# Import api modules directly for PyInstaller compatibility
+import api.auth as auth
+import api.users as users
+import api.tasks as tasks
+import api.audit as audit
+import api.flows as flows
+import api.reportistica as reportistica
+import api.repo_update as repo_update
+import api.settings_path as settings_path
+import api.banks as banks
 from core.config import settings, config_manager
 
 # Logging

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Security, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from db.database import get_db
+from db import get_db
 from db import models, crud
 from core.security import get_current_user, get_current_active_admin
 

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import timedelta
 
 from db import crud, schemas, models
-from db.database import get_db
+from db import get_db
 from core import security
 from core.config import settings
 from core.auditing import record_audit_log

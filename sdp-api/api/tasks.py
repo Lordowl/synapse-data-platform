@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from db import crud, models
-from db.database import get_db
+from db import get_db
 from core.security import require_settings_permission, require_ingest_permission
 from core.config import config_manager
 
@@ -67,35 +67,48 @@ def trigger_update_flows_from_excel(
     if not input_excel_path.is_file():
         raise HTTPException(400, f"File Excel non trovato: {input_excel_path}")
 
-    script_path = Path(__file__).parent.parent / "scripts" / "generate_flows_from_excel.py"
-    if not script_path.is_file():
-        raise HTTPException(500, f"Script mancante: {script_path}")
-
     try:
-        result = subprocess.run(
-            [sys.executable, str(script_path), str(input_excel_path)],
-            capture_output=True,
-            text=True,
-            check=True,
-            encoding="utf-8",
-            timeout=120,
-        )
+        # Import the script functions directly instead of subprocess
+        from scripts import generate_flows_from_excel
 
-        return {
-            "status": "success",
-            "message": "Lista flussi aggiornata con successo dal file Excel.",
-            "output": result.stdout,
-            "stderr": result.stderr,
-        }
+        # Execute the script logic
+        SHEET_NAME = 'File reportistica'
+        BASE_PATH = Path(__file__).parent.parent
+        OUTPUT_JSON_FILE = BASE_PATH / "data" / "flows.json"
+        COLUMNS_FOR_JSON = ['ID', 'SEQ', 'Package', 'Filename out']
 
-    except subprocess.CalledProcessError as e:
-        raise HTTPException(
-            500, {"message": "Errore durante l'esecuzione dello script.", "stderr": e.stderr}
-        )
-    except subprocess.TimeoutExpired:
-        raise HTTPException(504, "Timeout: l'elaborazione del file Excel ha richiesto troppo tempo.")
+        logger.info(f"Reading Excel file: {input_excel_path}")
+        df_filtered = generate_flows_from_excel.clean_and_filter_data(str(input_excel_path), SHEET_NAME)
+
+        if df_filtered is not None and not df_filtered.empty:
+            logger.info(f"Found {len(df_filtered)} flows initially")
+            df_deduplicated = generate_flows_from_excel.remove_duplicates(df_filtered)
+            logger.info(f"After deduplication: {len(df_deduplicated)} flows")
+
+            flows_json = generate_flows_from_excel.extract_flows_to_flat_list(df_deduplicated, COLUMNS_FOR_JSON)
+
+            if flows_json:
+                generate_flows_from_excel.save_json(flows_json, str(OUTPUT_JSON_FILE))
+                flow_count = len(flows_json.get("flows", []))
+                return {
+                    "status": "success",
+                    "message": f"Lista flussi aggiornata con successo: {flow_count} flussi trovati.",
+                    "output": f"Processed {flow_count} flows",
+                    "stderr": "",
+                }
+            else:
+                raise HTTPException(500, "Errore nella trasformazione dei dati")
+        else:
+            return {
+                "status": "success",
+                "message": "Nessun flusso valido trovato nel file Excel.",
+                "output": "No flows found",
+                "stderr": "",
+            }
+
     except Exception as e:
-        raise HTTPException(500, f"Errore imprevisto del server: {e}")
+        logger.error(f"Error processing Excel file: {e}", exc_info=True)
+        raise HTTPException(500, f"Errore durante l'elaborazione del file Excel: {str(e)}")
 
 # ----------------------------
 # Endpoint esecuzione flussi

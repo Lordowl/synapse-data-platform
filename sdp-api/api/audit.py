@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Security
 from sqlalchemy.orm import Session
 from typing import List
 from db import models, schemas
-from db.database import get_db
+from db import get_db
 from core.security import get_current_active_admin
 
 router = APIRouter()

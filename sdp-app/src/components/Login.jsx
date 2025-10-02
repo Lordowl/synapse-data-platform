@@ -222,8 +222,8 @@ function Login({ setIsAuthenticated }) {
               required
             >
               <option value="">Seleziona una banca...</option>
-              {availableBanks.map((bank) => (
-                <option key={bank.value} value={bank.label}>
+              {availableBanks.map((bank, index) => (
+                <option key={bank.value || index} value={bank.label}>
                   {bank.label}
                 </option>
               ))}

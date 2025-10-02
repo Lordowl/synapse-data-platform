@@ -1,8 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from core.config import settings
-from db import models  # assicurati di importare tutti i modelli
 
 engine = None
 SessionLocal = None
@@ -11,6 +9,7 @@ Base = declarative_base()
 def init_db(db_url: str = None):
     global engine, SessionLocal
     if db_url is None:
+        from core.config import settings
         db_url = settings.DATABASE_URL
         if not db_url:
             raise RuntimeError("Nessun database configurato. Imposta DATABASE_URL nel file .env")
@@ -43,3 +42,6 @@ def get_db_optional():
             yield db
         finally:
             db.close()
+
+# Explicitly export for PyInstaller
+__all__ = ['engine', 'SessionLocal', 'Base', 'init_db', 'get_db', 'get_db_optional']

@@ -1,8 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from db import crud, schemas
-from db.database import get_db, get_db_optional
-from db import models
+from db import crud, schemas, models, get_db, get_db_optional
 from db.schemas import BankCreate, BankResponse, BanksListResponse
 
 router = APIRouter(prefix="/banks", tags=["Banks"])

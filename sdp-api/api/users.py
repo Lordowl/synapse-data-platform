@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from typing import List, Dict
 
 from db import schemas, models, crud
-from db.database import get_db
+from db import get_db
 from core.security import get_current_user, get_current_active_admin
 from core.auditing import record_audit_log # Importa la funzione di audit
 

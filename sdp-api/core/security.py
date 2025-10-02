@@ -17,6 +17,10 @@ from db.database import get_db
 
 logger = logging.getLogger(__name__)
 
+# Log SECRET_KEY for debugging
+secret_preview = settings.SECRET_KEY[:10] + "..." if len(settings.SECRET_KEY) > 10 else "***"
+logger.info(f"[SECURITY] Loaded with SECRET_KEY: {secret_preview}")
+
 # --------------------------
 # 1. Hashing delle Password
 # --------------------------
