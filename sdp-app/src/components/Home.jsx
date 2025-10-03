@@ -118,25 +118,25 @@ function Home({ setIsAuthenticated }) {
             </div>
           )}
 
-          <Link to="/report" className="nav-link">
+          <Link to="/report" className="nav-link"> 
             <button className="btn btn-primary">
               <BarChart3 size={20} />
-              <span>Report</span>
+              <span>Reportistica (WIP)</span>
             </button>
-          </Link>
+          </Link> 
         </div>
 
         <div className="secondary-actions">
           <Link to="/settings" className="nav-link">
             <button className="btn btn-outline">
               <Settings size={20} />
-              <span>Settings</span>
+              <span>Impostazioni</span>
             </button>
           </Link>
 
           <button className="btn btn-danger logout-btn" onClick={handleLogout}>
             <LogOut size={20} />
-            <span>Logout</span>
+            <span>Esci</span>
           </button>
         </div>
       </div>

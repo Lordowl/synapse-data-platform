@@ -29,7 +29,57 @@ const PERIODICITY_CONFIG = {
   }
 };
 
-// Rimuovi i dati di esempio - ora usa solo dati reali dall'API
+// --- Dati Mock per Test ---
+const MOCK_REPORT_DATA = [
+  {
+    id: 1,
+    banca: "BancaTest",
+    package: "Flussi Netti",
+    user: "mario.rossi",
+    data_esecuzione: "2025-01-15T10:30:00",
+    pre_check: true,
+    prod: false,
+    log: "Esecuzione completata con successo",
+    anno: 2025,
+    settimana: 3
+  },
+  {
+    id: 2,
+    banca: "BancaTest",
+    package: "Package 2",
+    user: "giulia.verdi",
+    data_esecuzione: "2025-01-15T11:45:00",
+    pre_check: true,
+    prod: true,
+    log: "Pubblicato in produzione",
+    anno: 2025,
+    settimana: 3
+  },
+  {
+    id: 3,
+    banca: "BancaTest",
+    package: "Flussi Netti",
+    user: "luca.bianchi",
+    data_esecuzione: "2025-01-14T09:15:00",
+    pre_check: false,
+    prod: false,
+    log: "In attesa di pre-check",
+    anno: 2025,
+    settimana: 2
+  },
+  {
+    id: 4,
+    banca: "BancaTest",
+    package: "Report Mensile",
+    user: "anna.ferrari",
+    data_esecuzione: "2025-01-10T14:20:00",
+    pre_check: true,
+    prod: true,
+    log: "Report mensile pubblicato",
+    anno: 2025,
+    settimana: null // Report mensile
+  }
+];
 
 // --- Funzioni Helper per la nuova struttura ---
 const getDisponibilitaServerBadge = (disponibilita_server) => {
@@ -72,6 +122,40 @@ const formatDate = (dateString) => {
   } catch (e) {
     return 'N/D';
   }
+};
+
+// Funzione per stabilizzare le date (sottrae 1 settimana)
+const stabilizzaDate = (anno, settimana, lunedi) => {
+  // Crea oggetto datetime dal lunedì
+  const dataLunedi = new Date(lunedi);
+
+  // Sottrai 1 settimana (7 giorni)
+  const delta1Settimana = new Date(dataLunedi);
+  delta1Settimana.setDate(dataLunedi.getDate() - 7);
+
+  // Calcola il numero della settimana ISO per la nuova data
+  const getISOWeek = (date) => {
+    const tempDate = new Date(date.valueOf());
+    tempDate.setHours(0, 0, 0, 0);
+    tempDate.setDate(tempDate.getDate() + 4 - (tempDate.getDay() || 7));
+    const yearStart = new Date(tempDate.getFullYear(), 0, 1);
+    return Math.ceil((((tempDate - yearStart) / 86400000) + 1) / 7);
+  };
+
+  const nuovaSettimana = getISOWeek(delta1Settimana);
+  const nuovoAnno = delta1Settimana.getFullYear();
+
+  // Trova il lunedì della settimana stabilizzata
+  const nuovoLunedi = new Date(delta1Settimana);
+  const giorno = nuovoLunedi.getDay();
+  const diff = (giorno === 0 ? -6 : 1) - giorno;
+  nuovoLunedi.setDate(nuovoLunedi.getDate() + diff);
+
+  return {
+    anno: nuovoAnno,
+    settimana: nuovaSettimana,
+    lunedi: nuovoLunedi.toISOString().split('T')[0]
+  };
 };
 
 // --- Componente Principale Report Unificato ---
@@ -130,16 +214,14 @@ function Report() {
 
   // Estrai valori univoci per i dropdown dai dati
   const uniqueBanks = useMemo(() => {
-    // La banca è già filtrata dalla query, quindi mostra solo quella selezionata
-    const selectedBank = sessionStorage.getItem("selectedBank");
     const banks = [...new Set(reportTasks.map(task => task.banca).filter(Boolean))];
 
-    // Se abbiamo una banca selezionata e i dati sono filtrati, mostra solo quella
-    if (selectedBank && banks.length > 0) {
-      return banks.includes(selectedBank) ? [selectedBank] : banks;
+    // Aggiungi "Tutti" all'inizio se ci sono banche
+    if (banks.length > 0) {
+      return ["Tutti", ...banks];
     }
 
-    return banks;
+    return ["Tutti"];
   }, [reportTasks]);
 
   const uniquePackages = useMemo(() => {
@@ -161,7 +243,9 @@ function Report() {
   const fetchRepoUpdateInfo = useCallback(async () => {
     try {
       const response = await apiClient.get("/repo-update/");
-      setRepoUpdateInfo(response.data);
+      if (response.data) {
+        setRepoUpdateInfo(response.data);
+      }
     } catch (error) {
       console.error("Errore nella fetch repo update info:", error);
       // Mantiene i valori di default se non riesce a caricare
@@ -170,6 +254,9 @@ function Report() {
 
   // Ref per tenere traccia se è il primo caricamento
   const isInitialLoad = useRef(true);
+
+  // Stato per abilitare/disabilitare dati mock
+  const [useMockData, setUseMockData] = useState(false); // FALSE = usa sempre dati API reali
 
   // Fetch reportistica data from API
   useEffect(() => {
@@ -180,25 +267,51 @@ function Report() {
           setLoading(true);
         }
 
-        // Recupera la banca selezionata dal sessionStorage
-        const selectedBank = sessionStorage.getItem("selectedBank");
+        // Se useMockData è true, usa i dati finti
+        if (useMockData) {
+          await new Promise(resolve => setTimeout(resolve, 500)); // Simula delay API
+          setReportTasks(MOCK_REPORT_DATA);
+          setRepoUpdateInfo({ anno: 2025, settimana: 3, semaforo: 1 });
+          if (isInitialLoad.current) {
+            showToast('Dati mock caricati per test', 'info');
+          }
+        } else {
+          // Non filtrare per banca - prendi tutti i dati
+          let queryUrl = '/reportistica/';
 
-        // Costruisce la query con il filtro per banca se disponibile
-        let queryUrl = '/reportistica/';
-        if (selectedBank) {
-          queryUrl += `?banca=${encodeURIComponent(selectedBank)}`;
+          console.log('Fetching from:', queryUrl);
+          const response = await apiClient.get(queryUrl);
+          console.log('API Response:', response.data);
+
+          // Mappa i dati dell'API alla struttura attesa dal componente
+          const mappedData = (response.data || []).map(item => ({
+            id: item.id,
+            banca: item.banca,
+            package: item.package || item.nome_file,
+            user: 'N/D', // L'API non fornisce questo campo
+            data_esecuzione: item.ultima_modifica || item.updated_at,
+            pre_check: false, // Da implementare nella logica di business
+            prod: false, // Da implementare nella logica di business
+            log: item.dettagli || 'N/D',
+            anno: item.anno,
+            settimana: item.settimana,
+            disponibilita_server: item.disponibilita_server
+          }));
+
+          console.log('Mapped Data:', mappedData);
+          setReportTasks(mappedData);
+          await fetchRepoUpdateInfo();
         }
-
-        const response = await apiClient.get(queryUrl);
-        setReportTasks(response.data);
-        await fetchRepoUpdateInfo();
 
       } catch (error) {
         console.error('Error fetching reportistica data:', error);
+        console.error('Error details:', error.response?.data);
+        console.error('Error status:', error.response?.status);
 
         // Mostra toast di errore solo al primo caricamento
         if (isInitialLoad.current) {
-          showToast('Errore nel caricamento dei dati reportistica', 'error');
+          const errorMsg = error.response?.data?.detail || 'Errore nel caricamento dei dati reportistica';
+          showToast(errorMsg, 'error');
           setReportTasks([]);
         }
       } finally {
@@ -212,14 +325,19 @@ function Report() {
     // Carica dati immediatamente
     fetchData();
 
-    // Configura polling ogni 3 secondi
-    const interval = setInterval(() => {
-      fetchData();
-    }, 3000);
+    // Configura polling ogni 3 secondi solo se non usa mock
+    let interval;
+    if (!useMockData) {
+      interval = setInterval(() => {
+        fetchData();
+      }, 3000);
+    }
 
     // Cleanup interval on unmount
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [useMockData, showToast, fetchRepoUpdateInfo]);
 
   // Status basato sul semaforo dal repo_update_info
   const semaphoreStatus = useMemo(() => {
@@ -246,24 +364,27 @@ function Report() {
 
   // Filtra task per periodicità corrente + altri filtri
   const filteredReportTasks = useMemo(() => {
-    return reportTasks.filter(task => {
+    const filtered = reportTasks.filter(task => {
       // Filtro per periodicità: settimanali (hanno settimana) vs mensili (non hanno settimana)
-      const isWeeklyTask = task.settimana !== null;
-      const isMonthlyTask = task.settimana === null;
+      const isWeeklyTask = task.settimana !== null && task.settimana !== undefined;
+      const isMonthlyTask = task.settimana === null || task.settimana === undefined;
       const matchesPeriodicity =
         (currentPeriodicity === 'settimanale' && isWeeklyTask) ||
         (currentPeriodicity === 'mensile' && isMonthlyTask);
 
-      // Filtro per banca: ora i dati sono già filtrati dalla query API,
-      // quindi questo filtro frontend è principalmente per consistenza dell'UI
-      const selectedBank = sessionStorage.getItem("selectedBank");
-      const matchesBanca = !selectedBank || !filters.banca || filters.banca === "Tutti" || task.banca === filters.banca;
+      // Filtro per banca - sempre true per ora (disabilitato)
+      const matchesBanca = true;
 
       // Filtro per package
       const matchesPackage = !filters.package || filters.package === "Tutti" || task.package === filters.package;
 
       return matchesPeriodicity && matchesBanca && matchesPackage;
     });
+
+    console.log('Filtered tasks:', filtered);
+    console.log('Current periodicity:', currentPeriodicity);
+    console.log('Filters:', filters);
+    return filtered;
   }, [reportTasks, currentPeriodicity, filters]);
 
   const handleTaskSelection = (taskId) => {
@@ -293,13 +414,88 @@ function Report() {
     }
 
     setLoadingActions(prev => ({ ...prev, global: actionName }));
-    showToast(`Avvio azione globale '${actionName}'...`, "info");
 
     try {
-      // Qui andrà la logica per chiamare le API reali
-      // Per ora solo un messaggio di conferma
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      showToast(`Azione '${actionName}' completata.`, "success");
+      if (actionName === 'pubblica-pre-check') {
+        showToast(`Avvio pubblicazione in Pre-Check...`, "info");
+
+        // Simula chiamata API
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // Test della funzione stabilizzaDate
+        const lunediCorrente = '2025-01-20'; // Lunedì della settimana 3, 2025
+        const dateStabilizzate = stabilizzaDate(
+          repoUpdateInfo.anno,
+          repoUpdateInfo.settimana,
+          lunediCorrente
+        );
+
+        console.log('Date stabilizzate:', dateStabilizzate);
+        showToast(
+          `Pre-Check pubblicato! Date stabilizzate: Anno ${dateStabilizzate.anno}, Settimana ${dateStabilizzate.settimana}`,
+          "success"
+        );
+
+        // Aggiorna i dati mock per simulare pre_check = true
+        if (useMockData) {
+          setReportTasks(prev => prev.map(task =>
+            selectedTaskIds.has(task.id)
+              ? { ...task, pre_check: true, log: 'Pre-check completato' }
+              : task
+          ));
+
+          // Aggiungi dati stabilizzati alla seconda tabella
+          const nuoviDatiStabilizzati = Array.from(selectedTaskIds).map(taskId => {
+            const task = reportTasks.find(t => t.id === taskId);
+            if (task && task.settimana) {
+              const lunediTest = '2025-01-20'; // Simula lunedì corrente
+              const risultato = stabilizzaDate(task.anno, task.settimana, lunediTest);
+              return {
+                id: `stab-${taskId}`,
+                package: task.package,
+                anno_originale: task.anno,
+                settimana_originale: task.settimana,
+                ...risultato
+              };
+            }
+            return null;
+          }).filter(Boolean);
+
+          setStabilizedData(prev => [...prev, ...nuoviDatiStabilizzati]);
+        }
+
+      } else if (actionName === 'pubblica-report') {
+        showToast(`Avvio pubblicazione Report in Produzione...`, "info");
+
+        // Verifica semaforo verde
+        if (repoUpdateInfo.semaforo !== 1) {
+          showToast('Semaforo non verde! Impossibile pubblicare in produzione.', 'error');
+          return;
+        }
+
+        // Simula chiamata API
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        showToast(
+          `Report pubblicato in Produzione! Anno ${repoUpdateInfo.anno}, Settimana ${repoUpdateInfo.settimana}`,
+          "success"
+        );
+
+        // Aggiorna i dati mock per simulare prod = true
+        if (useMockData) {
+          setReportTasks(prev => prev.map(task =>
+            task.pre_check
+              ? { ...task, prod: true, log: 'Pubblicato in produzione' }
+              : task
+          ));
+        }
+
+      } else {
+        // Azioni generiche
+        showToast(`Avvio azione globale '${actionName}'...`, "info");
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        showToast(`Azione '${actionName}' completata.`, "success");
+      }
 
       if (actionName === 'esegui') {
         setSelectedTaskIds(new Set());
@@ -312,8 +508,39 @@ function Report() {
     }
   };
 
-  const allTasksSelected = filteredReportTasks.length > 0 && selectedTaskIds.size === filteredReportTasks.length;
-  const isAnyTaskSelected = selectedTaskIds.size > 0;
+  // Calcola automaticamente i dati stabilizzati (delta -1 settimana) dalla prima tabella
+  const stabilizedData = useMemo(() => {
+    return filteredReportTasks
+      .filter(task => task.settimana !== null && task.settimana !== undefined) // Solo report settimanali
+      .map(task => {
+        // Calcola il lunedì della settimana corrente (ISO 8601)
+        const getISOWeekMonday = (year, week) => {
+          const simple = new Date(year, 0, 1 + (week - 1) * 7);
+          const dow = simple.getDay();
+          const ISOweekStart = simple;
+          if (dow <= 4)
+            ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
+          else
+            ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
+          return ISOweekStart;
+        };
+
+        const lunediCorrente = getISOWeekMonday(task.anno, task.settimana);
+
+        // Calcola delta -1 settimana
+        const result = stabilizzaDate(task.anno, task.settimana, lunediCorrente.toISOString().split('T')[0]);
+
+        return {
+          id: `stab-${task.id}`,
+          package: task.package,
+          anno_originale: task.anno,
+          settimana_originale: task.settimana,
+          anno: result.anno,
+          settimana: result.settimana,
+          lunedi: result.lunedi
+        };
+      });
+  }, [filteredReportTasks]);
 
   // Icona dinamica per il tipo di report
   const ReportIcon = periodicityConfig.icon;
@@ -338,7 +565,7 @@ function Report() {
                 </p>
               </div>
             </div>
-            {/* Pulsante Indietro rimane qui, i pulsanti di periodicità sono stati spostati */}
+            {/* Pulsante Indietro */}
             <button
               onClick={() => {
                 console.log("Navigating back to /home...");
@@ -423,97 +650,9 @@ function Report() {
               </div>
             </div>
           </div>
-        </section>
 
-        <section className="report-tasks-section">
-          <div className="report-table-wrapper">
-            <table className="report-table">
-              <thead>
-                <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      className="form-checkbox"
-                      onChange={handleSelectAllTasks}
-                      checked={allTasksSelected}
-                      disabled={filteredReportTasks.length === 0 || loadingActions.global !== null}
-                    />
-                  </th>
-                  <th>Banca</th>
-                  <th>Anno</th>
-                  <th>Settimana</th>
-                  <th>Nome File</th>
-                  <th>Package</th>
-                  <th>Disponibilità Server</th>
-                  <th>Ultima Modifica</th>
-                  <th>Dettagli</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>
-                      <RefreshCw className="spin" size={20} />
-                      <span style={{ marginLeft: '0.5rem' }}>Caricamento dati reportistica...</span>
-                    </td>
-                  </tr>
-                ) : filteredReportTasks.length === 0 ? (
-                  <tr>
-                    <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
-                      Nessuna attività di reportistica {currentPeriodicity} trovata per i filtri selezionati.
-                    </td>
-                  </tr>
-                ) : filteredReportTasks.map(task => {
-                  return (
-                    <tr key={task.id} className={selectedTaskIds.has(task.id) ? 'selected-row' : ''}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          className="form-checkbox"
-                          checked={selectedTaskIds.has(task.id)}
-                          onChange={() => handleTaskSelection(task.id)}
-                          disabled={loadingActions.global !== null || loadingActions.taskAction === task.id}
-                        />
-                      </td>
-                      <td>{task.banca || 'N/D'}</td>
-                      <td>{task.anno || 'N/D'}</td>
-                      <td>{task.settimana || 'N/D'}</td>
-                      <td>
-                        <strong>{task.nome_file}</strong>
-                      </td>
-                      <td>{task.package || 'N/D'}</td>
-                      <td>
-                        <span
-                          className={`status-badge ${getDisponibilitaServerBadge(task.disponibilita_server)}`}
-                          style={{
-                            backgroundColor: task.disponibilita_server === true ? '#22c55e' : '#ef4444',
-                            color: 'white',
-                            border: 'none'
-                          }}
-                        >
-                          {getDisponibilitaServerText(task.disponibilita_server)}
-                        </span>
-                      </td>
-                      <td>{formatDateTime(task.ultima_modifica)}</td>
-                      <td className="text-xs">{task.dettagli || 'N/D'}</td>
-                    </tr>
-                  );
-                })}
-                {filteredReportTasks.length === 0 && (
-                  <tr>
-                    <td colSpan="10" className="text-center muted-text">
-                      Nessuna attività di reportistica {currentPeriodicity} trovata per i filtri selezionati.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section className="publish-section">
-          <h3>Dati di Pubblicazione</h3>
-          <div className="publish-controls">
+          {/* Dati di Controllo spostati qui sotto i filtri */}
+          <div className="filter-row" style={{ marginTop: '1rem' }}>
             <div className="filter-group">
               <label htmlFor="anno-select" className="form-label">Anno</label>
               <select
@@ -540,17 +679,174 @@ function Report() {
                 ))}
               </select>
             </div>
-            <div className="publish-button-group">
-              <button
-                className="btn btn-success"
-                onClick={() => handleGlobalAction('pubblica')}
-                disabled={repoUpdateInfo.semaforo !== 1 || loadingActions.global !== null}
-              >
-                <Send className="btn-icon-md" /> PUBBLICA REPORT
-              </button>
-            </div>
           </div>
         </section>
+
+        <section className="report-tasks-section">
+          <div className="report-table-wrapper">
+            <table className="report-table">
+              <thead>
+                <tr>
+                  <th>Package</th>
+                  <th>Banca</th>
+                  <th>Anno</th>
+                  <th>Settimana</th>
+                  <th>Data Modifica</th>
+                  <th>Disponibilità Server</th>
+                  <th>Dettagli</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="7" style={{ textAlign: 'center', padding: '2rem' }}>
+                      <RefreshCw className="spin" size={20} />
+                      <span style={{ marginLeft: '0.5rem' }}>Caricamento dati reportistica...</span>
+                    </td>
+                  </tr>
+                ) : filteredReportTasks.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
+                      Nessuna attività di reportistica {currentPeriodicity} trovata per i filtri selezionati.
+                    </td>
+                  </tr>
+                ) : filteredReportTasks.map(task => {
+                  return (
+                    <tr key={task.id}>
+                      <td><strong>{task.package || 'N/D'}</strong></td>
+                      <td>{task.banca || 'N/D'}</td>
+                      <td>{task.anno || 'N/D'}</td>
+                      <td>{task.settimana || 'N/D'}</td>
+                      <td>{formatDateTime(task.data_esecuzione)}</td>
+                      <td>
+                        <span className={`status-badge ${task.disponibilita_server ? 'status-badge-success' : 'status-badge-danger'}`}>
+                          {task.disponibilita_server ? 'Disponibile' : 'Non disponibile'}
+                        </span>
+                      </td>
+                      <td className="text-xs">{task.log || 'N/D'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Seconda tabella - solo struttura visibile senza dati */}
+        <section className="report-tasks-section" style={{ marginTop: '2rem', border: '2px solid #22c55e', borderRadius: '8px', padding: '1.5rem', backgroundColor: '#f0fdf4' }}>
+          <h3 style={{ marginBottom: '1rem', color: '#166534' }}>📊 Dati Stabilizzati (Delta -1 Settimana)</h3>
+          <div className="report-table-wrapper">
+            <table className="report-table" style={{ backgroundColor: 'white' }}>
+              <thead>
+                <tr>
+                  <th style={{ width: '200px' }}>Package</th>
+                  <th style={{ width: '100px', textAlign: 'center' }}>Anno Orig.</th>
+                  <th style={{ width: '100px', textAlign: 'center' }}>Sett. Orig.</th>
+                  <th style={{ width: '100px', textAlign: 'center', backgroundColor: '#dcfce7' }}>Anno Stab.</th>
+                  <th style={{ width: '100px', textAlign: 'center', backgroundColor: '#dcfce7' }}>Sett. Stab.</th>
+                  <th style={{ width: '150px', textAlign: 'center', backgroundColor: '#dcfce7' }}>Lunedì Stab.</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
+                    Nessun dato stabilizzato disponibile.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Form di Pubblicazione - Tabella attivata solo se semaforo check file è verde */}
+        {semaphoreStatus === 'success' && (
+          <section className="report-tasks-section" style={{ marginTop: '2rem' }}>
+            <h3 style={{ marginBottom: '1rem' }}>Form di Pubblicazione</h3>
+            <div className="report-table-wrapper">
+              <table className="report-table">
+                <thead>
+                  <tr>
+                    <th>Package</th>
+                    <th>User</th>
+                    <th>Data Esecuzione</th>
+                    <th>Pre Check</th>
+                    <th>Prod</th>
+                    <th>Log</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredReportTasks.map(task => {
+                    const preCheckStatus = task.pre_check ? 'success' : 'danger';
+                    const prodStatus = task.prod ? 'success' : 'danger';
+
+                    return (
+                      <tr key={task.id}>
+                        <td><strong>{task.package}</strong></td>
+                        <td>{task.user || 'N/D'}</td>
+                        <td>{formatDateTime(task.data_esecuzione)}</td>
+                        <td>
+                          <div style={{
+                            width: '100%',
+                            height: '8px',
+                            backgroundColor: preCheckStatus === 'success' ? '#22c55e' : '#ef4444',
+                            borderRadius: '4px'
+                          }}></div>
+                        </td>
+                        <td>
+                          <div style={{
+                            width: '100%',
+                            height: '8px',
+                            backgroundColor: prodStatus === 'success' ? '#22c55e' : '#ef4444',
+                            borderRadius: '4px'
+                          }}></div>
+                        </td>
+                        <td className="text-xs">{task.log || 'N/D'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="publish-button-group" style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+              <button
+                className="btn btn-outline"
+                onClick={() => handleGlobalAction('pubblica-pre-check')}
+                disabled={loadingActions.global !== null || selectedTaskIds.size === 0}
+                title={selectedTaskIds.size === 0 ? "Seleziona almeno un task dalla tabella" : "Pubblica i task selezionati in Pre-Check"}
+              >
+                <CheckCircle className="btn-icon-md" /> Pubblica in Pre-Check
+              </button>
+              <button
+                className="btn btn-success"
+                onClick={() => handleGlobalAction('pubblica-report')}
+                disabled={
+                  loadingActions.global !== null ||
+                  filteredReportTasks.length === 0 ||
+                  !filteredReportTasks.every(t => t.pre_check && t.prod)
+                }
+                title={
+                  !filteredReportTasks.every(t => t.pre_check && t.prod)
+                    ? "Tutte le barre Pre Check e Prod devono essere verdi"
+                    : "Pubblica tutti i report in produzione"
+                }
+              >
+                <Send className="btn-icon-md" /> Pubblica Report
+              </button>
+              {!filteredReportTasks.every(t => t.pre_check && t.prod) && filteredReportTasks.length > 0 && (
+                <span style={{ fontSize: '0.875rem', color: '#dc2626', fontWeight: '500' }}>
+                  ⚠️ Completare tutti i Pre-Check e Prod prima di pubblicare
+                </span>
+              )}
+            </div>
+
+            {useMockData && (
+              <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#fef3c7', borderRadius: '8px', fontSize: '0.875rem' }}>
+                <strong>⚠️ Modalità Test:</strong> Il form di pubblicazione è visibile perché il semaforo check file è verde. "Pubblica Report" si abilita solo quando tutte le barre Pre Check e Prod sono verdi.
+              </div>
+            )}
+          </section>
+        )}
       </div>
     </div>
   );

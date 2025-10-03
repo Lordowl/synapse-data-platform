@@ -29,6 +29,7 @@ import "./Settings.css";
 function MetadataFileTabContent({
   metadataPathFromIni,
   onOpenMetadataFile,
+  onLoadFileFromDialog,
   loadingStates,
 }) {
   return (
@@ -62,6 +63,27 @@ function MetadataFileTabContent({
               disabled={loadingStates?.loadingConfigFile || !metadataPathFromIni}
             >
               <ExternalLink className="btn-icon-md" /> Apri File Metadati
+            </button>
+          </div>
+        </div>
+
+        <div className="metadata-card">
+          <div className="metadata-card-header">
+            <div className="metadata-card-icon-bg">
+              <Upload className="metadata-card-icon" />
+            </div>
+            <h3 className="metadata-card-title">Carica File Metadati da Locale</h3>
+          </div>
+          <p className="metadata-card-description">
+            Seleziona un file Excel (.xlsx, .xls) dal tuo computer per importare i metadati.
+          </p>
+          <div className="metadata-card-input-group">
+            <button
+              onClick={onLoadFileFromDialog}
+              className="btn btn-primary w-full"
+              disabled={loadingStates?.loadingConfigFile}
+            >
+              <Upload className="btn-icon-md" /> Carica File da Locale
             </button>
           </div>
         </div>
@@ -882,6 +904,7 @@ function Settings() {
           <MetadataFileTabContent
             metadataPathFromIni={metadataPath}
             onOpenMetadataFile={handleOpenMetadataFile}
+            onLoadFileFromDialog={handleLoadFileFromDialog}
             loadingStates={loadingStates}
           />
         );

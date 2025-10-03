@@ -133,8 +133,8 @@ def create_default_admin_if_not_exists():
         db.close()
 # ----------------- FastAPI app ----------------- #
 app = FastAPI(
-    title="Synapse Data Platform API",
-    description="API per la Synapse Data Platform.",
+    title="Cruscotto Operativo API",
+    description="API per il Cruscotto Operativo.",
     version="1.0.0",
 )
 
@@ -258,7 +258,7 @@ def get_config_info():
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="Synapse Data Platform API Server")
+    parser = argparse.ArgumentParser(description="Cruscotto Operativo API Server")
     parser.add_argument("--host", default=settings.host)
     parser.add_argument("--port", type=int, default=settings.port)
     parser.add_argument("--reload", action="store_true")

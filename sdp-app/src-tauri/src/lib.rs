@@ -50,21 +50,49 @@ pub fn run() {
             log_to_file("Backend exe found, attempting to start...");
 
             // Avvia il backend
-            match StdCommand::new(backend_path)
-                .args(&["--host", "127.0.0.1", "--port", "8000"])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
+            #[cfg(target_os = "windows")]
             {
-                Ok(child) => {
-                    let msg = format!("✅ Backend started with PID: {}", child.id());
-                    log_to_file(&msg);
-                    println!("{}", msg);
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+                match StdCommand::new(backend_path)
+                    .args(&["--host", "127.0.0.1", "--port", "8000"])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .spawn()
+                {
+                    Ok(child) => {
+                        let msg = format!("✅ Backend started with PID: {}", child.id());
+                        log_to_file(&msg);
+                        println!("{}", msg);
+                    }
+                    Err(e) => {
+                        let msg = format!("❌ Failed to start backend: {}", e);
+                        log_to_file(&msg);
+                        eprintln!("{}", msg);
+                    }
                 }
-                Err(e) => {
-                    let msg = format!("❌ Failed to start backend: {}", e);
-                    log_to_file(&msg);
-                    eprintln!("{}", msg);
+            }
+
+            #[cfg(not(target_os = "windows"))]
+            {
+                match StdCommand::new(backend_path)
+                    .args(&["--host", "127.0.0.1", "--port", "8000"])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                {
+                    Ok(child) => {
+                        let msg = format!("✅ Backend started with PID: {}", child.id());
+                        log_to_file(&msg);
+                        println!("{}", msg);
+                    }
+                    Err(e) => {
+                        let msg = format!("❌ Failed to start backend: {}", e);
+                        log_to_file(&msg);
+                        eprintln!("{}", msg);
+                    }
                 }
             }
 

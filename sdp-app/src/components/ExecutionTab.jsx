@@ -52,6 +52,9 @@ function ExecutionTabContent({
     return matchesPackage && matchesStatus; // && matchesWeek && matchesYear;
   });
 
+  // Conta solo i flussi visualizzati che sono selezionati
+  const selectedDisplayedCount = displayedFlows.filter(flow => selectedFlows.has(flow.id)).length;
+
   return (
     <div className="tab-content-padding">
       <div className="ingest-section-header execution-tab-header">
@@ -71,7 +74,7 @@ function ExecutionTabContent({
             </>
           ) : (
             <>
-              <Play className="btn-icon-md" /> Esegui ({selectedFlows.size})
+              <Play className="btn-icon-md" /> Esegui ({selectedDisplayedCount})
             </>
           )}
         </button>
@@ -86,22 +89,23 @@ function ExecutionTabContent({
                   type="checkbox"
                   className="form-checkbox"
                   onChange={handleSelectAllFlows}
-                  checked={displayedFlows.length > 0 && selectedFlows.size === displayedFlows.length}
+                  checked={displayedFlows.length > 0 && displayedFlows.every(flow => selectedFlows.has(flow.id))}
                   ref={(el) => {
                     if (el) {
-                      el.indeterminate = selectedFlows.size > 0 && selectedFlows.size < displayedFlows.length;
+                      el.indeterminate = selectedFlows.size > 0 && !displayedFlows.every(flow => selectedFlows.has(flow.id));
                     }
                   }}
                   disabled={displayedFlows.length === 0 || isExecuting}
                 />
               </th>
-              <th onClick={() => !isExecuting && requestSort("id")}>ID -SEQ {getSortIcon("id")}</th>
-              <th onClick={() => !isExecuting && requestSort("anno")}>Anno {getSortIcon("anno")}</th>
-              <th onClick={() => !isExecuting && requestSort("settimana")}>Settimana {getSortIcon("settimana")}</th>
-              <th onClick={() => !isExecuting && requestSort("name")}>Nome Flusso {getSortIcon("name")}</th>
-              <th onClick={() => !isExecuting && requestSort("lastRun")}>Ultima Esecuzione {getSortIcon("lastRun")}</th>
-              <th onClick={() => !isExecuting && requestSort("result")}>Risultato {getSortIcon("result")}</th>
-              <th>Dettagli</th>
+              <th onClick={() => !isExecuting && requestSort("id")} style={{ width: '80px' }}>ID {getSortIcon("id")}</th>
+              <th onClick={() => !isExecuting && requestSort("package")} style={{ width: '120px' }}>Package {getSortIcon("package")}</th>
+              <th onClick={() => !isExecuting && requestSort("anno")} style={{ width: '70px' }}>Anno {getSortIcon("anno")}</th>
+              <th onClick={() => !isExecuting && requestSort("settimana")} style={{ width: '70px' }}>Sett. {getSortIcon("settimana")}</th>
+              <th onClick={() => !isExecuting && requestSort("name")}>Flusso {getSortIcon("name")}</th>
+              <th onClick={() => !isExecuting && requestSort("lastRun")} style={{ width: '130px' }}>Ultima Esec. {getSortIcon("lastRun")}</th>
+              <th onClick={() => !isExecuting && requestSort("result")} style={{ width: '100px' }}>Status {getSortIcon("result")}</th>
+              <th style={{ minWidth: '200px' }}>Dettagli</th>
             </tr>
           </thead>
           <tbody>
@@ -116,18 +120,28 @@ function ExecutionTabContent({
                     disabled={isExecuting}
                   />
                 </td>
-                <td data-label="ID Univoco"><span className="muted-text">{flow.id}</span></td>
+                <td data-label="ID"><span className="muted-text" style={{ fontSize: '0.85rem' }}>{flow.id}</span></td>
+                <td data-label="Package">{flow.package || "N/A"}</td>
                 <td data-label="Anno">{flow.anno || "N/A"}</td>
-                <td data-label="Settimana">{flow.settimana || "N/A"}</td>
+                <td data-label="Sett.">{flow.settimana || "N/A"}</td>
                 <td data-label="Flusso">{flow.name || <span className="muted-text italic">{flow.id}</span>}</td>
-                <td data-label="Ultima Esecuzione">{flow.lastRun ? new Date(flow.lastRun).toLocaleString("it-IT") : "N/A"}</td>
-                <td data-label="Risultato"><span className={`status-badge ${getStatusBadgeColor(flow.result)}`}>{flow.result || "N/A"}</span></td>
-                <td data-label="Dettagli">{flow.detail ? <pre className="flow-detail-content">{flow.detail}</pre> : <span className="muted-text italic">Nessun dettaglio</span>}</td>
+                <td data-label="Ultima Esec." style={{ fontSize: '0.85rem' }}>
+                  {flow.lastRun ? new Date(flow.lastRun).toLocaleString("it-IT", {
+                    day: '2-digit',
+                    month: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  }) : "N/A"}
+                </td>
+                <td data-label="Status"><span className={`status-badge ${getStatusBadgeColor(flow.result)}`}>{flow.result || "N/A"}</span></td>
+                <td data-label="Dettagli" style={{ fontSize: '0.85rem', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {flow.detail ? <span title={flow.detail}>{flow.detail}</span> : <span className="muted-text italic">Nessun dettaglio</span>}
+                </td>
               </tr>
             ))}
             {displayedFlows.length === 0 && (
               <tr>
-                <td colSpan="8" className="text-center muted-text">
+                <td colSpan="9" className="text-center muted-text">
                   Nessun flusso dati trovato per i filtri selezionati.
                 </td>
               </tr>
