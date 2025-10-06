@@ -186,6 +186,7 @@ function Ingest() {
               setStatusFilter(value);
               localStorage.setItem("statusFilter", value);
             }}
+            metadataFilePath={metadataFilePath}
           />
         );
       case "logs":

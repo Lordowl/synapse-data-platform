@@ -105,11 +105,6 @@ function Home({ setIsAuthenticated }) {
                 <button className="btn btn-primary">
                   <Database size={20} />
                   <span>Ingest</span>
-                  {metadataFilePath && (
-                    <span style={{ fontSize: '0.7rem', opacity: 0.8, marginLeft: '0.5rem' }}>
-                      (Locale)
-                    </span>
-                  )}
                 </button>
               </Link>
             ) : (
@@ -126,12 +121,12 @@ function Home({ setIsAuthenticated }) {
             </div>
           )}
 
-          <Link to="/report" className="nav-link"> 
+          {/* <Link to="/report" className="nav-link">*/} 
             <button className="btn btn-primary">
               <BarChart3 size={20} />
               <span>Reportistica (WIP)</span>
             </button>
-          </Link> 
+          {/*</Link> */} 
         </div>
 
         <div className="secondary-actions">

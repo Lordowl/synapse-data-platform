@@ -30,7 +30,9 @@ function MetadataFileTabContent({
   metadataPathFromIni,
   onOpenMetadataFile,
   onLoadFileFromDialog,
+  onResetToIni,
   loadingStates,
+  hasLocalMetadata,
 }) {
   return (
     <div className="tab-content-padding">
@@ -85,6 +87,16 @@ function MetadataFileTabContent({
             >
               <Upload className="btn-icon-md" /> Carica File da Locale
             </button>
+            {hasLocalMetadata && (
+              <button
+                onClick={onResetToIni}
+                className="btn btn-outline w-full"
+                disabled={loadingStates?.loadingConfigFile}
+                style={{ marginTop: '8px' }}
+              >
+                <RefreshCw className="btn-icon-md" /> Ripristina File da INI
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -889,6 +901,11 @@ function Settings() {
     }
   };
 
+  const handleResetToIni = () => {
+    setMetadataFilePath(null);
+    toast.success("Ripristinato percorso file metadati da INI");
+  };
+
   const renderActiveTabContent = () => {
     if (activeTab === "permissions" && (!currentUser || currentUser.role !== "admin")) {
       return (
@@ -905,7 +922,9 @@ function Settings() {
             metadataPathFromIni={metadataPath}
             onOpenMetadataFile={handleOpenMetadataFile}
             onLoadFileFromDialog={handleLoadFileFromDialog}
+            onResetToIni={handleResetToIni}
             loadingStates={loadingStates}
+            hasLocalMetadata={metadataFilePath !== null}
           />
         );
       case "permissions":

@@ -39,6 +39,7 @@ function ExecutionTabContent({
   sortConfig,
   requestSort,
   getSortIcon,
+  metadataFilePath,
 }) {
   // 🔹 Filtraggio locale basato su week, year, package e status
   const displayedFlows = filteredAndSortedFlows.filter(flow => {
@@ -60,7 +61,14 @@ function ExecutionTabContent({
       <div className="ingest-section-header execution-tab-header">
         <div className="ingest-section-header-title-group">
           <Filter className="ingest-section-icon" />
-          <h2 className="ingest-section-title">Selezione Flussi</h2>
+          <div>
+            <h2 className="ingest-section-title">Selezione Flussi</h2>
+            {metadataFilePath && (
+              <p style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px' }}>
+                Usando file metadati locale
+              </p>
+            )}
+          </div>
         </div>
         <button
           onClick={handleExecuteSelectedFlows}

@@ -7,8 +7,8 @@ const AppContext = createContext();
 // 2. Crea il Provider (il componente che gestisce e fornisce lo stato)
 export const AppProvider = ({ children }) => {
   // Stato per il percorso del file di metadati.
-  // In un'app reale, il valore iniziale verrebbe caricato da un'API.
-  const [metadataFilePath, setMetadataFilePath] = useState('/percorso/default/file.xlsx');
+  // Null finché l'utente non carica un file dalle Impostazioni
+  const [metadataFilePath, setMetadataFilePath] = useState(null);
 
   // Valori che vogliamo rendere disponibili a tutta l'app
   const value = {
