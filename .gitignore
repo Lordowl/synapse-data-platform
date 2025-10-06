@@ -40,6 +40,9 @@ sdp-app/src-tauri/target/
 sdp-app/src-tauri/gen/
 sdp-app/src-tauri/Cargo.lock
 
+# Binari backend (troppo grandi per GitHub)
+sdp-app/src-tauri/binaries/*.exe
+
 # Log di NPM
 sdp-app/npm-debug.log*
 sdp-app/yarn-debug.log*
