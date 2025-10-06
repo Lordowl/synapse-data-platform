@@ -151,7 +151,10 @@ export const useIngestFlows = (flowsData, generalParams, setGeneralParams, fetch
             name: f.name,
           };
         }),
-        params: generalParams,
+        params: {
+          ...generalParams,
+          metadataFilePath: generalParams.metadataFilePath || undefined, // Include il path del file metadati locale se disponibile
+        },
       };
 
       console.log("Payload inviato al backend:", executionPayload);

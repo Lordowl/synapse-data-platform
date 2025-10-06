@@ -35,49 +35,61 @@ const MOCK_REPORT_DATA = [
     id: 1,
     banca: "BancaTest",
     package: "Flussi Netti",
+    nome_file: "flussi_netti_w3.xlsx",
+    finalita: "Reportistica settimanale",
     user: "mario.rossi",
     data_esecuzione: "2025-01-15T10:30:00",
-    pre_check: true,
-    prod: false,
+    pre_check: null, // GRIGIO - in attesa
+    prod: null, // GRIGIO - in attesa
     log: "Esecuzione completata con successo",
     anno: 2025,
-    settimana: 3
+    settimana: 3,
+    disponibilita_server: true // VERDE
   },
   {
     id: 2,
     banca: "BancaTest",
     package: "Package 2",
+    nome_file: "package2_w3.xlsx",
+    finalita: "Analisi dati",
     user: "giulia.verdi",
     data_esecuzione: "2025-01-15T11:45:00",
-    pre_check: true,
-    prod: true,
-    log: "Pubblicato in produzione",
+    pre_check: null, // GRIGIO - in attesa
+    prod: null, // GRIGIO - in attesa
+    log: "In elaborazione",
     anno: 2025,
-    settimana: 3
+    settimana: 3,
+    disponibilita_server: false // ROSSO
   },
   {
     id: 3,
     banca: "BancaTest",
-    package: "Flussi Netti",
+    package: "Report Vendite",
+    nome_file: "vendite_w3.xlsx",
+    finalita: "Dashboard commerciale",
     user: "luca.bianchi",
     data_esecuzione: "2025-01-14T09:15:00",
-    pre_check: false,
-    prod: false,
+    pre_check: null, // GRIGIO - in attesa
+    prod: null, // GRIGIO - in attesa
     log: "In attesa di pre-check",
     anno: 2025,
-    settimana: 2
+    settimana: 3,
+    disponibilita_server: true // VERDE
   },
   {
     id: 4,
     banca: "BancaTest",
     package: "Report Mensile",
+    nome_file: "mensile_gen.xlsx",
+    finalita: "Report mensile",
     user: "anna.ferrari",
     data_esecuzione: "2025-01-10T14:20:00",
-    pre_check: true,
-    prod: true,
+    pre_check: null,
+    prod: null,
     log: "Report mensile pubblicato",
     anno: 2025,
-    settimana: null // Report mensile
+    settimana: null, // Report mensile
+    disponibilita_server: true
   }
 ];
 
@@ -256,7 +268,7 @@ function Report() {
   const isInitialLoad = useRef(true);
 
   // Stato per abilitare/disabilitare dati mock
-  const [useMockData, setUseMockData] = useState(false); // FALSE = usa sempre dati API reali
+  const [useMockData, setUseMockData] = useState(true); // TRUE = usa dati mock per test
 
   // Fetch reportistica data from API
   useEffect(() => {
@@ -288,6 +300,8 @@ function Report() {
             id: item.id,
             banca: item.banca,
             package: item.package || item.nome_file,
+            nome_file: item.nome_file,
+            finalita: item.finalita,
             user: 'N/D', // L'API non fornisce questo campo
             data_esecuzione: item.ultima_modifica || item.updated_at,
             pre_check: false, // Da implementare nella logica di business
@@ -339,20 +353,6 @@ function Report() {
     };
   }, [useMockData, showToast, fetchRepoUpdateInfo]);
 
-  // Status basato sul semaforo dal repo_update_info
-  const semaphoreStatus = useMemo(() => {
-    switch (repoUpdateInfo.semaforo) {
-      case 1:
-        return 'success'; // Verde
-      case 2:
-        return 'warning'; // Arancione
-      case 0:
-      default:
-        return 'danger'; // Rosso
-    }
-  }, [repoUpdateInfo.semaforo]);
-
-
   // Funzione per cambiare periodicità
   const handlePeriodicityChange = (newPeriodicity) => {
     setSearchParams({ type: newPeriodicity });
@@ -386,6 +386,27 @@ function Report() {
     console.log('Filters:', filters);
     return filtered;
   }, [reportTasks, currentPeriodicity, filters]);
+
+  // Status basato sulla prima tabella - reattivo
+  const semaphoreStatus = useMemo(() => {
+    if (filteredReportTasks.length === 0) {
+      return 'danger'; // Rosso se non ci sono dati
+    }
+
+    const allGreen = filteredReportTasks.every(task => task.disponibilita_server === true);
+    const someGreen = filteredReportTasks.some(task => task.disponibilita_server === true);
+    const allRed = filteredReportTasks.every(task => task.disponibilita_server === false);
+
+    if (allGreen) {
+      return 'success'; // Verde se tutti disponibili
+    } else if (allRed) {
+      return 'danger'; // Rosso se tutti non disponibili
+    } else if (someGreen) {
+      return 'warning'; // Arancione se parzialmente disponibili
+    }
+
+    return 'danger'; // Default rosso
+  }, [filteredReportTasks]);
 
   const handleTaskSelection = (taskId) => {
     setSelectedTaskIds(prev => {
@@ -422,73 +443,51 @@ function Report() {
         // Simula chiamata API
         await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // Test della funzione stabilizzaDate
-        const lunediCorrente = '2025-01-20'; // Lunedì della settimana 3, 2025
-        const dateStabilizzate = stabilizzaDate(
-          repoUpdateInfo.anno,
-          repoUpdateInfo.settimana,
-          lunediCorrente
-        );
+        // Setta pre_check = true per tutti i task settimanali
+        setReportTasks(prev => prev.map(task =>
+          task.settimana !== null && task.settimana !== undefined
+            ? { ...task, pre_check: true, log: 'Pre-check completato con successo' }
+            : task
+        ));
 
-        console.log('Date stabilizzate:', dateStabilizzate);
-        showToast(
-          `Pre-Check pubblicato! Date stabilizzate: Anno ${dateStabilizzate.anno}, Settimana ${dateStabilizzate.settimana}`,
-          "success"
-        );
-
-        // Aggiorna i dati mock per simulare pre_check = true
-        if (useMockData) {
-          setReportTasks(prev => prev.map(task =>
-            selectedTaskIds.has(task.id)
-              ? { ...task, pre_check: true, log: 'Pre-check completato' }
-              : task
-          ));
-
-          // Aggiungi dati stabilizzati alla seconda tabella
-          const nuoviDatiStabilizzati = Array.from(selectedTaskIds).map(taskId => {
-            const task = reportTasks.find(t => t.id === taskId);
-            if (task && task.settimana) {
-              const lunediTest = '2025-01-20'; // Simula lunedì corrente
-              const risultato = stabilizzaDate(task.anno, task.settimana, lunediTest);
-              return {
-                id: `stab-${taskId}`,
-                package: task.package,
-                anno_originale: task.anno,
-                settimana_originale: task.settimana,
-                ...risultato
-              };
-            }
-            return null;
-          }).filter(Boolean);
-
-          setStabilizedData(prev => [...prev, ...nuoviDatiStabilizzati]);
-        }
+        showToast(`Pre-Check pubblicato con successo!`, "success");
 
       } else if (actionName === 'pubblica-report') {
         showToast(`Avvio pubblicazione Report in Produzione...`, "info");
 
-        // Verifica semaforo verde
-        if (repoUpdateInfo.semaforo !== 1) {
-          showToast('Semaforo non verde! Impossibile pubblicare in produzione.', 'error');
-          return;
-        }
-
         // Simula chiamata API
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 1500));
 
-        showToast(
-          `Report pubblicato in Produzione! Anno ${repoUpdateInfo.anno}, Settimana ${repoUpdateInfo.settimana}`,
-          "success"
-        );
+        // Setta prod = true per tutti i task settimanali
+        setReportTasks(prev => prev.map(task =>
+          task.settimana !== null && task.settimana !== undefined
+            ? { ...task, prod: true, log: 'Pubblicato in produzione' }
+            : task
+        ));
 
-        // Aggiorna i dati mock per simulare prod = true
-        if (useMockData) {
-          setReportTasks(prev => prev.map(task =>
-            task.pre_check
-              ? { ...task, prod: true, log: 'Pubblicato in produzione' }
-              : task
-          ));
-        }
+        showToast(`Report pubblicato in Produzione!`, "success");
+
+        // Dopo 2 secondi, resetta tutto e avanza alla settimana successiva
+        setTimeout(() => {
+          // Reset pre_check, prod e disponibilita_server a null (grigio)
+          setReportTasks(prev => prev.map(task => ({
+            ...task,
+            pre_check: null,
+            prod: null,
+            disponibilita_server: null,
+            log: 'In attesa di elaborazione',
+            // Avanza settimana +1
+            settimana: task.settimana !== null ? task.settimana + 1 : task.settimana
+          })));
+
+          // Aggiorna repo update info con settimana +1
+          setRepoUpdateInfo(prev => ({
+            ...prev,
+            settimana: prev.settimana + 1
+          }));
+
+          showToast(`✅ Sistema avanzato alla settimana ${repoUpdateInfo.settimana + 1}`, "success");
+        }, 2000);
 
       } else {
         // Azioni generiche
@@ -508,39 +507,44 @@ function Report() {
     }
   };
 
-  // Calcola automaticamente i dati stabilizzati (delta -1 settimana) dalla prima tabella
-  const stabilizedData = useMemo(() => {
-    return filteredReportTasks
-      .filter(task => task.settimana !== null && task.settimana !== undefined) // Solo report settimanali
-      .map(task => {
-        // Calcola il lunedì della settimana corrente (ISO 8601)
-        const getISOWeekMonday = (year, week) => {
-          const simple = new Date(year, 0, 1 + (week - 1) * 7);
-          const dow = simple.getDay();
-          const ISOweekStart = simple;
-          if (dow <= 4)
-            ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
-          else
-            ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
-          return ISOweekStart;
-        };
+  // Dati per la tabella di pubblicazione - package DISTINCT
+  const publicationData = useMemo(() => {
+    const packageMap = new Map();
 
-        const lunediCorrente = getISOWeekMonday(task.anno, task.settimana);
-
-        // Calcola delta -1 settimana
-        const result = stabilizzaDate(task.anno, task.settimana, lunediCorrente.toISOString().split('T')[0]);
-
-        return {
-          id: `stab-${task.id}`,
-          package: task.package,
-          anno_originale: task.anno,
-          settimana_originale: task.settimana,
-          anno: result.anno,
-          settimana: result.settimana,
-          lunedi: result.lunedi
-        };
+    filteredReportTasks
+      .filter(task =>
+        task.settimana !== null &&
+        task.settimana !== undefined
+      )
+      .forEach(task => {
+        // Se il package non è già nella mappa, aggiungilo
+        if (!packageMap.has(task.package)) {
+          packageMap.set(task.package, {
+            id: `pub-${task.id}`,
+            package: task.package,
+            user: task.user || 'N/D',
+            data_esecuzione: task.data_esecuzione,
+            pre_check: task.pre_check, // Mantieni null se è null
+            prod: task.prod, // Mantieni null se è null
+            log: task.log || 'N/D'
+          });
+        }
       });
+
+    return Array.from(packageMap.values());
   }, [filteredReportTasks]);
+
+  // Verifica se tutte le righe della prima tabella sono verdi (disponibilita_server = true)
+  const allFirstTableGreen = useMemo(() => {
+    return filteredReportTasks.length > 0 &&
+           filteredReportTasks.every(task => task.disponibilita_server === true);
+  }, [filteredReportTasks]);
+
+  // Verifica se tutte le righe della seconda tabella hanno pre_check = true
+  const allPreCheckGreen = useMemo(() => {
+    return publicationData.length > 0 &&
+           publicationData.every(item => item.pre_check === true);
+  }, [publicationData]);
 
   // Icona dinamica per il tipo di report
   const ReportIcon = periodicityConfig.icon;
@@ -637,18 +641,51 @@ function Report() {
               <div className="status-indicators">
                 <span
                   className={`status-dot ${semaphoreStatus === 'success' ? 'active-success' : ''}`}
-                  title="Verde (Semaforo = 1)"
+                  title="Verde - Tutti i server disponibili"
                 ></span>
                 <span
                   className={`status-dot ${semaphoreStatus === 'warning' ? 'active-warning' : ''}`}
-                  title="Arancione (Semaforo = 2)"
+                  title="Arancione - Alcuni server disponibili"
                 ></span>
                 <span
                   className={`status-dot ${semaphoreStatus === 'danger' ? 'active-danger' : ''}`}
-                  title="Rosso (Semaforo = 0)"
+                  title="Rosso - Nessun server disponibile"
                 ></span>
               </div>
             </div>
+
+            {/* Pulsanti Test Mock - solo in development */}
+            {useMockData && (
+              <div className="filter-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <label className="form-label">Test Mock</label>
+                <button
+                  className="btn btn-outline"
+                  onClick={() => {
+                    // Cambia lo stato del server ID 2
+                    setReportTasks(prev => prev.map(task => ({
+                      ...task,
+                      disponibilita_server: task.id === 2 ? !task.disponibilita_server : task.disponibilita_server
+                    })));
+                  }}
+                  style={{ fontSize: '0.7rem', padding: '0.3rem 0.6rem' }}
+                >
+                  Toggle Server ID 2
+                </button>
+                <button
+                  className="btn btn-outline"
+                  onClick={() => {
+                    // Rendi tutti i server verdi
+                    setReportTasks(prev => prev.map(task => ({
+                      ...task,
+                      disponibilita_server: true
+                    })));
+                  }}
+                  style={{ fontSize: '0.7rem', padding: '0.3rem 0.6rem' }}
+                >
+                  Tutti Verdi ✅
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Dati di Controllo spostati qui sotto i filtri */}
@@ -687,7 +724,9 @@ function Report() {
             <table className="report-table">
               <thead>
                 <tr>
+                  <th>Finalità</th>
                   <th>Package</th>
+                  <th>Nome File</th>
                   <th>Banca</th>
                   <th>Anno</th>
                   <th>Settimana</th>
@@ -699,29 +738,38 @@ function Report() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '2rem' }}>
+                    <td colSpan="9" style={{ textAlign: 'center', padding: '2rem' }}>
                       <RefreshCw className="spin" size={20} />
                       <span style={{ marginLeft: '0.5rem' }}>Caricamento dati reportistica...</span>
                     </td>
                   </tr>
                 ) : filteredReportTasks.length === 0 ? (
                   <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
+                    <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
                       Nessuna attività di reportistica {currentPeriodicity} trovata per i filtri selezionati.
                     </td>
                   </tr>
                 ) : filteredReportTasks.map(task => {
                   return (
                     <tr key={task.id}>
+                      <td>{task.finalita || 'N/D'}</td>
                       <td><strong>{task.package || 'N/D'}</strong></td>
+                      <td>{task.nome_file || 'N/D'}</td>
                       <td>{task.banca || 'N/D'}</td>
                       <td>{task.anno || 'N/D'}</td>
                       <td>{task.settimana || 'N/D'}</td>
                       <td>{formatDateTime(task.data_esecuzione)}</td>
-                      <td>
-                        <span className={`status-badge ${task.disponibilita_server ? 'status-badge-success' : 'status-badge-danger'}`}>
-                          {task.disponibilita_server ? 'Disponibile' : 'Non disponibile'}
-                        </span>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{
+                          width: '100%',
+                          height: '8px',
+                          backgroundColor: task.disponibilita_server === true
+                            ? '#22c55e'
+                            : task.disponibilita_server === false
+                              ? '#ef4444'
+                              : '#e5e7eb',
+                          borderRadius: '4px'
+                        }}></div>
                       </td>
                       <td className="text-xs">{task.log || 'N/D'}</td>
                     </tr>
@@ -732,29 +780,135 @@ function Report() {
           </div>
         </section>
 
-        {/* Seconda tabella - solo struttura visibile senza dati */}
-        <section className="report-tasks-section" style={{ marginTop: '2rem', border: '2px solid #22c55e', borderRadius: '8px', padding: '1.5rem', backgroundColor: '#f0fdf4' }}>
-          <h3 style={{ marginBottom: '1rem', color: '#166534' }}>📊 Dati Stabilizzati (Delta -1 Settimana)</h3>
-          <div className="report-table-wrapper">
-            <table className="report-table" style={{ backgroundColor: 'white' }}>
-              <thead>
-                <tr>
-                  <th style={{ width: '200px' }}>Package</th>
-                  <th style={{ width: '100px', textAlign: 'center' }}>Anno Orig.</th>
-                  <th style={{ width: '100px', textAlign: 'center' }}>Sett. Orig.</th>
-                  <th style={{ width: '100px', textAlign: 'center', backgroundColor: '#dcfce7' }}>Anno Stab.</th>
-                  <th style={{ width: '100px', textAlign: 'center', backgroundColor: '#dcfce7' }}>Sett. Stab.</th>
-                  <th style={{ width: '150px', textAlign: 'center', backgroundColor: '#dcfce7' }}>Lunedì Stab.</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
-                    Nessun dato stabilizzato disponibile.
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+        {/* Seconda tabella - Package pronti per la pubblicazione */}
+        <section className="report-tasks-section" style={{ marginTop: '2rem' }}>
+          <h3 style={{ marginBottom: '1rem' }}>✅ Package Pronti per la Pubblicazione</h3>
+
+          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+            {/* Tabella compatta */}
+            <div className="report-table-wrapper" style={{ flex: '1' }}>
+              <table className="report-table" style={{ backgroundColor: 'white' }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: '180px' }}>Package</th>
+                    <th style={{ width: '100px' }}>User</th>
+                    <th style={{ width: '140px' }}>Data Esecuzione</th>
+                    <th style={{ width: '80px', textAlign: 'center' }}>Pre Check</th>
+                    <th style={{ width: '80px', textAlign: 'center' }}>Prod</th>
+                    <th style={{ width: '200px' }}>Dettagli</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {publicationData.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
+                        Nessun package pronto per la pubblicazione.
+                      </td>
+                    </tr>
+                  ) : publicationData.map(item => (
+                    <tr key={item.id}>
+                      <td><strong>{item.package}</strong></td>
+                      <td>{item.user}</td>
+                      <td>{formatDateTime(item.data_esecuzione)}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{
+                          width: '100%',
+                          height: '8px',
+                          backgroundColor: item.pre_check === true
+                            ? '#22c55e'
+                            : item.pre_check === false
+                              ? '#ef4444'
+                              : '#e5e7eb',
+                          borderRadius: '4px'
+                        }}></div>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{
+                          width: '100%',
+                          height: '8px',
+                          backgroundColor: item.prod === true
+                            ? '#22c55e'
+                            : item.prod === false
+                              ? '#ef4444'
+                              : '#e5e7eb',
+                          borderRadius: '4px'
+                        }}></div>
+                      </td>
+                      <td className="text-xs">{item.log}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pulsanti di pubblicazione laterali */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1rem',
+              minWidth: '250px',
+              paddingTop: '0.5rem',
+              alignItems: 'stretch'
+            }}>
+              <button
+                className="btn btn-outline"
+                onClick={() => handleGlobalAction('pubblica-pre-check')}
+                disabled={!allFirstTableGreen || loadingActions.global !== null}
+                title={!allFirstTableGreen ? "Tutte le righe della prima tabella devono avere disponibilità server verde" : "Pubblica in Pre-Check"}
+                style={{
+                  opacity: (!allFirstTableGreen || loadingActions.global !== null) ? '0.4' : '1',
+                  cursor: (!allFirstTableGreen || loadingActions.global !== null) ? 'not-allowed' : 'pointer',
+                  padding: '0.75rem 1rem',
+                  whiteSpace: 'nowrap',
+                  width: '100%'
+                }}
+              >
+                <CheckCircle className="btn-icon-md" /> Pubblica in Pre-Check
+              </button>
+              <button
+                className="btn btn-outline"
+                onClick={() => handleGlobalAction('pubblica-report')}
+                disabled={!allPreCheckGreen || loadingActions.global !== null}
+                title={!allPreCheckGreen ? "Tutte le righe devono avere Pre-Check verde" : "Pubblica Report"}
+                style={{
+                  opacity: (!allPreCheckGreen || loadingActions.global !== null) ? '0.4' : '1',
+                  cursor: (!allPreCheckGreen || loadingActions.global !== null) ? 'not-allowed' : 'pointer',
+                  padding: '0.75rem 1rem',
+                  whiteSpace: 'nowrap',
+                  width: '100%'
+                }}
+              >
+                <Send className="btn-icon-md" /> Pubblica Report
+              </button>
+
+              {/* Messaggi di stato */}
+              {!allFirstTableGreen && filteredReportTasks.length > 0 && (
+                <div style={{
+                  fontSize: '0.75rem',
+                  color: '#dc2626',
+                  fontWeight: '500',
+                  padding: '0.5rem',
+                  backgroundColor: '#fef2f2',
+                  borderRadius: '6px',
+                  border: '1px solid #fecaca'
+                }}>
+                  ⚠️ Prima tabella: non tutti i server sono disponibili
+                </div>
+              )}
+              {allFirstTableGreen && !allPreCheckGreen && publicationData.length > 0 && (
+                <div style={{
+                  fontSize: '0.75rem',
+                  color: '#dc2626',
+                  fontWeight: '500',
+                  padding: '0.5rem',
+                  backgroundColor: '#fef2f2',
+                  borderRadius: '6px',
+                  border: '1px solid #fecaca'
+                }}>
+                  ⚠️ Completare tutti i Pre-Check prima di pubblicare
+                </div>
+              )}
+            </div>
           </div>
         </section>
 

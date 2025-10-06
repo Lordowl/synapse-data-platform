@@ -68,6 +68,7 @@ class Reportistica(Base):
     settimana = Column(Integer, nullable=True)
     nome_file = Column(String, unique=True, nullable=False)
     package = Column(String, nullable=True)
+    finalita = Column(String, nullable=True)
     disponibilita_server = Column(Boolean, default=False)
     ultima_modifica = Column(DateTime(timezone=True), nullable=True)
     dettagli = Column(Text, nullable=True)

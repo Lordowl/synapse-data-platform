@@ -90,6 +90,16 @@ function Ingest() {
     setExecutionDetails(detailsArr);
   }, [logsData]);
 
+  // 🔹 Aggiungi metadataFilePath ai generalParams quando cambia
+  useEffect(() => {
+    if (metadataFilePath) {
+      setGeneralParams(prev => ({
+        ...prev,
+        metadataFilePath: metadataFilePath
+      }));
+    }
+  }, [metadataFilePath]);
+
   // 🔹 Caricamento iniziale dati
   useEffect(() => {
     if (!metadataFilePath) {

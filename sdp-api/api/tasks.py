@@ -164,7 +164,17 @@ def execute_selected_flows(
     anno_int = int(anno) if anno and str(anno).isdigit() else None
     settimana_int = int(settimana) if settimana and str(settimana).isdigit() else None
 
-    logger.info(f"Flow IDs string: {flow_ids_str}, Log key: {log_key}, Anno: {anno_int}, Settimana: {settimana_int}")
+    # Estrazione del path del file metadati: usa quello dal frontend se disponibile, altrimenti dall'INI
+    metadata_file_path = request.params.get("metadataFilePath")
+
+    if not metadata_file_path:
+        # Fallback: prendi il path dal file INI
+        selected_bank = request.params.get("selectedBank") if isinstance(request.params, dict) else None
+        if not selected_bank:
+            selected_bank = next(iter(ini_contents), None)
+        metadata_file_path = ini_contents.get(selected_bank, {}).get("data", {}).get("DEFAULT", {}).get("filemetadati", "")
+
+    logger.info(f"Flow IDs string: {flow_ids_str}, Log key: {log_key}, Anno: {anno_int}, Settimana: {settimana_int}, Metadata file: {metadata_file_path}")
 
     command_args = [
         "powershell.exe",
@@ -174,6 +184,7 @@ def execute_selected_flows(
         "-anno", str(anno or ""),
         "-settimana", str(settimana or ""),
         "-log_key", log_key,
+        "-filemetadati", metadata_file_path,
     ]
     logger.info(f"Comando esecuzione: {' '.join(command_args)}")
 

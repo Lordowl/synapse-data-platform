@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Database, BarChart3, Settings, LogOut, User, Building } from "lucide-react";
 import apiClient from "../api/apiClient";
+import { useAppContext } from "../context/AppContext";
 import "./Home.css";
 
 import sparkasseLogo from "../assets/sparkasse.png";
@@ -9,6 +10,7 @@ import civibankLogo from "../assets/civibank.png";
 import defaultLogo from "../assets/logo.png";
 
 function Home({ setIsAuthenticated }) {
+  const { metadataFilePath } = useAppContext();
   const [user, setUser] = useState(null);
   const [iniData, setIniData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -93,21 +95,27 @@ function Home({ setIsAuthenticated }) {
       <div className="home-button-container">
         <div className="main-actions">
           {!loading ? (
-            currentIni?.data?.DEFAULT?.filemetadati ? (
+            // Usa metadataFilePath dal context se disponibile, altrimenti dal file INI
+            (metadataFilePath || currentIni?.data?.DEFAULT?.filemetadati) ? (
               <Link
                 to="/ingest"
-                state={{ metadataFilePath: currentIni.data.DEFAULT.filemetadati }}
+                state={{ metadataFilePath: metadataFilePath || currentIni.data.DEFAULT.filemetadati }}
                 className="nav-link"
               >
                 <button className="btn btn-primary">
                   <Database size={20} />
                   <span>Ingest</span>
+                  {metadataFilePath && (
+                    <span style={{ fontSize: '0.7rem', opacity: 0.8, marginLeft: '0.5rem' }}>
+                      (Locale)
+                    </span>
+                  )}
                 </button>
               </Link>
             ) : (
               <div className="error-state">
                 <p className="error-message">
-                  File INI non trovato o percorso mancante per la banca selezionata.
+                  File metadati non trovato. Caricalo da Settings o configura il file INI.
                 </p>
               </div>
             )
@@ -142,7 +150,7 @@ function Home({ setIsAuthenticated }) {
       </div>
 
       <div className="version-footer">
-        <small style={{color: '#666', fontSize: '12px'}}>Versione 0.2.2 </small>
+        <small style={{color: '#666', fontSize: '12px'}}>Versione 0.2.4 </small>
       </div>
     </div>
   );

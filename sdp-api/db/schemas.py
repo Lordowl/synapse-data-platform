@@ -69,6 +69,7 @@ class ReportisticaBase(BaseModel):
     settimana: Optional[int] = None
     nome_file: str
     package: Optional[str] = None
+    finalita: Optional[str] = None
     disponibilita_server: Optional[bool] = False
     ultima_modifica: Optional[datetime] = None
     dettagli: Optional[str] = None
@@ -82,6 +83,7 @@ class ReportisticaUpdate(BaseModel):
     settimana: Optional[int] = None
     nome_file: Optional[str] = None
     package: Optional[str] = None
+    finalita: Optional[str] = None
     disponibilita_server: Optional[bool] = None
     ultima_modifica: Optional[datetime] = None
     dettagli: Optional[str] = None
