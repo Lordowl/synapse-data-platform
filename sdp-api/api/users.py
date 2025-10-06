@@ -12,9 +12,9 @@ from core.auditing import record_audit_log # Importa la funzione di audit
 # Il router è già configurato con prefisso e tag
 router = APIRouter(prefix="/users", tags=["Users"])
 
-@router.post("/", response_model=schemas.UserInDB, status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED)
 def create_new_user(
-    user: schemas.UserCreate, 
+    user: schemas.UserCreate,
     db: Session = Depends(get_db),
     admin_user: models.User = Security(get_current_active_admin)
 ):
@@ -25,11 +25,11 @@ def create_new_user(
     db_user_by_username = crud.get_user_by_username(db, username=user.username)
     if db_user_by_username:
         raise HTTPException(status_code=400, detail="Username already registered")
-    
+
     db_user_by_email = crud.get_user_by_email(db, email=user.email)
     if db_user_by_email:
         raise HTTPException(status_code=400, detail="Email already registered")
-    
+
     created_user = crud.create_user(db=db, user=user)
 
     # Registra l'azione di creazione nell'audit log
@@ -43,7 +43,21 @@ def create_new_user(
         }
     )
     db.commit()
-    return created_user
+
+    # Restituisci i dati dell'utente + la password generata se presente
+    response = {
+        "id": created_user.id,
+        "username": created_user.username,
+        "email": created_user.email,
+        "role": created_user.role,
+        "is_active": created_user.is_active,
+        "permissions": created_user.permissions
+    }
+
+    if hasattr(created_user, 'generated_password') and created_user.generated_password:
+        response["generated_password"] = created_user.generated_password
+
+    return response
 
 @router.get("/me", response_model=schemas.UserInDB)
 def read_current_user_me(current_user: models.User = Security(get_current_user)):

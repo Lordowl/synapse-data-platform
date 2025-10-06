@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from . import models, schemas
 from core.security import get_password_hash
 from sqlalchemy.orm.attributes import flag_modified
+import secrets
+import string
 
 # ------------------ USERS ------------------
 def get_user_by_username(db: Session, username: str, bank: str | None = None):
@@ -18,7 +20,14 @@ def get_user_by_email(db: Session, email: str, bank: str | None = None):
     return query.first()
 
 def create_user(db: Session, user: schemas.UserCreate, bank: str | None = None):
-    hashed_password = get_password_hash(user.password)
+    # Genera password casuale se non fornita
+    if user.password is None or user.password == "":
+        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+        generated_password = ''.join(secrets.choice(alphabet) for i in range(12))
+    else:
+        generated_password = user.password
+
+    hashed_password = get_password_hash(generated_password)
     db_user = models.User(
         username=user.username,
         email=user.email,
@@ -30,6 +39,10 @@ def create_user(db: Session, user: schemas.UserCreate, bank: str | None = None):
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+
+    # Aggiungi la password generata all'oggetto per poterla restituire
+    db_user.generated_password = generated_password if user.password is None or user.password == "" else None
+
     return db_user
 
 def get_users(db: Session, bank: str | None = None, skip: int = 0, limit: int = 100):

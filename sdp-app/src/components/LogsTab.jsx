@@ -23,6 +23,8 @@ function LogsTabContent({
   handleRefreshLogs,
 }) {
   const [expandedCards, setExpandedCards] = useState({});
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   useEffect(() => {
     handleRefreshLogs();
@@ -103,19 +105,30 @@ function LogsTabContent({
     console.log("groupedExecutions length:", groupedExecutions.length);
     console.log("logSearchTerm:", logSearchTerm);
     console.log("logLevelFilter:", logLevelFilter);
+    console.log("startDate:", startDate);
+    console.log("endDate:", endDate);
+
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(new Date(endDate).setHours(23, 59, 59, 999)) : null;
 
     // 🔧 FIX: Sempre filtrare per livello, anche senza termine di ricerca
     if (!logSearchTerm) {
-      console.log("No search term, filtering by level only");
+      console.log("No search term, filtering by level and date only");
 
       const levelFiltered = groupedExecutions.filter((exec) => {
         const matchesLevel =
           logLevelFilter === "all" ||
           exec.overallResult === logLevelFilter.toLowerCase();
-        return matchesLevel;
+
+        // Filtro per data
+        const execDate = exec.timestamp ? new Date(exec.timestamp) : null;
+        const matchesStartDate = !start || !execDate || execDate >= start;
+        const matchesEndDate = !end || !execDate || execDate <= end;
+
+        return matchesLevel && matchesStartDate && matchesEndDate;
       });
 
-      console.log("Level-only filtered executions:", levelFiltered.length);
+      console.log("Level and date filtered executions:", levelFiltered.length);
       console.groupEnd();
       return levelFiltered;
     }
@@ -132,6 +145,11 @@ function LogsTabContent({
         exec.overallResult === logLevelFilter.toLowerCase();
 
       console.log("Level match:", matchesLevel, "(level filter:", logLevelFilter, ", exec result:", exec.overallResult, ")");
+
+      // Filtro per data
+      const execDate = exec.timestamp ? new Date(exec.timestamp) : null;
+      const matchesStartDate = !start || !execDate || execDate >= start;
+      const matchesEndDate = !end || !execDate || execDate <= end;
 
       // 🔧 FIX: Cercare non solo nei dettagli, ma anche nel flowId principale e nel messaggio
       const hasMatchingDetail = exec.details.some(
@@ -154,7 +172,7 @@ function LogsTabContent({
       console.log("Message matches:", messageMatches);
 
       const hasAnyMatch = hasMatchingDetail || flowIdMatches || messageMatches;
-      const finalMatch = matchesLevel && hasAnyMatch;
+      const finalMatch = matchesLevel && hasAnyMatch && matchesStartDate && matchesEndDate;
       console.log("Final match result:", finalMatch);
 
       return finalMatch;
@@ -165,7 +183,7 @@ function LogsTabContent({
     console.groupEnd();
 
     return filtered;
-  }, [groupedExecutions, logLevelFilter, logSearchTerm]);
+  }, [groupedExecutions, logLevelFilter, logSearchTerm, startDate, endDate]);
 
   const getResultIcon = (result) => {
     switch (result?.toLowerCase()) {
@@ -237,6 +255,13 @@ function LogsTabContent({
     }
   };
 
+  const handleClearFilters = () => {
+    setLogSearchTerm("");
+    setLogLevelFilter("all");
+    setStartDate("");
+    setEndDate("");
+  };
+
   return (
     <div className="logs-tab-content">
       <div className="logs-controls">
@@ -256,6 +281,34 @@ function LogsTabContent({
           <option value="failed">Failed</option>
           <option value="error">Error</option>
         </select>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <label htmlFor="start-date" style={{ fontWeight: '500' }}>Da:</label>
+          <input
+            id="start-date"
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="form-input"
+            placeholder="Data inizio"
+          />
+          <label htmlFor="end-date" style={{ fontWeight: '500' }}>A:</label>
+          <input
+            id="end-date"
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="form-input"
+            placeholder="Data fine"
+          />
+          <button
+            onClick={handleClearFilters}
+            className="btn btn-outline"
+            style={{ whiteSpace: 'nowrap' }}
+            title="Resetta tutti i filtri"
+          >
+            Pulisci Filtri
+          </button>
+        </div>
       </div>
 
       {filteredExecutions.length === 0 ? (

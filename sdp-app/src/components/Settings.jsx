@@ -542,6 +542,15 @@ function CreateUserModal({
     setNewUser((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleGeneratePassword = () => {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+    let password = "";
+    for (let i = 0; i < 12; i++) {
+      password += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+    }
+    setNewUser((prev) => ({ ...prev, password }));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     onCreate();
@@ -592,6 +601,31 @@ function CreateUserModal({
               <option value="user">User</option>
               <option value="admin">Admin</option>
             </select>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="password">Password</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                type="text"
+                id="password"
+                name="password"
+                value={newUser.password}
+                onChange={handleChange}
+                disabled={isCreating}
+                placeholder="Lascia vuoto per generazione automatica"
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                onClick={handleGeneratePassword}
+                className="btn btn-outline"
+                disabled={isCreating}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                <RefreshCw className="btn-icon-sm" /> Genera
+              </button>
+            </div>
           </div>
 
           {error && <p className="error-message">{error}</p>}
@@ -770,7 +804,13 @@ function Settings() {
     setCreateError("");
 
     try {
-      const response = await apiClient.post("/users/", newUser);
+      // Prepara il payload: se password è vuota, invia null
+      const payload = {
+        ...newUser,
+        password: newUser.password?.trim() || null
+      };
+
+      const response = await apiClient.post("/users/", payload);
       const createdUser = response.data;
 
       setPermissions((prev) => [{
@@ -780,12 +820,39 @@ function Settings() {
         accessTo: createdUser.permissions || [],
       }, ...prev]);
 
-      toast.success("Utente creato con successo!");
+      // Mostra la password (generata dal backend o inserita dall'admin)
+      const passwordToShow = createdUser.generated_password || newUser.password;
+      if (passwordToShow) {
+        toast.success(
+          `Utente creato! Password: ${passwordToShow}`,
+          { autoClose: 15000 }
+        );
+      } else {
+        toast.success("Utente creato con successo!");
+      }
+
       closeCreateModal();
 
     } catch (error) {
       console.error("Errore nella creazione dell'utente:", error);
-      setCreateError(error.response?.data?.detail || "Impossibile creare l'utente.");
+
+      // Gestisci l'errore di validazione Pydantic (422)
+      let errorMessage = "Impossibile creare l'utente.";
+
+      if (error.response?.data?.detail) {
+        const detail = error.response.data.detail;
+
+        // Se è un array di errori di validazione Pydantic
+        if (Array.isArray(detail)) {
+          errorMessage = detail.map(err => `${err.loc.join('.')}: ${err.msg}`).join(', ');
+        } else if (typeof detail === 'string') {
+          errorMessage = detail;
+        } else {
+          errorMessage = JSON.stringify(detail);
+        }
+      }
+
+      setCreateError(errorMessage);
 
     } finally {
       setIsCreating(false);
