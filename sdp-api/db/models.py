@@ -1,16 +1,4 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Boolean, ForeignKey, func
-from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Boolean,
-    JSON,
-    ForeignKey,
-    DateTime,
-    Text,
-    func,
-)
-from sqlalchemy.sql import func
 from .database import Base
 
 
@@ -24,11 +12,7 @@ class User(Base):
     role = Column(String, default="user")
     is_active = Column(Boolean, default=True)
     permissions = Column(JSON, nullable=False, server_default='[]')
-    bank = Column(String, index=True, nullable=True)  # nuova colonna per filtrare dati per banca
-
-
-    permissions = Column(JSON, nullable=False, server_default="[]")
-    # --- AGGIUNGI QUESTA NUOVA CLASSE ---
+    bank = Column(String, index=True, nullable=True)
 
 
 class AuditLog(Base):

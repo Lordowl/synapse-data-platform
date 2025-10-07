@@ -159,16 +159,13 @@ api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
 api_router.include_router(users.router)
 api_router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
-api_router.include_router(audit.router, prefix="/audit", tags=["Audit"]) # Includi il nuovo router
+api_router.include_router(audit.router, prefix="/audit", tags=["Audit"])
 api_router.include_router(flows.router, prefix="/flows", tags=["Flows"])
 api_router.include_router(reportistica.router, prefix="/reportistica", tags=["Reportistica"])
 api_router.include_router(repo_update.router, prefix="/repo-update", tags=["RepoUpdate"])
-
-# Infine, includiamo il nostro router principale nell'app, con il prefisso globale.
-api_router.include_router(audit.router, prefix="/audit", tags=["Audit"])
-api_router.include_router(flows.router, prefix="/flows", tags=["Flows"])
 api_router.include_router(settings_path.router)
 api_router.include_router(banks.router)
+
 app.include_router(api_router, prefix="/api/v1")
 
 
