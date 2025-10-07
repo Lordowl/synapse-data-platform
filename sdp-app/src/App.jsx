@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { ToastContainer } from 'react-toastify';
 import apiClient from "./api/apiClient";
 import { autoUpdate } from "./utils/updater";
+import { startInactivityTracking, stopInactivityTracking } from "./utils/sessionTimeout";
 
 import Home from "./components/Home";
 import Ingest from "./components/Ingest";
@@ -45,6 +46,16 @@ function App() {
 
     autoUpdate();
   }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      startInactivityTracking();
+    }
+
+    return () => {
+      stopInactivityTracking();
+    };
+  }, [isAuthenticated]);
 
   if (isLoading) {
     return <div>Loading...</div>;

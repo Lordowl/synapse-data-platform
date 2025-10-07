@@ -27,7 +27,8 @@ class PostInstallCommand(install):
 # Sicurezza JWT
 SECRET_KEY={secret_key}
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+ACCESS_TOKEN_EXPIRE_MINUTES=10080
+REFRESH_TOKEN_EXPIRE_DAYS=7
 
 # Database (opzionale - modifica se necessario)
 DATABASE_URL=sqlite:///./sdp.db
@@ -54,7 +55,7 @@ CORS_ORIGINS=["*"]
 
 setup(
     name='sdp-api',
-    version='0.1.0',
+    version='0.2.5',
     packages=find_packages(),
     py_modules=['main'],  # Includi i moduli necessari
     include_package_data=True,

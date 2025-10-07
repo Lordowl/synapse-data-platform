@@ -3,6 +3,7 @@ import secrets
 import logging
 import json
 import configparser
+import re
 from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import Field
@@ -71,7 +72,8 @@ class Settings(BaseSettings):
     # === SICUREZZA JWT ===
     SECRET_KEY: str = Field(default="temp-secret-key-will-be-replaced")
     ALGORITHM: str = Field(default="HS256")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30)
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=10080)  # 7 giorni in minuti (7 * 24 * 60)
+    REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7)
     
     # === DATABASE ===
     DATABASE_URL: str = Field(default="sqlite:///./sdp.db")
@@ -225,7 +227,13 @@ class ConfigManager:
                 config.read(ini_path, encoding="utf-8")
 
                 def expand_env_vars(d):
-                    return {k: os.path.expandvars(v) if v is not None else None for k, v in d.items()}
+                    def expand_value(v):
+                        if v is None:
+                            return None
+                        # Converti ${VAR} in %VAR% per Windows
+                        v = re.sub(r'\$\{(\w+)\}', r'%\1%', v)
+                        return os.path.expandvars(v)
+                    return {k: expand_value(v) for k, v in d.items()}
 
                 bank_ini = {"DEFAULT": expand_env_vars(config.defaults())}
                 for section in config.sections():

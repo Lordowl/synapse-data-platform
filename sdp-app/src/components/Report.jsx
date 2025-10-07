@@ -880,34 +880,6 @@ function Report() {
               >
                 <Send className="btn-icon-md" /> Pubblica Report
               </button>
-
-              {/* Messaggi di stato */}
-              {!allFirstTableGreen && filteredReportTasks.length > 0 && (
-                <div style={{
-                  fontSize: '0.75rem',
-                  color: '#dc2626',
-                  fontWeight: '500',
-                  padding: '0.5rem',
-                  backgroundColor: '#fef2f2',
-                  borderRadius: '6px',
-                  border: '1px solid #fecaca'
-                }}>
-                  ⚠️ Prima tabella: non tutti i server sono disponibili
-                </div>
-              )}
-              {allFirstTableGreen && !allPreCheckGreen && publicationData.length > 0 && (
-                <div style={{
-                  fontSize: '0.75rem',
-                  color: '#dc2626',
-                  fontWeight: '500',
-                  padding: '0.5rem',
-                  backgroundColor: '#fef2f2',
-                  borderRadius: '6px',
-                  border: '1px solid #fecaca'
-                }}>
-                  ⚠️ Completare tutti i Pre-Check prima di pubblicare
-                </div>
-              )}
             </div>
           </div>
         </section>
