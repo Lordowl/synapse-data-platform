@@ -8,6 +8,8 @@ a = Analysis(
     binaries=[],
     datas=[
         ('api/auth.py', 'api'),
+        ('api/users.py', 'api'),
+        ('api/audit.py', 'api'),
         ('api/flows.py', 'api'),
         ('api/tasks.py', 'api'),
         ('api/reportistica.py', 'api'),
@@ -16,8 +18,10 @@ a = Analysis(
         ('api/banks.py', 'api'),
         ('core/config.py', 'core'),
         ('core/security.py', 'core'),
+        ('core/auditing.py', 'core'),
         ('scripts/generate_flows_from_excel.py', 'scripts'),
         ('scripts/main.py', 'scripts'),
+        ('scripts/utility.py', 'scripts'),
     ],
     hiddenimports=[
         'uvicorn',
@@ -78,6 +82,7 @@ a = Analysis(
         'core',
         'core.config',
         'core.security',
+        'core.auditing',
         'scripts',
         'scripts.generate_flows_from_excel',
         'numpy',

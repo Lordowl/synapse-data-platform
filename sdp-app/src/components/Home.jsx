@@ -94,39 +94,45 @@ function Home({ setIsAuthenticated }) {
 
       <div className="home-button-container">
         <div className="main-actions">
-          {!loading ? (
-            // Usa metadataFilePath dal context se disponibile, altrimenti dal file INI
-            (metadataFilePath || currentIni?.data?.DEFAULT?.filemetadati) ? (
-              <Link
-                to="/ingest"
-                state={{ metadataFilePath: metadataFilePath || currentIni.data.DEFAULT.filemetadati }}
-                className="nav-link"
-              >
-                <button className="btn btn-primary">
-                  <Database size={20} />
-                  <span>Ingest</span>
-                </button>
-              </Link>
+          {/* Mostra il pulsante Ingest solo se l'utente ha il permesso 'ingest' */}
+          {user?.permissions?.includes('ingest') && (
+            !loading ? (
+              // Usa metadataFilePath dal context se disponibile, altrimenti dal file INI
+              (metadataFilePath || currentIni?.data?.DEFAULT?.filemetadati) ? (
+                <Link
+                  to="/ingest"
+                  state={{ metadataFilePath: metadataFilePath || currentIni.data.DEFAULT.filemetadati }}
+                  className="nav-link"
+                >
+                  <button className="btn btn-primary">
+                    <Database size={20} />
+                    <span>Ingest</span>
+                  </button>
+                </Link>
+              ) : (
+                <div className="error-state">
+                  <p className="error-message">
+                    File metadati non trovato. Caricalo da Settings o configura il file INI.
+                  </p>
+                </div>
+              )
             ) : (
-              <div className="error-state">
-                <p className="error-message">
-                  File metadati non trovato. Caricalo da Settings o configura il file INI.
-                </p>
+              <div className="loading-state">
+                <Database className="loading-icon" />
+                <p>Caricamento dati INI...</p>
               </div>
             )
-          ) : (
-            <div className="loading-state">
-              <Database className="loading-icon" />
-              <p>Caricamento dati INI...</p>
-            </div>
           )}
 
-          {/* <Link to="/report" className="nav-link">*/} 
-            <button className="btn btn-primary">
-              <BarChart3 size={20} />
-              <span>Reportistica (WIP)</span>
-            </button>
-          {/*</Link> */} 
+          {/* Mostra il pulsante Reportistica solo se l'utente ha il permesso 'reportistica' */}
+          {user?.permissions?.includes('reportistica') && (
+            // <Link to="/report" className="nav-link">
+              <button className="btn btn-primary">
+                <BarChart3 size={20} />
+                <span>Reportistica</span>
+              </button>
+            // </Link>
+          )}
         </div>
 
         <div className="secondary-actions">

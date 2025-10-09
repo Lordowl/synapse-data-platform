@@ -36,19 +36,30 @@ if os.path.exists(core_config_file):
 
 print("[RUNTIME HOOK] Forcibly loading db package...")
 
-# Define the database functions directly in the db module at runtime
+# Create db package first
+if 'db' not in sys.modules:
+    db_module = types.ModuleType('db')
+    db_module.__package__ = 'db'
+    db_module.__path__ = [os.path.join(base_path, 'db')]
+    sys.modules['db'] = db_module
+
+# Now we can reference db
 import db
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, declarative_base
 
 # Add these to the db module
 db.engine = None
 db.SessionLocal = None
 db.Base = declarative_base()
 
-# Also ensure db.database uses the same Base instance
-import db.database
+# Create db.database module
+db_database_module = types.ModuleType('db.database')
+db_database_module.__package__ = 'db'
+sys.modules['db.database'] = db_database_module
+db.database = db_database_module
+
+# Set Base instance
 db.database.Base = db.Base
 
 def init_db(db_url=None):
@@ -114,6 +125,11 @@ db.init_db = init_db
 db.get_db = get_db
 db.get_db_optional = get_db_optional
 
+# Also inject into db.database (required by core.security)
+db.database.init_db = init_db
+db.database.get_db = get_db
+db.database.get_db_optional = get_db_optional
+
 # Also define init_banks function
 def init_banks_from_file(banks_data):
     """
@@ -138,23 +154,24 @@ def init_banks_from_file(banks_data):
     print(f"[DB] Banche inizializzate correttamente ({len(banks_data)} entries)")
 
 # Create init_banks module
-import types
 init_banks_module = types.ModuleType('db.init_banks')
 init_banks_module.init_banks_from_file = init_banks_from_file
 sys.modules['db.init_banks'] = init_banks_module
 
-# Load db.schemas and db.crud, but NOT db.models (we'll create it ourselves)
-print("[RUNTIME HOOK] Loading db.crud...")
-import db.crud
-print("[RUNTIME HOOK] Loading db.schemas...")
-import db.schemas
+# Create db.crud and db.schemas modules
+print("[RUNTIME HOOK] Creating db.crud module...")
+db_crud_module = types.ModuleType('db.crud')
+db_crud_module.__package__ = 'db'
+sys.modules['db.crud'] = db_crud_module
+db.crud = db_crud_module
 
-# Inject them into db module
-db.schemas = db.schemas
-db.crud = db.crud
+print("[RUNTIME HOOK] Creating db.schemas module...")
+db_schemas_module = types.ModuleType('db.schemas')
+db_schemas_module.__package__ = 'db'
+sys.modules['db.schemas'] = db_schemas_module
+db.schemas = db_schemas_module
 
 # Create a mock db.models module that we'll populate with our model classes
-import types
 db.models = types.ModuleType('db.models')
 sys.modules['db.models'] = db.models
 
@@ -169,12 +186,11 @@ class User(db.Base):
     id = Column(Integer, primary_key=True)
     username = Column(String, unique=True, nullable=False)
     email = Column(String, unique=True, nullable=True)
-    hashed_password = Column(String, nullable=True)
+    hashed_password = Column(String, nullable=False)
     role = Column(String, default="user")
     is_active = Column(Boolean, default=True)
-    permissions = Column(JSON, default=list)
+    permissions = Column(JSON, nullable=False, server_default='[]')
     bank = Column(String, nullable=True)
-    created_at = Column(DateTime, server_default=func.now())
 
 class AuditLog(db.Base):
     __tablename__ = "audit_logs"
@@ -209,6 +225,7 @@ class Reportistica(db.Base):
     settimana = Column(Integer, nullable=True)
     nome_file = Column(String, unique=True, nullable=False)
     package = Column(String, nullable=True)
+    finalita = Column(String, nullable=True)
     disponibilita_server = Column(Boolean, default=False)
     ultima_modifica = Column(DateTime, nullable=True)
     dettagli = Column(Text, nullable=True)
@@ -686,9 +703,66 @@ sys.modules['core.config'].ConfigManager = ConfigManager
 print(f"[RUNTIME HOOK] ConfigManager injected, has get_setting: {hasattr(config_manager_instance, 'get_setting')}")
 
 # Define missing schema classes directly in the runtime hook
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, EmailStr
+from typing import Optional, List
 from datetime import datetime
+
+# --- User Schemas ---
+class UserBase(BaseModel):
+    username: str
+    email: Optional[EmailStr] = None
+
+class UserCreate(UserBase):
+    password: Optional[str] = None
+    role: str = "user"
+    permissions: Optional[List[str]] = []
+    bank: Optional[str] = None
+
+class UserInDB(UserBase):
+    id: int
+    role: str
+    is_active: bool
+    permissions: List[str]
+    bank: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class UserUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    role: Optional[str] = None
+    permissions: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+    bank: Optional[str] = None
+
+class PasswordChange(BaseModel):
+    new_password: str
+
+# --- Auth Schemas ---
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
+    bank: Optional[str] = None
+
+# --- Audit Log Schemas ---
+class AuditLogBase(BaseModel):
+    action: str
+    details: Optional[dict] = None
+
+class AuditLogCreate(AuditLogBase):
+    user_id: Optional[int] = None
+
+class AuditLogInDB(AuditLogBase):
+    id: int
+    timestamp: datetime
+    user_id: Optional[int] = None
+    username: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 # Define the missing Reportistica schemas
 class ReportisticaBase(BaseModel):
@@ -697,6 +771,7 @@ class ReportisticaBase(BaseModel):
     settimana: Optional[int] = None
     nome_file: str
     package: Optional[str] = None
+    finalita: Optional[str] = None
     disponibilita_server: Optional[bool] = False
     ultima_modifica: Optional[datetime] = None
     dettagli: Optional[str] = None
@@ -710,6 +785,7 @@ class ReportisticaUpdate(BaseModel):
     settimana: Optional[int] = None
     nome_file: Optional[str] = None
     package: Optional[str] = None
+    finalita: Optional[str] = None
     disponibilita_server: Optional[bool] = None
     ultima_modifica: Optional[datetime] = None
     dettagli: Optional[str] = None
@@ -773,14 +849,35 @@ class BanksListResponse(BaseModel):
     current_bank: Optional[str] = None
 
 # Inject all missing classes into db.schemas
+# User schemas
+db.schemas.UserBase = UserBase
+db.schemas.UserCreate = UserCreate
+db.schemas.UserInDB = UserInDB
+db.schemas.UserUpdate = UserUpdate
+db.schemas.PasswordChange = PasswordChange
+
+# Auth schemas
+db.schemas.Token = Token
+db.schemas.TokenData = TokenData
+
+# Audit log schemas
+db.schemas.AuditLogBase = AuditLogBase
+db.schemas.AuditLogCreate = AuditLogCreate
+db.schemas.AuditLogInDB = AuditLogInDB
+
+# Reportistica schemas
 db.schemas.ReportisticaBase = ReportisticaBase
 db.schemas.ReportisticaCreate = ReportisticaCreate
 db.schemas.ReportisticaUpdate = ReportisticaUpdate
 db.schemas.ReportisticaInDB = ReportisticaInDB
+
+# RepoUpdateInfo schemas
 db.schemas.RepoUpdateInfoBase = RepoUpdateInfoBase
 db.schemas.RepoUpdateInfoCreate = RepoUpdateInfoCreate
 db.schemas.RepoUpdateInfoUpdate = RepoUpdateInfoUpdate
 db.schemas.RepoUpdateInfoInDB = RepoUpdateInfoInDB
+
+# Bank schemas
 db.schemas.BankBase = BankBase
 db.schemas.BankCreate = BankCreate
 db.schemas.BankUpdate = BankUpdate
@@ -791,5 +888,6 @@ db.schemas.BanksListResponse = BanksListResponse
 print(f"[RUNTIME HOOK] db module initialized. Attributes: {[x for x in dir(db) if not x.startswith('_')]}")
 print("[RUNTIME HOOK] db.init_banks module created")
 print(f"[RUNTIME HOOK] Missing schema classes injected into db.schemas")
+print(f"[RUNTIME HOOK] db.schemas has Token: {hasattr(db.schemas, 'Token')}")
 print(f"[RUNTIME HOOK] db.schemas has ReportisticaInDB: {hasattr(db.schemas, 'ReportisticaInDB')}")
 print("[RUNTIME HOOK] All modules loaded successfully!")

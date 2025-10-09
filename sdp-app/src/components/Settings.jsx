@@ -252,10 +252,10 @@ function LogsTabContent({ logEntries, onRefreshLogs }) {
 }
 
 // --- Tab Permessi ---
-// Solo Ingest e Report sono controllabili - Settings è accessibile a tutti
+// Solo Ingest e Reportistica sono controllabili - Settings è accessibile a tutti
 const ALL_ACCESS_MODULES = [
   { id: "ingest", label: "Ingest" },
-  { id: "report", label: "Report" },
+  { id: "reportistica", label: "Reportistica" },
 ];
 
 function PermissionsTabContent({
@@ -554,6 +554,16 @@ function CreateUserModal({
     setNewUser((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handlePermissionChange = (permissionId, checked) => {
+    setNewUser((prev) => {
+      const currentPermissions = prev.permissions || [];
+      const newPermissions = checked
+        ? [...currentPermissions, permissionId]
+        : currentPermissions.filter((p) => p !== permissionId);
+      return { ...prev, permissions: newPermissions };
+    });
+  };
+
   const handleGeneratePassword = () => {
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
     let password = "";
@@ -626,6 +636,24 @@ function CreateUserModal({
               disabled={isCreating}
               placeholder="Banca dell'utente"
             />
+          </div>
+
+          <div className="form-group">
+            <label>Permessi Accesso Moduli</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+              {ALL_ACCESS_MODULES.map((module) => (
+                <label key={module.id} className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    className="form-checkbox-sm"
+                    checked={newUser.permissions?.includes(module.id) || false}
+                    onChange={(e) => handlePermissionChange(module.id, e.target.checked)}
+                    disabled={isCreating}
+                  />
+                  {module.label}
+                </label>
+              ))}
+            </div>
           </div>
 
           <div className="form-group">
@@ -796,6 +824,7 @@ function Settings() {
     password: "",
     role: "user",
     bank: "",
+    permissions: []
   });
   const [createError, setCreateError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -911,7 +940,14 @@ function Settings() {
 
   const openCreateModal = () => {
     const selectedBank = sessionStorage.getItem("selectedBank") || "";
-    setNewUser({ username: "", email: "", password: "", role: "user", bank: selectedBank });
+    setNewUser({
+      username: "",
+      email: "",
+      password: "",
+      role: "user",
+      bank: selectedBank,
+      permissions: []
+    });
     setCreateError("");
     setIsCreateModalOpen(true);
   };
