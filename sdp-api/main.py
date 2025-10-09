@@ -18,6 +18,7 @@ import db.schemas as schemas
 # Import database functions from db package (not db.database)
 from db import engine, SessionLocal, init_db, get_db
 from db.init_banks import init_banks_from_file
+from db.init_repo_update import init_repo_update_from_file
 # Import api modules directly for PyInstaller compatibility
 import api.auth as auth
 import api.users as users
@@ -235,6 +236,10 @@ def startup_event():
             # Passa direttamente i dati letti dal JSON
             init_banks_from_file(banks_data)
             print(f"[STARTUP] Banche e admin inizializzati correttamente")
+
+            # Inizializza repo_update_info per ogni banca
+            init_repo_update_from_file()
+            print(f"[STARTUP] Repo update info inizializzate correttamente")
         except Exception as e:
             logging.error(
                 f"[STARTUP] Errore nell'inizializzazione banche/admin: {e}", exc_info=True

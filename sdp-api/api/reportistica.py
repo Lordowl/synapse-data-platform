@@ -96,6 +96,24 @@ def get_latest_publication_logs(
         # Crea la risposta
         result = []
         for package, log in latest_by_package.items():
+            # Estrai il messaggio specifico per questo package
+            log_text = log.output if log.status == "success" else log.error
+            package_message = log_text
+
+            # Se il log è un dizionario/JSON, estrai solo il messaggio per questo package
+            if log_text:
+                try:
+                    import json
+                    # Prova a parsare come JSON
+                    log_dict = json.loads(log_text) if isinstance(log_text, str) else log_text
+
+                    if isinstance(log_dict, dict) and package in log_dict:
+                        # Estrai solo il messaggio per questo package
+                        package_message = log_dict[package]
+                except (json.JSONDecodeError, TypeError, KeyError):
+                    # Se non è un JSON valido o non contiene il package, usa il log originale
+                    package_message = log_text
+
             result.append({
                 "package": package,
                 "workspace": log.workspace,
@@ -103,7 +121,7 @@ def get_latest_publication_logs(
                 "data_esecuzione": log.timestamp,
                 "pre_check": log.publication_type == "precheck" and log.status == "success",
                 "prod": log.publication_type == "production" and log.status == "success",
-                "log": log.output if log.status == "success" else log.error,
+                "log": package_message,  # Solo il messaggio specifico del package
                 "status": log.status
             })
 

@@ -9,6 +9,18 @@ use std::path::PathBuf;
 use std::fs::File;
 use std::net::TcpStream;
 use std::time::Duration;
+use std::sync::Mutex;
+
+// State per mantenere il PID del backend
+struct BackendState {
+    pid: Option<u32>,
+}
+
+impl BackendState {
+    fn new() -> Self {
+        Self { pid: None }
+    }
+}
 
 fn main() {
     tauri::Builder::default()
@@ -16,6 +28,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(Mutex::new(BackendState::new()))
         .setup(|app| {
             // Prova prima il percorso delle binaries (dev), poi il resource dir (installed)
             let binaries_dir = PathBuf::from("C:\\Users\\EmanueleDeFeo\\Documents\\Projects\\Synapse-Data-Platform\\sdp-app\\src-tauri\\binaries");
@@ -124,8 +137,13 @@ fn main() {
                     .spawn()
                 {
                     Ok(child) => {
-                        println!("✅ Backend avviato con PID: {}", child.id());
+                        let pid = child.id();
+                        println!("✅ Backend avviato con PID: {}", pid);
                         println!("📋 Log salvati in {:?}", log_dir);
+
+                        // Salva il PID nello state
+                        let state = app.state::<Mutex<BackendState>>();
+                        state.lock().unwrap().pid = Some(pid);
                     }
                     Err(e) => {
                         eprintln!("❌ Errore avvio backend: {}", e);
@@ -143,8 +161,13 @@ fn main() {
                     .spawn()
                 {
                     Ok(child) => {
-                        println!("✅ Backend avviato con PID: {}", child.id());
+                        let pid = child.id();
+                        println!("✅ Backend avviato con PID: {}", pid);
                         println!("📋 Log salvati in {:?}", log_dir);
+
+                        // Salva il PID nello state
+                        let state = app.state::<Mutex<BackendState>>();
+                        state.lock().unwrap().pid = Some(pid);
                     }
                     Err(e) => {
                         eprintln!("❌ Errore avvio backend: {}", e);
@@ -154,8 +177,30 @@ fn main() {
 
             Ok(())
         })
-        .on_window_event(|_window, event| {
+        .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { .. } = event {
+                // Termina il backend prima di uscire
+                if let Some(state) = window.try_state::<Mutex<BackendState>>() {
+                    if let Some(pid) = state.lock().unwrap().pid {
+                        println!("🛑 Terminazione backend con PID: {}", pid);
+
+                        #[cfg(target_os = "windows")]
+                        {
+                            // Su Windows usa taskkill per terminare il processo
+                            let _ = StdCommand::new("taskkill")
+                                .args(&["/PID", &pid.to_string(), "/F", "/T"])
+                                .spawn();
+                        }
+
+                        #[cfg(not(target_os = "windows"))]
+                        {
+                            // Su Unix-like usa kill
+                            unsafe {
+                                libc::kill(pid as i32, libc::SIGTERM);
+                            }
+                        }
+                    }
+                }
                 std::process::exit(0);
             }
         })

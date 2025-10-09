@@ -13,12 +13,19 @@ def get_repo_update_info(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Recupera le informazioni di update del repository.
+    Recupera le informazioni di update del repository per la banca dell'utente.
     """
-    repo_info = crud.get_repo_update_info(db=db)
+    # Filtra per banca dell'utente corrente
+    repo_info = crud.get_repo_update_info_by_bank(db=db, bank=current_user.bank)
+
     if not repo_info:
-        # Se non esiste, crea una riga di default
-        default_data = schemas.RepoUpdateInfoCreate(anno=2025, settimana=29, semaforo=0)
+        # Se non esiste, crea una riga di default per questa banca
+        default_data = schemas.RepoUpdateInfoCreate(
+            anno=2025,
+            settimana=1,
+            semaforo=0,
+            bank=current_user.bank
+        )
         repo_info = crud.create_repo_update_info(db=db, repo_info=default_data)
 
     return repo_info
@@ -30,6 +37,10 @@ def update_repo_update_info(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Aggiorna le informazioni di update del repository.
+    Aggiorna le informazioni di update del repository per la banca dell'utente.
     """
-    return crud.update_repo_update_info(db=db, repo_info_data=repo_info_data)
+    return crud.update_repo_update_info_by_bank(
+        db=db,
+        bank=current_user.bank,
+        repo_info_data=repo_info_data
+    )

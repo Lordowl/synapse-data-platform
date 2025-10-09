@@ -129,7 +129,7 @@ function Home({ setIsAuthenticated }) {
             // <Link to="/report" className="nav-link">
               <button className="btn btn-primary">
                 <BarChart3 size={20} />
-                <span>Reportistica</span>
+                <span>Reportistica WIP</span>
               </button>
             // </Link>
           )}
@@ -151,7 +151,7 @@ function Home({ setIsAuthenticated }) {
       </div>
 
       <div className="version-footer">
-        <small style={{color: '#666', fontSize: '12px'}}>Versione 0.2.5 </small>
+        <small style={{color: '#666', fontSize: '12px'}}>Versione 0.2.7 </small>
       </div>
     </div>
   );

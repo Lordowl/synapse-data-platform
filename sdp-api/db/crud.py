@@ -216,6 +216,10 @@ def get_repo_update_info(db: Session):
     """Recupera l'unica riga di repo_update_info."""
     return db.query(models.RepoUpdateInfo).first()
 
+def get_repo_update_info_by_bank(db: Session, bank: str):
+    """Recupera le informazioni di repo_update per una specifica banca."""
+    return db.query(models.RepoUpdateInfo).filter(models.RepoUpdateInfo.bank == bank).first()
+
 def create_repo_update_info(db: Session, repo_info: schemas.RepoUpdateInfoCreate):
     """Crea un nuovo record repo_update_info."""
     db_repo_info = models.RepoUpdateInfo(**repo_info.model_dump())
@@ -244,6 +248,29 @@ def update_repo_update_info(db: Session, repo_info_data: schemas.RepoUpdateInfoU
         db.commit()
 
     return get_repo_update_info(db)
+
+def update_repo_update_info_by_bank(db: Session, bank: str, repo_info_data: schemas.RepoUpdateInfoUpdate):
+    """Aggiorna le informazioni di repo_update per una specifica banca."""
+    existing_repo_info = get_repo_update_info_by_bank(db, bank)
+
+    if not existing_repo_info:
+        # Se non esiste, crea una nuova riga per questa banca
+        create_data = schemas.RepoUpdateInfoCreate(
+            **repo_info_data.model_dump(exclude_unset=True),
+            bank=bank
+        )
+        return create_repo_update_info(db, create_data)
+
+    # Aggiorna i dati esistenti
+    update_data = repo_info_data.model_dump(exclude_unset=True)
+    if update_data:
+        db.query(models.RepoUpdateInfo).filter(models.RepoUpdateInfo.bank == bank).update(
+            values=update_data,
+            synchronize_session=False
+        )
+        db.commit()
+
+    return get_repo_update_info_by_bank(db, bank)
 
 # ------------------ AUDIT LOG ------------------
 def create_audit_log(db: Session, user_id: int | None, action: str, details: dict | None = None, bank: str | None = None):

@@ -109,6 +109,7 @@ class RepoUpdateInfoBase(BaseModel):
     settimana: Optional[int] = None
     anno: Optional[int] = None
     semaforo: Optional[int] = None
+    bank: Optional[str] = None
 
 class RepoUpdateInfoCreate(RepoUpdateInfoBase):
     pass
@@ -117,6 +118,7 @@ class RepoUpdateInfoUpdate(BaseModel):
     settimana: Optional[int] = None
     anno: Optional[int] = None
     semaforo: Optional[int] = None
+    bank: Optional[str] = None
 
 class RepoUpdateInfoInDB(RepoUpdateInfoBase):
     id: int

@@ -226,7 +226,7 @@ function Report() {
         const logEntry = publicationLogs.find(log => log.package === pkg.package);
 
         if (logEntry) {
-          // Usa i dati dal log
+          // L'API restituisce già il messaggio specifico del package nel campo log
           return {
             package: pkg.package,
             ws_precheck: pkg.ws_precheck,
@@ -236,11 +236,14 @@ function Report() {
             data_esecuzione: logEntry.data_esecuzione,
             pre_check: logEntry.pre_check,
             prod: logEntry.prod,
-            log: logEntry.log || "In attesa di elaborazione"
+            dettagli: logEntry.log || "In attesa di elaborazione"
           };
         } else {
           // Usa i default se non c'è log
-          return pkg;
+          return {
+            ...pkg,
+            dettagli: null // Nessun dettaglio disponibile
+          };
         }
       });
 
@@ -281,7 +284,7 @@ function Report() {
           data_esecuzione: item.ultima_modifica || item.updated_at,
           pre_check: false, // Da implementare nella logica di business
           prod: false, // Da implementare nella logica di business
-          log: item.dettagli || 'N/D',
+          dettagli: item.dettagli || null,
           anno: item.anno,
           settimana: item.settimana,
           disponibilita_server: item.disponibilita_server
@@ -440,7 +443,7 @@ function Report() {
         setPackagesReady(prev => prev.map(pkg => ({
           ...pkg,
           prod: true,
-          log: 'Pubblicato in produzione'
+          dettagli: 'Pubblicato in produzione con successo'
         })));
 
         showToast(`Report pubblicato in Produzione!`, "success");
@@ -452,14 +455,14 @@ function Report() {
             ...pkg,
             pre_check: false,
             prod: false,
-            log: 'In attesa di elaborazione'
+            dettagli: null
           })));
 
           // Reset disponibilita_server per i report tasks
           setReportTasks(prev => prev.map(task => ({
             ...task,
             disponibilita_server: null,
-            log: 'In attesa di elaborazione',
+            dettagli: null,
             // Avanza settimana +1
             settimana: task.settimana !== null ? task.settimana + 1 : task.settimana
           })));
@@ -500,7 +503,7 @@ function Report() {
       data_esecuzione: pkg.data_esecuzione,
       pre_check: pkg.pre_check,
       prod: pkg.prod,
-      log: pkg.log
+      dettagli: pkg.dettagli
     }));
   }, [packagesReady]);
 
@@ -708,7 +711,24 @@ function Report() {
                           borderRadius: '4px'
                         }}></div>
                       </td>
-                      <td className="text-xs">{task.log || 'N/D'}</td>
+                      <td className="text-xs" style={{
+                        maxWidth: '300px',
+                        whiteSpace: 'pre-wrap',
+                        fontSize: '11px',
+                        cursor: task.dettagli && task.dettagli.length > 100 ? 'pointer' : 'default'
+                      }}
+                      title={task.dettagli || 'N/D'}
+                      onClick={() => {
+                        if (task.dettagli && task.dettagli.length > 100) {
+                          alert(task.dettagli);
+                        }
+                      }}>
+                        {task.dettagli ?
+                          (task.dettagli.length > 100
+                            ? task.dettagli.substring(0, 100) + '... (clicca per vedere tutto)'
+                            : task.dettagli)
+                          : 'N/D'}
+                      </td>
                     </tr>
                   );
                 })}
@@ -775,18 +795,20 @@ function Report() {
                         maxWidth: '300px',
                         whiteSpace: 'pre-wrap',
                         fontSize: '11px',
-                        cursor: item.log && item.log !== 'In attesa di elaborazione' ? 'pointer' : 'default'
+                        cursor: item.dettagli && item.dettagli.length > 100 ? 'pointer' : 'default'
                       }}
-                      title={item.log}
+                      title={item.dettagli || 'N/D'}
                       onClick={() => {
-                        if (item.log && item.log !== 'In attesa di elaborazione') {
-                          // Mostra log completo in un alert o modale
-                          alert(item.log);
+                        if (item.dettagli && item.dettagli.length > 100) {
+                          // Mostra dettagli completi in un alert
+                          alert(item.dettagli);
                         }
                       }}>
-                        {item.log && item.log.length > 100
-                          ? item.log.substring(0, 100) + '... (clicca per vedere tutto)'
-                          : item.log || 'N/D'}
+                        {item.dettagli ?
+                          (item.dettagli.length > 100
+                            ? item.dettagli.substring(0, 100) + '... (clicca per vedere tutto)'
+                            : item.dettagli)
+                          : 'In attesa di elaborazione'}
                       </td>
                     </tr>
                   ))}
