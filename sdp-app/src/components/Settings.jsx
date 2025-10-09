@@ -18,6 +18,7 @@ import {
   RefreshCw,
   ListChecks,
   Search,
+  Key,
 } from "lucide-react";
 import "./Settings.css";
 
@@ -251,10 +252,10 @@ function LogsTabContent({ logEntries, onRefreshLogs }) {
 }
 
 // --- Tab Permessi ---
+// Solo Ingest e Report sono controllabili - Settings è accessibile a tutti
 const ALL_ACCESS_MODULES = [
   { id: "ingest", label: "Ingest" },
   { id: "report", label: "Report" },
-  { id: "settings", label: "Settings" },
 ];
 
 function PermissionsTabContent({
@@ -273,6 +274,7 @@ function PermissionsTabContent({
   accessFilter,
   setAccessFilter,
   availableRoles,
+  onChangePassword,
 }) {
   const [selectedPermissionIds, setSelectedPermissionIds] = useState(new Set());
 
@@ -420,20 +422,30 @@ function PermissionsTabContent({
                   ))}
                 </td>
                 <td>
-                  <button
-                    onClick={() => onRemove(perm.id)}
-                    className="btn btn-outline"
-                    disabled={
-                      anyActionLoading || loadingStates.removingPermissionId === perm.id
-                    }
-                  >
-                    {loadingStates.removingPermissionId === perm.id ? (
-                      <RefreshCw className="btn-icon-sm animate-spin-css" />
-                    ) : (
-                      <Trash2 className="btn-icon-sm" />
-                    )}
-                    Rimuovi
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => onChangePassword(perm.id, perm.user)}
+                      className="btn btn-outline"
+                      disabled={anyActionLoading}
+                      title="Cambia password"
+                    >
+                      <Key className="btn-icon-sm" />
+                    </button>
+                    <button
+                      onClick={() => onRemove(perm.id)}
+                      className="btn btn-outline"
+                      disabled={
+                        anyActionLoading || loadingStates.removingPermissionId === perm.id
+                      }
+                    >
+                      {loadingStates.removingPermissionId === perm.id ? (
+                        <RefreshCw className="btn-icon-sm animate-spin-css" />
+                      ) : (
+                        <Trash2 className="btn-icon-sm" />
+                      )}
+                      Rimuovi
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -604,6 +616,19 @@ function CreateUserModal({
           </div>
 
           <div className="form-group">
+            <label htmlFor="bank">Banca</label>
+            <input
+              type="text"
+              id="bank"
+              name="bank"
+              value={newUser.bank}
+              onChange={handleChange}
+              disabled={isCreating}
+              placeholder="Banca dell'utente"
+            />
+          </div>
+
+          <div className="form-group">
             <label htmlFor="password">Password</label>
             <div style={{ display: 'flex', gap: '8px' }}>
               <input
@@ -649,6 +674,92 @@ function CreateUserModal({
   );
 }
 
+function PasswordChangeModal({
+  isOpen,
+  onClose,
+  passwordData,
+  setPasswordData,
+  onChange,
+  error,
+  isChanging,
+}) {
+  if (!isOpen) return null;
+
+  const handleGeneratePassword = () => {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+    let password = "";
+    for (let i = 0; i < 12; i++) {
+      password += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+    }
+    setPasswordData((prev) => ({ ...prev, newPassword: password }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onChange();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <h2>Cambia Password</h2>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label htmlFor="username">Utente</label>
+            <input
+              type="text"
+              id="username"
+              value={passwordData.username}
+              disabled
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="newPassword">Nuova Password</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                type="text"
+                id="newPassword"
+                value={passwordData.newPassword}
+                onChange={(e) => setPasswordData((prev) => ({ ...prev, newPassword: e.target.value }))}
+                required
+                disabled={isChanging}
+                placeholder="Inserisci la nuova password"
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                onClick={handleGeneratePassword}
+                className="btn btn-outline"
+                disabled={isChanging}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                <RefreshCw className="btn-icon-sm" /> Genera
+              </button>
+            </div>
+          </div>
+
+          {error && <p className="error-message">{error}</p>}
+
+          <div className="modal-actions">
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn btn-outline"
+              disabled={isChanging}
+            >
+              Annulla
+            </button>
+            <button type="submit" className="btn" disabled={isChanging}>
+              {isChanging ? "Modifica in corso..." : "Cambia Password"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function Settings() {
   const navigate = useNavigate();
   const { metadataFilePath, setMetadataFilePath } = useAppContext();
@@ -672,7 +783,6 @@ function Settings() {
   );
 
   const [loadingStates, setLoadingStates] = useState({
-    savingMetadataFile: false,
     savingPermissions: false,
     removingPermissionId: null,
     loadingConfigFile: false,
@@ -685,9 +795,19 @@ function Settings() {
     email: "",
     password: "",
     role: "user",
+    bank: "",
   });
   const [createError, setCreateError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [passwordChangeData, setPasswordChangeData] = useState({
+    userId: null,
+    username: "",
+    newPassword: "",
+  });
+  const [passwordChangeError, setPasswordChangeError] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const fetchIniPath = useCallback(async () => {
     setLoadingStates(prev => ({ ...prev, loadingConfigFile: true }));
     try {
@@ -790,7 +910,8 @@ function Settings() {
   }, [currentUser, activeTab]);
 
   const openCreateModal = () => {
-    setNewUser({ username: "", email: "", password: "", role: "user" });
+    const selectedBank = sessionStorage.getItem("selectedBank") || "";
+    setNewUser({ username: "", email: "", password: "", role: "user", bank: selectedBank });
     setCreateError("");
     setIsCreateModalOpen(true);
   };
@@ -973,6 +1094,40 @@ function Settings() {
     toast.success("Ripristinato percorso file metadati da INI");
   };
 
+  const openPasswordChangeModal = (userId, username) => {
+    setPasswordChangeData({
+      userId,
+      username,
+      newPassword: "",
+    });
+    setPasswordChangeError("");
+    setIsPasswordModalOpen(true);
+  };
+
+  const closePasswordChangeModal = () => {
+    setIsPasswordModalOpen(false);
+  };
+
+  const handleChangePassword = async () => {
+    setIsChangingPassword(true);
+    setPasswordChangeError("");
+
+    try {
+      await apiClient.put(`/users/${passwordChangeData.userId}/password`, {
+        new_password: passwordChangeData.newPassword,
+      });
+
+      toast.success(`Password per ${passwordChangeData.username} modificata con successo!`);
+      closePasswordChangeModal();
+    } catch (error) {
+      console.error("Errore nel cambio password:", error);
+      const errorMessage = error.response?.data?.detail || "Impossibile cambiare la password.";
+      setPasswordChangeError(errorMessage);
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   const renderActiveTabContent = () => {
     if (activeTab === "permissions" && (!currentUser || currentUser.role !== "admin")) {
       return (
@@ -1012,6 +1167,7 @@ function Settings() {
             accessFilter={permissionAccessFilter}
             setAccessFilter={setPermissionAccessFilter}
             availableRoles={AVAILABLE_ROLES_FOR_FILTER}
+            onChangePassword={openPasswordChangeModal}
           />
         );
       case "config":
@@ -1101,6 +1257,16 @@ function Settings() {
         onCreate={handleCreateUser}
         error={createError}
         isCreating={isCreating}
+      />
+
+      <PasswordChangeModal
+        isOpen={isPasswordModalOpen}
+        onClose={closePasswordChangeModal}
+        passwordData={passwordChangeData}
+        setPasswordData={setPasswordChangeData}
+        onChange={handleChangePassword}
+        error={passwordChangeError}
+        isChanging={isChangingPassword}
       />
     </div>
   );

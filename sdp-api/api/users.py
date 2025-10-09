@@ -30,7 +30,7 @@ def create_new_user(
     if db_user_by_email:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    created_user = crud.create_user(db=db, user=user)
+    created_user = crud.create_user(db=db, user=user, bank=user.bank)
 
     # Registra l'azione di creazione nell'audit log
     record_audit_log(
@@ -39,7 +39,8 @@ def create_new_user(
         action="USER_CREATE",
         details={
             "created_user_id": created_user.id,
-            "created_username": created_user.username
+            "created_username": created_user.username,
+            "created_bank": created_user.bank
         }
     )
     db.commit()
@@ -51,7 +52,8 @@ def create_new_user(
         "email": created_user.email,
         "role": created_user.role,
         "is_active": created_user.is_active,
-        "permissions": created_user.permissions
+        "permissions": created_user.permissions,
+        "bank": created_user.bank
     }
 
     if hasattr(created_user, 'generated_password') and created_user.generated_password:
@@ -111,6 +113,39 @@ def update_user_data(
     )
     db.commit()
     return updated_user
+
+@router.put("/{user_id}/password", status_code=status.HTTP_200_OK)
+def change_user_password(
+    user_id: int,
+    password_data: schemas.PasswordChange,
+    db: Session = Depends(get_db),
+    admin_user: models.User = Security(get_current_active_admin)
+):
+    """
+    Cambia la password di un utente. Endpoint accessibile solo agli admin.
+    """
+    user = crud.get_user(db, user_id=user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    from core.security import get_password_hash
+    user.hashed_password = get_password_hash(password_data.new_password)
+    db.commit()
+    db.refresh(user)
+
+    # Registra l'azione nell'audit log
+    record_audit_log(
+        db=db,
+        user_id=admin_user.id,
+        action="USER_PASSWORD_CHANGE",
+        details={
+            "target_user_id": user_id,
+            "target_username": user.username
+        }
+    )
+    db.commit()
+
+    return {"message": "Password changed successfully"}
 
 @router.delete("/{user_id}", response_model=schemas.UserInDB)
 def remove_user_data(

@@ -7,6 +7,8 @@ use tauri::{generate_context, Manager, WindowEvent};
 use std::process::{Command as StdCommand, Stdio};
 use std::path::PathBuf;
 use std::fs::File;
+use std::net::TcpStream;
+use std::time::Duration;
 
 fn main() {
     tauri::Builder::default()
@@ -81,6 +83,15 @@ fn main() {
 
             // Se il file non esiste, esci (già mostrato errore sopra)
             if !exe_path.exists() {
+                return Ok(());
+            }
+
+            // Controlla se il backend è già in esecuzione
+            if TcpStream::connect_timeout(
+                &"127.0.0.1:8000".parse().unwrap(),
+                Duration::from_millis(500)
+            ).is_ok() {
+                println!("ℹ️  Backend già in esecuzione sulla porta 8000, skip avvio");
                 return Ok(());
             }
 

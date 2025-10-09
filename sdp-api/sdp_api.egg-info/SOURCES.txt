@@ -23,7 +23,9 @@ db/models.py
 db/schemas.py
 scripts/__init__.py
 scripts/generate_flows_from_excel.py
+scripts/main.py
 scripts/reset.py
+scripts/utility.py
 sdp_api.egg-info/PKG-INFO
 sdp_api.egg-info/SOURCES.txt
 sdp_api.egg-info/dependency_links.txt

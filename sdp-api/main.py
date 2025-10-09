@@ -179,6 +179,17 @@ def startup_event():
         )
         return
 
+    # Inizializza sempre il database engine, anche senza folder structure
+    try:
+        init_db(db_url)
+        logging.info(f"[STARTUP] Database engine inizializzato: {db_url}")
+    except Exception as e:
+        logging.error(
+            f"[STARTUP] Errore nell'inizializzazione del DB: {e}", exc_info=True
+        )
+        return
+
+    # Controlla la folder structure solo per inizializzare banche e admin
     if db_url.startswith("sqlite:///"):
         db_path = db_url.replace("sqlite:///", "")
         base_folder = os.path.dirname(os.path.dirname(db_path))  # fino a .../App
@@ -219,16 +230,15 @@ def startup_event():
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
             open(db_path, "a").close()
 
-    try:
-        init_db(db_url)
-        create_default_admin_if_not_exists()
-        # Passa direttamente i dati letti dal JSON
-        init_banks_from_file(banks_data)
-        print(f"[STARTUP] Database inizializzato: {db_url}")
-    except Exception as e:
-        logging.error(
-            f"[STARTUP] Errore nell'inizializzazione del DB: {e}", exc_info=True
-        )
+        try:
+            create_default_admin_if_not_exists()
+            # Passa direttamente i dati letti dal JSON
+            init_banks_from_file(banks_data)
+            print(f"[STARTUP] Banche e admin inizializzati correttamente")
+        except Exception as e:
+            logging.error(
+                f"[STARTUP] Errore nell'inizializzazione banche/admin: {e}", exc_info=True
+            )
 
 
 # ----------------- Endpoints generali ----------------- #
@@ -240,6 +250,31 @@ def read_root():
 @app.get("/healthcheck", tags=["Health Check"])
 def health_check():
     return {"status": "ok"}
+
+@app.get("/test-packages", tags=["Test"])
+def test_packages():
+    """Test endpoint per verificare report_data"""
+    from db import SessionLocal
+    from db import models
+    db = SessionLocal()
+    try:
+        query = db.query(
+            models.ReportData.package,
+            models.ReportData.bank
+        ).filter(
+            models.ReportData.Type_reportisica == "Settimanale"
+        )
+        results = query.all()
+        return {
+            "count": len(results),
+            "packages": [{"package": r[0], "bank": r[1]} for r in results if r[0]]
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
+    finally:
+        db.close()
 
 
 @app.get("/config", tags=["Config"])

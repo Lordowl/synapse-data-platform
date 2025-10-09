@@ -62,6 +62,16 @@ class Reportistica(Base):
     )
 
 
+class ReportData(Base):
+    __tablename__ = "report_data"
+
+    Type_reportisica = Column(String, primary_key=True)
+    bank = Column(String, primary_key=True)
+    ws_precheck = Column(String, nullable=True)
+    ws_production = Column(String, nullable=True)
+    package = Column(String, primary_key=True)
+
+
 class RepoUpdateInfo(Base):
     __tablename__ = "repo_update_info"
 
@@ -96,3 +106,18 @@ class Bank(Base):
     is_active = Column(Boolean, default=True)
     ini_path = Column(String, nullable=True)
     is_current = Column(Boolean, default=False)
+
+
+class PublicationLog(Base):
+    __tablename__ = "publication_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    bank = Column(String, index=True, nullable=False)
+    workspace = Column(String, nullable=False)
+    packages = Column(JSON, nullable=False)  # Lista di package pubblicati
+    publication_type = Column(String, nullable=False)  # 'precheck' o 'production'
+    status = Column(String, nullable=False)  # 'success' o 'error'
+    output = Column(Text, nullable=True)  # Log completo dell'esecuzione
+    error = Column(Text, nullable=True)  # Errore se presente
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)

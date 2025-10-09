@@ -13,16 +13,19 @@ class UserBase(BaseModel):
 # Schema per la creazione di un nuovo utente (dall'API)
 # Eredita da UserBase e aggiunge la password
 class UserCreate(UserBase):
-    password: Optional[str] = None 
+    password: Optional[str] = None
     role: str = "user"
     permissions: Optional[List[str]] = []
+    bank: Optional[str] = None
+
 # Schema per la lettura dei dati di un utente dall'API
 # Non deve mai includere la password!
 class UserInDB(UserBase):
     id: int
     role: str
     is_active: bool
-    permissions: List[str] # Aggiungiamo il campo alla risposta
+    permissions: List[str]
+    bank: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -44,6 +47,10 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     permissions: Optional[List[str]] = None
     is_active: Optional[bool] = None
+    bank: Optional[str] = None
+
+class PasswordChange(BaseModel):
+    new_password: str
 
 class AuditLogBase(BaseModel):
     action: str

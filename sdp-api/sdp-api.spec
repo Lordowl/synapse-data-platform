@@ -17,6 +17,7 @@ a = Analysis(
         ('core/config.py', 'core'),
         ('core/security.py', 'core'),
         ('scripts/generate_flows_from_excel.py', 'scripts'),
+        ('scripts/main.py', 'scripts'),
     ],
     hiddenimports=[
         'uvicorn',

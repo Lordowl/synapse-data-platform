@@ -29,69 +29,6 @@ const PERIODICITY_CONFIG = {
   }
 };
 
-// --- Dati Mock per Test ---
-const MOCK_REPORT_DATA = [
-  {
-    id: 1,
-    banca: "BancaTest",
-    package: "Flussi Netti",
-    nome_file: "flussi_netti_w3.xlsx",
-    finalita: "Reportistica settimanale",
-    user: "mario.rossi",
-    data_esecuzione: "2025-01-15T10:30:00",
-    pre_check: null, // GRIGIO - in attesa
-    prod: null, // GRIGIO - in attesa
-    log: "Esecuzione completata con successo",
-    anno: 2025,
-    settimana: 3,
-    disponibilita_server: true // VERDE
-  },
-  {
-    id: 2,
-    banca: "BancaTest",
-    package: "Package 2",
-    nome_file: "package2_w3.xlsx",
-    finalita: "Analisi dati",
-    user: "giulia.verdi",
-    data_esecuzione: "2025-01-15T11:45:00",
-    pre_check: null, // GRIGIO - in attesa
-    prod: null, // GRIGIO - in attesa
-    log: "In elaborazione",
-    anno: 2025,
-    settimana: 3,
-    disponibilita_server: false // ROSSO
-  },
-  {
-    id: 3,
-    banca: "BancaTest",
-    package: "Report Vendite",
-    nome_file: "vendite_w3.xlsx",
-    finalita: "Dashboard commerciale",
-    user: "luca.bianchi",
-    data_esecuzione: "2025-01-14T09:15:00",
-    pre_check: null, // GRIGIO - in attesa
-    prod: null, // GRIGIO - in attesa
-    log: "In attesa di pre-check",
-    anno: 2025,
-    settimana: 3,
-    disponibilita_server: true // VERDE
-  },
-  {
-    id: 4,
-    banca: "BancaTest",
-    package: "Report Mensile",
-    nome_file: "mensile_gen.xlsx",
-    finalita: "Report mensile",
-    user: "anna.ferrari",
-    data_esecuzione: "2025-01-10T14:20:00",
-    pre_check: null,
-    prod: null,
-    log: "Report mensile pubblicato",
-    anno: 2025,
-    settimana: null, // Report mensile
-    disponibilita_server: true
-  }
-];
 
 // --- Funzioni Helper per la nuova struttura ---
 const getDisponibilitaServerBadge = (disponibilita_server) => {
@@ -192,6 +129,7 @@ function Report() {
   });
 
   const [reportTasks, setReportTasks] = useState([]);
+  const [packagesReady, setPackagesReady] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
   const [repoUpdateInfo, setRepoUpdateInfo] = useState({ anno: 2025, settimana: 29, semaforo: 0 });
@@ -264,11 +202,57 @@ function Report() {
     }
   }, []);
 
+  // Funzione per caricare i package pronti dalla tabella report_data
+  const fetchPackagesReady = useCallback(async () => {
+    try {
+      // Carica i package disponibili
+      const packagesResponse = await apiClient.get("/reportistica/test-packages-v2");
+      const availablePackages = packagesResponse.data || [];
+      console.log('Available packages:', availablePackages);
+
+      // Carica gli ultimi log di pubblicazione
+      let publicationLogs = [];
+      try {
+        const logsResponse = await apiClient.get("/reportistica/publication-logs/latest");
+        publicationLogs = logsResponse.data || [];
+        console.log('Latest publication logs:', publicationLogs);
+      } catch (logError) {
+        console.warn("Nessun log di pubblicazione trovato (normale se prima esecuzione):", logError);
+      }
+
+      // Merge dei dati: usa i log se disponibili, altrimenti i default
+      const mergedData = availablePackages.map(pkg => {
+        // Cerca se esiste un log per questo package
+        const logEntry = publicationLogs.find(log => log.package === pkg.package);
+
+        if (logEntry) {
+          // Usa i dati dal log
+          return {
+            package: pkg.package,
+            ws_precheck: pkg.ws_precheck,
+            ws_produzione: pkg.ws_produzione,
+            bank: pkg.bank,
+            user: logEntry.user || "N/D",
+            data_esecuzione: logEntry.data_esecuzione,
+            pre_check: logEntry.pre_check,
+            prod: logEntry.prod,
+            log: logEntry.log || "In attesa di elaborazione"
+          };
+        } else {
+          // Usa i default se non c'è log
+          return pkg;
+        }
+      });
+
+      setPackagesReady(mergedData);
+    } catch (error) {
+      console.error("Errore nel caricamento packages ready:", error);
+      setPackagesReady([]);
+    }
+  }, []);
+
   // Ref per tenere traccia se è il primo caricamento
   const isInitialLoad = useRef(true);
-
-  // Stato per abilitare/disabilitare dati mock
-  const [useMockData, setUseMockData] = useState(true); // TRUE = usa dati mock per test
 
   // Fetch reportistica data from API
   useEffect(() => {
@@ -279,43 +263,34 @@ function Report() {
           setLoading(true);
         }
 
-        // Se useMockData è true, usa i dati finti
-        if (useMockData) {
-          await new Promise(resolve => setTimeout(resolve, 500)); // Simula delay API
-          setReportTasks(MOCK_REPORT_DATA);
-          setRepoUpdateInfo({ anno: 2025, settimana: 3, semaforo: 1 });
-          if (isInitialLoad.current) {
-            showToast('Dati mock caricati per test', 'info');
-          }
-        } else {
-          // Non filtrare per banca - prendi tutti i dati
-          let queryUrl = '/reportistica/';
+        // Non filtrare per banca - prendi tutti i dati
+        let queryUrl = '/reportistica/';
 
-          console.log('Fetching from:', queryUrl);
-          const response = await apiClient.get(queryUrl);
-          console.log('API Response:', response.data);
+        console.log('Fetching from:', queryUrl);
+        const response = await apiClient.get(queryUrl);
+        console.log('API Response:', response.data);
 
-          // Mappa i dati dell'API alla struttura attesa dal componente
-          const mappedData = (response.data || []).map(item => ({
-            id: item.id,
-            banca: item.banca,
-            package: item.package || item.nome_file,
-            nome_file: item.nome_file,
-            finalita: item.finalita,
-            user: 'N/D', // L'API non fornisce questo campo
-            data_esecuzione: item.ultima_modifica || item.updated_at,
-            pre_check: false, // Da implementare nella logica di business
-            prod: false, // Da implementare nella logica di business
-            log: item.dettagli || 'N/D',
-            anno: item.anno,
-            settimana: item.settimana,
-            disponibilita_server: item.disponibilita_server
-          }));
+        // Mappa i dati dell'API alla struttura attesa dal componente
+        const mappedData = (response.data || []).map(item => ({
+          id: item.id,
+          banca: item.banca,
+          package: item.package || item.nome_file,
+          nome_file: item.nome_file,
+          finalita: item.finalita,
+          user: 'N/D', // L'API non fornisce questo campo
+          data_esecuzione: item.ultima_modifica || item.updated_at,
+          pre_check: false, // Da implementare nella logica di business
+          prod: false, // Da implementare nella logica di business
+          log: item.dettagli || 'N/D',
+          anno: item.anno,
+          settimana: item.settimana,
+          disponibilita_server: item.disponibilita_server
+        }));
 
-          console.log('Mapped Data:', mappedData);
-          setReportTasks(mappedData);
-          await fetchRepoUpdateInfo();
-        }
+        console.log('Mapped Data:', mappedData);
+        setReportTasks(mappedData);
+        await fetchRepoUpdateInfo();
+        await fetchPackagesReady();
 
       } catch (error) {
         console.error('Error fetching reportistica data:', error);
@@ -339,19 +314,16 @@ function Report() {
     // Carica dati immediatamente
     fetchData();
 
-    // Configura polling ogni 3 secondi solo se non usa mock
-    let interval;
-    if (!useMockData) {
-      interval = setInterval(() => {
-        fetchData();
-      }, 3000);
-    }
+    // Configura polling ogni 3 secondi
+    const interval = setInterval(() => {
+      fetchData();
+    }, 3000);
 
     // Cleanup interval on unmount
     return () => {
-      if (interval) clearInterval(interval);
+      clearInterval(interval);
     };
-  }, [useMockData, showToast, fetchRepoUpdateInfo]);
+  }, [showToast, fetchRepoUpdateInfo, fetchPackagesReady]);
 
   // Funzione per cambiare periodicità
   const handlePeriodicityChange = (newPeriodicity) => {
@@ -440,17 +412,23 @@ function Report() {
       if (actionName === 'pubblica-pre-check') {
         showToast(`Avvio pubblicazione in Pre-Check...`, "info");
 
-        // Simula chiamata API
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        try {
+          // Chiama l'endpoint API per eseguire lo script Power BI
+          // I package vengono letti dalla tabella report_data del DB filtrati per banca
+          const response = await apiClient.post('/reportistica/publish-precheck');
 
-        // Setta pre_check = true per tutti i task settimanali
-        setReportTasks(prev => prev.map(task =>
-          task.settimana !== null && task.settimana !== undefined
-            ? { ...task, pre_check: true, log: 'Pre-check completato con successo' }
-            : task
-        ));
+          console.log('Risultati pubblicazione:', response.data);
+          console.log(`Aggiornati ${response.data.packages.length} package:`, response.data.packages);
 
-        showToast(`Pre-Check pubblicato con successo!`, "success");
+          // Ricarica i dati dal database per mostrare i log aggiornati
+          await fetchPackagesReady();
+
+          showToast(`Pre-Check pubblicato con successo! (${response.data.packages.length} package aggiornati)`, "success");
+        } catch (error) {
+          console.error('Errore pubblicazione pre-check:', error);
+          showToast(`Errore durante la pubblicazione: ${error.response?.data?.detail || error.message}`, "error");
+          throw error; // Re-throw per il catch esterno
+        }
 
       } else if (actionName === 'pubblica-report') {
         showToast(`Avvio pubblicazione Report in Produzione...`, "info");
@@ -458,22 +436,28 @@ function Report() {
         // Simula chiamata API
         await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // Setta prod = true per tutti i task settimanali
-        setReportTasks(prev => prev.map(task =>
-          task.settimana !== null && task.settimana !== undefined
-            ? { ...task, prod: true, log: 'Pubblicato in produzione' }
-            : task
-        ));
+        // Setta prod = true per tutti i package pronti
+        setPackagesReady(prev => prev.map(pkg => ({
+          ...pkg,
+          prod: true,
+          log: 'Pubblicato in produzione'
+        })));
 
         showToast(`Report pubblicato in Produzione!`, "success");
 
         // Dopo 2 secondi, resetta tutto e avanza alla settimana successiva
         setTimeout(() => {
-          // Reset pre_check, prod e disponibilita_server a null (grigio)
+          // Reset pre_check e prod per i package pronti
+          setPackagesReady(prev => prev.map(pkg => ({
+            ...pkg,
+            pre_check: false,
+            prod: false,
+            log: 'In attesa di elaborazione'
+          })));
+
+          // Reset disponibilita_server per i report tasks
           setReportTasks(prev => prev.map(task => ({
             ...task,
-            pre_check: null,
-            prod: null,
             disponibilita_server: null,
             log: 'In attesa di elaborazione',
             // Avanza settimana +1
@@ -507,32 +491,18 @@ function Report() {
     }
   };
 
-  // Dati per la tabella di pubblicazione - package DISTINCT
+  // Dati per la tabella di pubblicazione - presi da packagesReady
   const publicationData = useMemo(() => {
-    const packageMap = new Map();
-
-    filteredReportTasks
-      .filter(task =>
-        task.settimana !== null &&
-        task.settimana !== undefined
-      )
-      .forEach(task => {
-        // Se il package non è già nella mappa, aggiungilo
-        if (!packageMap.has(task.package)) {
-          packageMap.set(task.package, {
-            id: `pub-${task.id}`,
-            package: task.package,
-            user: task.user || 'N/D',
-            data_esecuzione: task.data_esecuzione,
-            pre_check: task.pre_check, // Mantieni null se è null
-            prod: task.prod, // Mantieni null se è null
-            log: task.log || 'N/D'
-          });
-        }
-      });
-
-    return Array.from(packageMap.values());
-  }, [filteredReportTasks]);
+    return packagesReady.map((pkg, index) => ({
+      id: `pub-${index}`,
+      package: pkg.package,
+      user: pkg.user,
+      data_esecuzione: pkg.data_esecuzione,
+      pre_check: pkg.pre_check,
+      prod: pkg.prod,
+      log: pkg.log
+    }));
+  }, [packagesReady]);
 
   // Verifica se tutte le righe della prima tabella sono verdi (disponibilita_server = true)
   const allFirstTableGreen = useMemo(() => {
@@ -653,39 +623,6 @@ function Report() {
                 ></span>
               </div>
             </div>
-
-            {/* Pulsanti Test Mock - solo in development */}
-            {useMockData && (
-              <div className="filter-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <label className="form-label">Test Mock</label>
-                <button
-                  className="btn btn-outline"
-                  onClick={() => {
-                    // Cambia lo stato del server ID 2
-                    setReportTasks(prev => prev.map(task => ({
-                      ...task,
-                      disponibilita_server: task.id === 2 ? !task.disponibilita_server : task.disponibilita_server
-                    })));
-                  }}
-                  style={{ fontSize: '0.7rem', padding: '0.3rem 0.6rem' }}
-                >
-                  Toggle Server ID 2
-                </button>
-                <button
-                  className="btn btn-outline"
-                  onClick={() => {
-                    // Rendi tutti i server verdi
-                    setReportTasks(prev => prev.map(task => ({
-                      ...task,
-                      disponibilita_server: true
-                    })));
-                  }}
-                  style={{ fontSize: '0.7rem', padding: '0.3rem 0.6rem' }}
-                >
-                  Tutti Verdi ✅
-                </button>
-              </div>
-            )}
           </div>
 
           {/* Dati di Controllo spostati qui sotto i filtri */}
@@ -834,7 +771,23 @@ function Report() {
                           borderRadius: '4px'
                         }}></div>
                       </td>
-                      <td className="text-xs">{item.log}</td>
+                      <td className="text-xs" style={{
+                        maxWidth: '300px',
+                        whiteSpace: 'pre-wrap',
+                        fontSize: '11px',
+                        cursor: item.log && item.log !== 'In attesa di elaborazione' ? 'pointer' : 'default'
+                      }}
+                      title={item.log}
+                      onClick={() => {
+                        if (item.log && item.log !== 'In attesa di elaborazione') {
+                          // Mostra log completo in un alert o modale
+                          alert(item.log);
+                        }
+                      }}>
+                        {item.log && item.log.length > 100
+                          ? item.log.substring(0, 100) + '... (clicca per vedere tutto)'
+                          : item.log || 'N/D'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -884,95 +837,6 @@ function Report() {
           </div>
         </section>
 
-        {/* Form di Pubblicazione - Tabella attivata solo se semaforo check file è verde */}
-        {semaphoreStatus === 'success' && (
-          <section className="report-tasks-section" style={{ marginTop: '2rem' }}>
-            <h3 style={{ marginBottom: '1rem' }}>Form di Pubblicazione</h3>
-            <div className="report-table-wrapper">
-              <table className="report-table">
-                <thead>
-                  <tr>
-                    <th>Package</th>
-                    <th>User</th>
-                    <th>Data Esecuzione</th>
-                    <th>Pre Check</th>
-                    <th>Prod</th>
-                    <th>Log</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredReportTasks.map(task => {
-                    const preCheckStatus = task.pre_check ? 'success' : 'danger';
-                    const prodStatus = task.prod ? 'success' : 'danger';
-
-                    return (
-                      <tr key={task.id}>
-                        <td><strong>{task.package}</strong></td>
-                        <td>{task.user || 'N/D'}</td>
-                        <td>{formatDateTime(task.data_esecuzione)}</td>
-                        <td>
-                          <div style={{
-                            width: '100%',
-                            height: '8px',
-                            backgroundColor: preCheckStatus === 'success' ? '#22c55e' : '#ef4444',
-                            borderRadius: '4px'
-                          }}></div>
-                        </td>
-                        <td>
-                          <div style={{
-                            width: '100%',
-                            height: '8px',
-                            backgroundColor: prodStatus === 'success' ? '#22c55e' : '#ef4444',
-                            borderRadius: '4px'
-                          }}></div>
-                        </td>
-                        <td className="text-xs">{task.log || 'N/D'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="publish-button-group" style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
-              <button
-                className="btn btn-outline"
-                onClick={() => handleGlobalAction('pubblica-pre-check')}
-                disabled={loadingActions.global !== null || selectedTaskIds.size === 0}
-                title={selectedTaskIds.size === 0 ? "Seleziona almeno un task dalla tabella" : "Pubblica i task selezionati in Pre-Check"}
-              >
-                <CheckCircle className="btn-icon-md" /> Pubblica in Pre-Check
-              </button>
-              <button
-                className="btn btn-success"
-                onClick={() => handleGlobalAction('pubblica-report')}
-                disabled={
-                  loadingActions.global !== null ||
-                  filteredReportTasks.length === 0 ||
-                  !filteredReportTasks.every(t => t.pre_check && t.prod)
-                }
-                title={
-                  !filteredReportTasks.every(t => t.pre_check && t.prod)
-                    ? "Tutte le barre Pre Check e Prod devono essere verdi"
-                    : "Pubblica tutti i report in produzione"
-                }
-              >
-                <Send className="btn-icon-md" /> Pubblica Report
-              </button>
-              {!filteredReportTasks.every(t => t.pre_check && t.prod) && filteredReportTasks.length > 0 && (
-                <span style={{ fontSize: '0.875rem', color: '#dc2626', fontWeight: '500' }}>
-                  ⚠️ Completare tutti i Pre-Check e Prod prima di pubblicare
-                </span>
-              )}
-            </div>
-
-            {useMockData && (
-              <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#fef3c7', borderRadius: '8px', fontSize: '0.875rem' }}>
-                <strong>⚠️ Modalità Test:</strong> Il form di pubblicazione è visibile perché il semaforo check file è verde. "Pubblica Report" si abilita solo quando tutte le barre Pre Check e Prod sono verdi.
-              </div>
-            )}
-          </section>
-        )}
       </div>
     </div>
   );

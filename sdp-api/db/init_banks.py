@@ -1,5 +1,4 @@
-from db import models
-from db.database import get_db
+from db import models, get_db
 
 def init_banks_from_file(banks_data):
     """

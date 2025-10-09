@@ -1,0 +1,227 @@
+# Synapse Data Platform - Context
+
+## Panoramica Progetto
+Piattaforma per la gestione e pubblicazione di report Power BI con sistema di autenticazione multi-banca.
+
+## Stack Tecnologico
+
+### Backend (sdp-api/)
+- **Framework**: FastAPI (Python 3.11)
+- **ORM**: SQLAlchemy
+- **Database**: SQLite
+- **Auth**: JWT con passlib (bcrypt)
+- **Build**: PyInstaller (genera exe standalone)
+
+### Frontend (sdp-app/)
+- **Framework**: React 18 + Vite
+- **Desktop**: Tauri v2
+- **Routing**: React Router
+- **HTTP Client**: Axios
+- **UI**: Lucide React icons
+
+## Struttura Progetto
+
+```
+Synapse-Data-Platform/
+├── sdp-api/                    # Backend FastAPI
+│   ├── api/                    # Router endpoints
+│   │   ├── auth.py            # Login/token
+│   │   ├── users.py           # Gestione utenti
+│   │   ├── reportistica.py    # Report e pubblicazione
+│   │   ├── banks.py           # Gestione banche
+│   │   └── audit.py           # Audit log
+│   ├── core/                   # Core utilities
+│   │   ├── security.py        # JWT, password hashing
+│   │   └── config.py          # Configurazione
+│   ├── db/                     # Database layer
+│   │   ├── models.py          # SQLAlchemy models
+│   │   ├── schemas.py         # Pydantic schemas
+│   │   ├── crud.py            # CRUD operations
+│   │   └── database.py        # DB session
+│   ├── scripts/                # Script pubblicazione
+│   │   ├── main.py            # Script principale PBI
+│   │   └── utility.py         # Utility functions
+│   ├── venv/                   # Virtual environment
+│   ├── dist/                   # PyInstaller output
+│   ├── main.py                # FastAPI app entry point
+│   └── sdp-api.spec           # PyInstaller config
+│
+└── sdp-app/                    # Frontend Tauri
+    ├── src/
+    │   ├── components/         # React components
+    │   │   ├── Home.jsx       # Dashboard principale
+    │   │   ├── Login.jsx      # Autenticazione
+    │   │   ├── Report.jsx     # Gestione report
+    │   │   ├── Ingest.jsx     # Ingest data
+    │   │   └── Settings.jsx   # Impostazioni (accessibile a tutti)
+    │   ├── api/
+    │   │   └── apiClient.js   # Axios instance con auth
+    │   └── context/
+    │       └── AppContext.jsx # React context
+    ├── src-tauri/
+    │   ├── src/
+    │   │   └── main.rs        # Tauri backend (lancia exe)
+    │   └── binaries/
+    │       └── sdp-api-x86_64-pc-windows-msvc.exe  # Backend exe
+    └── package.json
+```
+
+## Database (SQLite)
+
+### Modelli Principali
+- **User**: username, email, hashed_password, role, permissions, bank, is_active
+- **Bank**: label, is_active, ini_path, is_current
+- **Reportistica**: banca, anno, settimana, nome_file, package, finalita, disponibilita_server
+- **ReportData**: Type_reportisica, bank, ws_precheck, ws_production, package
+- **AuditLog**: timestamp, user_id, action, details, bank
+- **FlowExecutionHistory**: flow_id_str, status, duration_seconds, log_key, bank
+
+### Nota Database
+Il database SQLite viene creato nella home directory dell'utente in `.sdp-api/sdp.db`
+
+## Sistema di Autenticazione
+
+### Ruoli
+- **admin**: Accesso completo, può gestire utenti e permissions
+- **user**: Accesso limitato in base ai permissions
+
+### Permissions (solo per Ingest e Report)
+- `ingest`: Accesso alla pagina Ingest
+- `report`: Accesso alla pagina Report
+- **Settings è accessibile a TUTTI gli utenti autenticati** (nessun permission richiesto)
+
+### Token JWT
+- Scadenza: 24 ore
+- Contiene: username, bank
+- Session timeout: 30 minuti di inattività
+
+## API Endpoints Principali
+
+### Auth (`/api/v1/auth`)
+- `POST /token`: Login (form-data: username, password, bank)
+
+### Users (`/api/v1/users`)
+- `GET /me`: Dati utente corrente
+- `GET /all`: Lista utenti (admin only)
+- `POST /`: Crea utente (admin only)
+- `PUT /{user_id}`: Modifica utente (admin only)
+- `PUT /{user_id}/password`: Cambia password (admin only)
+- `DELETE /{user_id}`: Elimina utente (admin only)
+
+### Reportistica (`/api/v1/reportistica`)
+- `GET /`: Lista report (filtri: banca, anno, settimana, package)
+- `GET /test-packages-v2`: Package pronti per banca utente
+- `POST /publish-precheck`: Pubblica pre-check (passa workspace e packages allo script)
+
+### Banks (`/api/v1/banks`)
+- `GET /available`: Lista banche disponibili
+- `POST /update`: Cambia banca corrente
+
+## Comandi Utili
+
+### Backend Development
+```bash
+cd sdp-api
+venv\Scripts\activate
+python main.py  # Avvia server su http://127.0.0.1:8000
+```
+
+### Backend Build
+```bash
+cd sdp-api
+venv/Scripts/pyinstaller.exe --clean sdp-api.spec
+cp dist/sdp-api.exe ../sdp-app/src-tauri/binaries/sdp-api-x86_64-pc-windows-msvc.exe
+```
+
+### Frontend Development
+```bash
+cd sdp-app
+npm run dev          # Solo frontend (dev)
+npm run tauri dev    # Frontend + Tauri wrapper
+```
+
+### Frontend Build
+```bash
+cd sdp-app
+npm run tauri build  # Build completo con exe
+```
+
+## Convenzioni e Pattern
+
+### Backend
+- Tutti gli endpoint richiedono autenticazione (tranne `/auth/token`)
+- Gli admin endpoint usano `Security(get_current_active_admin)`
+- Ogni azione importante viene registrata in AuditLog
+- Il campo `bank` filtra automaticamente i dati per banca utente
+
+### Frontend
+- Token JWT salvato in `sessionStorage`
+- `apiClient` aggiunge automaticamente header Authorization
+- Session timeout gestito con `sessionTimeout.js`
+- Routing protetto: redirect a `/login` se non autenticato
+
+### Creazione Utente
+- Se password non fornita, viene generata automaticamente (12 caratteri)
+- La password generata viene mostrata UNA SOLA VOLTA all'admin
+- Campo `bank` popolato automaticamente dalla banca selezionata
+
+### Pubblicazione Report
+1. Frontend chiama `POST /reportistica/publish-precheck`
+2. Backend query `report_data` per workspace e packages della banca
+3. Backend lancia `scripts/main.py --workspace X --packages pkg1,pkg2,...`
+4. Script esegue pubblicazione su Power BI
+
+## Tauri Backend Launch
+
+Il file `src-tauri/src/main.rs` al setup:
+1. Cerca il backend exe in `binaries/` (dev) o `resource_dir` (prod)
+2. **Controlla se porta 8000 è già occupata** (skip launch se backend già attivo)
+3. Lancia backend: `./sdp-api.exe --host 127.0.0.1 --port 8000`
+4. Redirect stdout/stderr in file di log
+
+## Note Importanti
+
+### Permissions vs Settings
+- **Ingest e Report**: Controllati da permissions (checkbox nella tabella Permessi)
+- **Settings**: Accessibile a TUTTI (nessun controllo permissions)
+- Tab "Permessi" in Settings: solo admin
+
+### Multi-Banca
+- Ogni utente appartiene a UNA banca (`user.bank`)
+- I dati vengono filtrati automaticamente per banca
+- Il database `report_data` contiene configurazione workspace/package per banca
+
+### File Metadati
+- Path metadati letto da file INI della banca
+- Frontend può sovrascrivere temporaneamente con file locale
+- Pulsante "Ripristina da INI" per tornare al default
+
+### Audit Log
+- Registra: USER_CREATE, USER_UPDATE, USER_DELETE, USER_PASSWORD_CHANGE, LOGIN
+- Include dettagli delle modifiche (old/new values)
+- Filtri: data, utente, azione
+
+## Troubleshooting
+
+### Backend non si avvia
+- Verificare che la porta 8000 sia libera: `netstat -ano | findstr :8000`
+- Controllare log: `sdp-app/backend-stdout.log` e `backend-stderr.log`
+
+### Errori PyInstaller
+- Assicurarsi che il venv sia attivo
+- Verificare che tutte le dipendenze siano installate
+- Controllare `sdp-api.spec` per hidden imports
+
+### Database non trovato
+- Path: `C:\Users\<user>\.sdp-api\sdp.db`
+- Se manca, viene creato automaticamente al primo avvio
+- Per reset: eliminare il file .db e riavviare
+
+## Versione Corrente
+- App: v0.2.5
+- Python: 3.11
+- Node: Latest LTS
+- Tauri: v2
+
+## Owner
+Emanuele De Feo

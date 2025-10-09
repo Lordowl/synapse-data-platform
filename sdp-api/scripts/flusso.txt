@@ -1,0 +1,35 @@
+Filtro MS
+
+//button[contains(data-testid, "filterTriggerButton") and contains(@aria-label, "Filtro")]
+
+//button//div//span[contains(text(), "Filtro")]
+
+//div[@class="tri-flex tri-items-center tri-multiselect-list-item-label tri-w-full tri-h-32px tri-px-2"]/../..//span[contains(text(), "Modello semantico")]
+
+//button[contains(@id, "TaskFlowCollapseButton")]
+
+
+Aggiorna MS
+
+//span[@data-value="inserire package"]
+//span[@data-value="inserire package"]//button[@aria-label="Aggiorna adesso"]//mat-icon[@data-mat-icon-name="pbi-glyph-refresh"]
+
+
+Aggiorna app
+
+//button[contains(data-testid, "app-publish") and contains(@aria-label, "Aggiorna app")]
+
+//button[contains(data-testid, "update-app-publish") and contains(@title, "Aggiorna app")]
+
+//button[contains(@id, "okButton") and contains(data-testid, "dailog-ok-btn") and contains(text(), "Aggiorna")]
+
+//button[contains(@id, "cancelButton") and contains(data-testid, "dailog-cancel-btn") and contains(text(), "Chiudi")]
+
+//button[contains(data-testid, "close-app-authoring") and contains(@aria-label, "Chiudi")]
+
+
+Cambia workspace
+
+//button[@aria-label="Aree di lavoro"]
+
+//button[contains(@data-testid, "workspace-item-btn") and contains(@title, "inserire workspace")]

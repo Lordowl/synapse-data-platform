@@ -248,6 +248,15 @@ class Bank(db.Base):
     ini_path = Column(String, nullable=True)
     is_current = Column(Boolean, default=False)
 
+class ReportData(db.Base):
+    __tablename__ = "report_data"
+    __table_args__ = {'extend_existing': True}
+    Type_reportisica = Column(String, primary_key=True)
+    bank = Column(String, primary_key=True)
+    ws_precheck = Column(String, nullable=True)
+    ws_production = Column(String, nullable=True)
+    package = Column(String, primary_key=True)
+
 # Inject model classes into db.models
 db.models.Base = db.Base  # Important: db.models.Base must point to the same Base
 db.models.User = User
@@ -257,6 +266,7 @@ db.models.Reportistica = Reportistica
 db.models.RepoUpdateInfo = RepoUpdateInfo
 db.models.FlowExecutionDetail = FlowExecutionDetail
 db.models.Bank = Bank
+db.models.ReportData = ReportData
 
 print(f"[RUNTIME HOOK] db.models has Bank: {hasattr(db.models, 'Bank')}")
 print(f"[RUNTIME HOOK] Models defined and injected")
