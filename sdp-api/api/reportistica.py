@@ -140,12 +140,12 @@ def get_packages_ready_test():
     db = SessionLocal()
     try:
         query = db.query(
-            models.ReportData.package,
-            models.ReportData.ws_precheck,
-            models.ReportData.ws_production,
-            models.ReportData.bank
+            models.ReportMapping.package,
+            models.ReportMapping.ws_precheck,
+            models.ReportMapping.ws_production,
+            models.ReportMapping.bank
         ).filter(
-            models.ReportData.Type_reportisica == "Settimanale"
+            models.ReportMapping.Type_reportisica == "Settimanale"
         )
         results = query.all()
         return {"count": len(results), "data": [{"package": r[0], "ws": r[1], "bank": r[3]} for r in results if r[0]]}
@@ -161,7 +161,7 @@ def get_packages_ready(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Recupera i package pronti dalla tabella report_data filtrati per banca utente"""
+    """Recupera i package pronti dalla tabella report_mapping filtrati per banca utente"""
     from sqlalchemy import func
 
     print(f"[DEBUG] packages-ready endpoint called for user: {current_user.username}, bank: {current_user.bank}")
@@ -169,13 +169,13 @@ def get_packages_ready(
     try:
         # Filtra per banca dell'utente corrente (case-insensitive)
         query = db.query(
-            models.ReportData.package,
-            models.ReportData.ws_precheck,
-            models.ReportData.ws_production,
-            models.ReportData.bank
+            models.ReportMapping.package,
+            models.ReportMapping.ws_precheck,
+            models.ReportMapping.ws_production,
+            models.ReportMapping.bank
         ).filter(
-            models.ReportData.Type_reportisica == "Settimanale",
-            func.lower(models.ReportData.bank) == func.lower(current_user.bank)
+            models.ReportMapping.Type_reportisica == "Settimanale",
+            func.lower(models.ReportMapping.bank) == func.lower(current_user.bank)
         )
 
         results = query.all()
@@ -296,17 +296,17 @@ async def publish_precheck(
     print(f"[DEBUG] publish_precheck called for user: {current_user.username}, bank: {current_user.bank}")
 
     try:
-        # Prendi i dati dalla tabella report_data filtrati per banca dell'utente (case-insensitive)
+        # Prendi i dati dalla tabella report_mapping filtrati per banca dell'utente (case-insensitive)
         query = db.query(
-            models.ReportData.ws_precheck,
-            models.ReportData.package
+            models.ReportMapping.ws_precheck,
+            models.ReportMapping.package
         ).filter(
-            models.ReportData.Type_reportisica == "Settimanale",
-            func.lower(models.ReportData.bank) == func.lower(current_user.bank)
+            models.ReportMapping.Type_reportisica == "Settimanale",
+            func.lower(models.ReportMapping.bank) == func.lower(current_user.bank)
         )
 
         results = query.all()
-        print(f"[DEBUG] Found {len(results)} records from report_data")
+        print(f"[DEBUG] Found {len(results)} records from report_mapping")
 
         if not results:
             raise HTTPException(

@@ -61,7 +61,7 @@ def clean_log_line(line):
 @router.post("/update-flows-from-excel", response_model=Dict)
 def trigger_update_flows_from_excel(
     request_data: FilePathRequest,
-    current_user: models.User = Security(require_settings_permission),
+    current_user: models.User = Security(require_ingest_permission),
 ):
     input_excel_path = Path(request_data.file_path)
     if not input_excel_path.is_file():

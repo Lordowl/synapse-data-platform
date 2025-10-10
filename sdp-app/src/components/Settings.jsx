@@ -917,15 +917,20 @@ function Settings() {
     const baseTabs = [
       { id: "metadata_file", label: "File Metadati", icon: Database, description: "Percorso file metadati" },
       { id: "config", label: "Config File", icon: Edit, description: "Visualizza e apri il file .ini" },
-      { id: "logs", label: "Log", icon: ListChecks, description: "Visualizza log applicativi" },
     ];
 
     if (currentUser && currentUser.role === "admin") {
-      baseTabs.splice(2, 0, {
+      baseTabs.push({
         id: "permissions",
         label: "Permessi",
         icon: Users,
         description: "Gestione accessi utenti",
+      });
+      baseTabs.push({
+        id: "logs",
+        label: "Log",
+        icon: ListChecks,
+        description: "Visualizza log applicativi",
       });
     }
 
@@ -933,7 +938,7 @@ function Settings() {
   }, [currentUser]);
 
   useEffect(() => {
-    if (currentUser && currentUser.role !== "admin" && activeTab === "permissions") {
+    if (currentUser && currentUser.role !== "admin" && (activeTab === "permissions" || activeTab === "logs")) {
       setActiveTab("metadata_file");
     }
   }, [currentUser, activeTab]);
@@ -1165,7 +1170,7 @@ function Settings() {
   };
 
   const renderActiveTabContent = () => {
-    if (activeTab === "permissions" && (!currentUser || currentUser.role !== "admin")) {
+    if ((activeTab === "permissions" || activeTab === "logs") && (!currentUser || currentUser.role !== "admin")) {
       return (
         <div className="tab-content-padding">
           <p className="error-message">Accesso non autorizzato.</p>

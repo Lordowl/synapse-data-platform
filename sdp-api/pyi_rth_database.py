@@ -265,8 +265,8 @@ class Bank(db.Base):
     ini_path = Column(String, nullable=True)
     is_current = Column(Boolean, default=False)
 
-class ReportData(db.Base):
-    __tablename__ = "report_data"
+class ReportMapping(db.Base):
+    __tablename__ = "report_mapping"
     __table_args__ = {'extend_existing': True}
     Type_reportisica = Column(String, primary_key=True)
     bank = Column(String, primary_key=True)
@@ -283,7 +283,7 @@ db.models.Reportistica = Reportistica
 db.models.RepoUpdateInfo = RepoUpdateInfo
 db.models.FlowExecutionDetail = FlowExecutionDetail
 db.models.Bank = Bank
-db.models.ReportData = ReportData
+db.models.ReportMapping = ReportMapping
 
 print(f"[RUNTIME HOOK] db.models has Bank: {hasattr(db.models, 'Bank')}")
 print(f"[RUNTIME HOOK] Models defined and injected")

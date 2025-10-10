@@ -19,6 +19,7 @@ db/__init__.py
 db/crud.py
 db/database.py
 db/init_banks.py
+db/init_repo_update.py
 db/models.py
 db/schemas.py
 scripts/__init__.py

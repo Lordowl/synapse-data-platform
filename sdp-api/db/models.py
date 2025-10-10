@@ -62,8 +62,8 @@ class Reportistica(Base):
     )
 
 
-class ReportData(Base):
-    __tablename__ = "report_data"
+class ReportMapping(Base):
+    __tablename__ = "report_mapping"
 
     Type_reportisica = Column(String, primary_key=True)
     bank = Column(String, primary_key=True)

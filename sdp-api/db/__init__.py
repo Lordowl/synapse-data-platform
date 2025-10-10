@@ -21,6 +21,9 @@ def init_db(db_url: str = None):
     )
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+    # Import models to register them with Base before creating tables
+    from . import models
+
     # CREA TUTTE LE TABELLE DEFINITE NEI MODELS
     Base.metadata.create_all(bind=engine)
 

@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 import logging
 import os
@@ -11,7 +10,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from core.config import config_manager
+from core.security import get_current_user
 from db import database, models, crud, schemas
+from db.models import User
 
 router = APIRouter(tags=["Settings"])
 
@@ -27,12 +28,6 @@ class OpenFileRequest(BaseModel):
 class OpenLogRequest(BaseModel):
     log_key: str
     bank: str
-
-# OAuth2 dummy auth
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
-
-def get_current_user(token: str = Depends(oauth2_scheme)):
-    return {"username": "admin"}
 
 # ----------------------- FOLDER UPDATE -----------------------
 @router.post("/folder/update")
@@ -199,7 +194,7 @@ async def get_current_folder():
 
 # ----------------------- FOLDER INI -----------------------
 @router.get("/folder/ini")
-async def read_ini(user: dict = Depends(get_current_user)):
+async def read_ini(current_user: User = Depends(get_current_user)):
     try:
         db_url = config_manager.get_setting("DATABASE_URL")
         if not db_url:
@@ -244,7 +239,7 @@ async def read_ini(user: dict = Depends(get_current_user)):
 
 # ----------------------- FOLDER INI PATH -----------------------
 @router.get("/folder/ini-path")
-async def get_ini_path(bank: str, user: dict = Depends(get_current_user)):
+async def get_ini_path(bank: str, current_user: User = Depends(get_current_user)):
     """
     Restituisce il percorso del file INI e del file metadati per la banca specificata.
     """
@@ -294,7 +289,7 @@ async def get_ini_path(bank: str, user: dict = Depends(get_current_user)):
 
 # ----------------------- OPEN FILE -----------------------
 @router.post("/folder/open-file")
-async def open_file(data: OpenFileRequest, user: dict = Depends(get_current_user)):
+async def open_file(data: OpenFileRequest, current_user: User = Depends(get_current_user)):
     """
     Apre un file con l'applicazione predefinita del sistema operativo.
     """
@@ -328,7 +323,7 @@ async def open_file(data: OpenFileRequest, user: dict = Depends(get_current_user
 
 # ----------------------- OPEN LOG FILE -----------------------
 @router.post("/folder/open-log")
-async def open_log_file(data: OpenLogRequest, user: dict = Depends(get_current_user)):
+async def open_log_file(data: OpenLogRequest, current_user: User = Depends(get_current_user)):
     """
     Apre il file di log di un flow dato il log_key e la banca.
     """

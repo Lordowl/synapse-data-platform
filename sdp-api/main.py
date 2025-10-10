@@ -18,7 +18,14 @@ import db.schemas as schemas
 # Import database functions from db package (not db.database)
 from db import engine, SessionLocal, init_db, get_db
 from db.init_banks import init_banks_from_file
-from db.init_repo_update import init_repo_update_from_file
+
+# Import init_repo_update with fallback for older compiled versions
+try:
+    from db.init_repo_update import init_repo_update_from_file
+    HAS_REPO_UPDATE_INIT = True
+except ImportError:
+    HAS_REPO_UPDATE_INIT = False
+    init_repo_update_from_file = None
 # Import api modules directly for PyInstaller compatibility
 import api.auth as auth
 import api.users as users
@@ -232,14 +239,22 @@ def startup_event():
             open(db_path, "a").close()
 
         try:
-            create_default_admin_if_not_exists()
-            # Passa direttamente i dati letti dal JSON
+            # PRIMA crea le banche (necessario per creare gli admin)
+            logger.info(f"[STARTUP] Inizializzazione banche da banks_default.json...")
             init_banks_from_file(banks_data)
-            print(f"[STARTUP] Banche e admin inizializzati correttamente")
+            logger.info(f"[STARTUP] Banche inizializzate: {len(banks_data)} entries")
 
-            # Inizializza repo_update_info per ogni banca
-            init_repo_update_from_file()
-            print(f"[STARTUP] Repo update info inizializzate correttamente")
+            # POI crea gli admin per ogni banca
+            logger.info(f"[STARTUP] Creazione admin per ogni banca...")
+            create_default_admin_if_not_exists()
+            logger.info(f"[STARTUP] Banche e admin inizializzati correttamente")
+
+            # Inizializza repo_update_info per ogni banca (se disponibile)
+            if HAS_REPO_UPDATE_INIT:
+                init_repo_update_from_file()
+                print(f"[STARTUP] Repo update info inizializzate correttamente")
+            else:
+                logging.warning("[STARTUP] Modulo init_repo_update non disponibile, skip inizializzazione repo_update_info")
         except Exception as e:
             logging.error(
                 f"[STARTUP] Errore nell'inizializzazione banche/admin: {e}", exc_info=True
@@ -258,16 +273,16 @@ def health_check():
 
 @app.get("/test-packages", tags=["Test"])
 def test_packages():
-    """Test endpoint per verificare report_data"""
+    """Test endpoint per verificare report_mapping"""
     from db import SessionLocal
     from db import models
     db = SessionLocal()
     try:
         query = db.query(
-            models.ReportData.package,
-            models.ReportData.bank
+            models.ReportMapping.package,
+            models.ReportMapping.bank
         ).filter(
-            models.ReportData.Type_reportisica == "Settimanale"
+            models.ReportMapping.Type_reportisica == "Settimanale"
         )
         results = query.all()
         return {
