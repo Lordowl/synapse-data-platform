@@ -273,6 +273,7 @@ class ReportMapping(db.Base):
     ws_precheck = Column(String, nullable=True)
     ws_production = Column(String, nullable=True)
     package = Column(String, primary_key=True)
+    finality = Column(String, nullable=True)  # Finalità del report
 
 # Inject model classes into db.models
 db.models.Base = db.Base  # Important: db.models.Base must point to the same Base

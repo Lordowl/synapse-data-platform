@@ -70,6 +70,7 @@ class ReportMapping(Base):
     ws_precheck = Column(String, nullable=True)
     ws_production = Column(String, nullable=True)
     package = Column(String, primary_key=True)
+    finality = Column(String, nullable=True)  # Finalità del report
 
 
 class RepoUpdateInfo(Base):
