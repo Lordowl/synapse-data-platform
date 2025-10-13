@@ -1,0 +1,10 @@
+[
+  {
+    "label": "Sparkasse",
+    "ini_path": "main_ingestion_SPK.ini"
+  },
+  {
+    "label": "CiviBank",
+    "ini_path": "main_ingestion_CB.ini"
+  }
+]

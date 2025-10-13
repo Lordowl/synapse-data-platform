@@ -158,6 +158,123 @@ init_banks_module = types.ModuleType('db.init_banks')
 init_banks_module.init_banks_from_file = init_banks_from_file
 sys.modules['db.init_banks'] = init_banks_module
 
+# Define init_repo_update function with JSON file support
+def init_repo_update_from_file(repo_update_data=None):
+    """
+    Inizializza la tabella repo_update_info con dati di default.
+    Se repo_update_data è None, cerca di leggere da repo_update_default.json
+    in queste posizioni (in ordine):
+    1. ~/.sdp-api/repo_update_default.json (priorità massima - modificabile dall'utente)
+    2. sys._MEIPASS/config/repo_update_default.json (dentro il bundle PyInstaller)
+    3. Directory corrente/config/repo_update_default.json
+    Se non trova il file, usa dati di default hardcoded.
+    """
+    from db import models
+    import logging
+    import json
+    from pathlib import Path
+    logger = logging.getLogger(__name__)
+
+    if db.SessionLocal is None:
+        logger.warning("[INIT_REPO_UPDATE] Database non inizializzato, skip.")
+        return
+
+    # Se non sono stati passati dati, cerca di leggerli dal file JSON
+    if repo_update_data is None:
+        json_found = False
+
+        # Posizioni dove cercare il file JSON
+        search_paths = []
+
+        # 1. Directory ~/.sdp-api/ (priorità massima - file modificabile dall'utente)
+        search_paths.append(Path.home() / ".sdp-api" / "repo_update_default.json")
+
+        # 2. Directory dell'eseguibile (sys._MEIPASS per PyInstaller)
+        if hasattr(sys, '_MEIPASS'):
+            search_paths.append(Path(sys._MEIPASS) / "config" / "repo_update_default.json")
+            search_paths.append(Path(sys._MEIPASS) / "db" / "repo_update_default.json")
+            search_paths.append(Path(sys._MEIPASS) / "repo_update_default.json")
+
+        # 3. Directory del file corrente (se non bundled)
+        if hasattr(sys, 'argv') and sys.argv:
+            exe_dir = Path(sys.argv[0]).parent if sys.argv[0] else Path.cwd()
+            search_paths.append(exe_dir / "config" / "repo_update_default.json")
+            search_paths.append(exe_dir / "repo_update_default.json")
+
+        # 4. Directory corrente
+        search_paths.append(Path.cwd() / "config" / "repo_update_default.json")
+        search_paths.append(Path.cwd() / "repo_update_default.json")
+
+        # Cerca il file
+        for json_path in search_paths:
+            if json_path.exists():
+                try:
+                    logger.info(f"[INIT_REPO_UPDATE] Trovato file JSON: {json_path}")
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        repo_update_data = json.load(f)
+                    json_found = True
+                    logger.info(f"[INIT_REPO_UPDATE] Caricati {len(repo_update_data)} record dal JSON")
+                    break
+                except Exception as e:
+                    logger.error(f"[INIT_REPO_UPDATE] Errore lettura JSON da {json_path}: {e}")
+                    continue
+
+        # Se non trova il file, usa dati di default hardcoded
+        if not json_found:
+            logger.warning("[INIT_REPO_UPDATE] File JSON non trovato, uso dati di default hardcoded")
+            repo_update_data = [
+                {"settimana": 1, "anno": 2025, "semaforo": 0, "bank": "Sparkasse"},
+                {"settimana": 1, "anno": 2025, "semaforo": 0, "bank": "CiviBank"}
+            ]
+
+    db_session = next(get_db())
+    try:
+        for entry in repo_update_data:
+            bank_name = entry.get("bank")
+            settimana = entry.get("settimana")
+            anno = entry.get("anno")
+            semaforo = entry.get("semaforo", 0)
+
+            if not bank_name:
+                logger.warning(f"[INIT_REPO_UPDATE] Entry senza bank, skip: {entry}")
+                continue
+
+            # Verifica se esiste già un record per questa banca
+            existing = db_session.query(models.RepoUpdateInfo).filter(
+                models.RepoUpdateInfo.bank == bank_name
+            ).first()
+
+            if existing:
+                logger.info(f"[INIT_REPO_UPDATE] Record gia presente per banca '{bank_name}', skip.")
+                continue
+
+            # Crea nuovo record
+            new_record = models.RepoUpdateInfo(
+                settimana=settimana,
+                anno=anno,
+                semaforo=semaforo,
+                bank=bank_name,
+                log_key=None,
+                details=None
+            )
+            db_session.add(new_record)
+            logger.info(f"[INIT_REPO_UPDATE] Creato record per banca '{bank_name}': anno={anno}, settimana={settimana}")
+
+        db_session.commit()
+        logger.info("[INIT_REPO_UPDATE] Inizializzazione completata con successo.")
+        print(f"[DB] Repo update info inizializzate correttamente ({len(repo_update_data)} entries)")
+
+    except Exception as e:
+        logger.error(f"[INIT_REPO_UPDATE] Errore durante l'inizializzazione: {e}", exc_info=True)
+        db_session.rollback()
+    finally:
+        db_session.close()
+
+# Create init_repo_update module
+init_repo_update_module = types.ModuleType('db.init_repo_update')
+init_repo_update_module.init_repo_update_from_file = init_repo_update_from_file
+sys.modules['db.init_repo_update'] = init_repo_update_module
+
 # Create db.crud and db.schemas modules
 print("[RUNTIME HOOK] Creating db.crud module...")
 db_crud_module = types.ModuleType('db.crud')
@@ -447,6 +564,29 @@ def delete_repo_update_info(db: Session, repo_info_id: int):
     db.commit()
     return repo_info
 
+def get_repo_update_info_by_bank(db: Session, bank: str):
+    """Ottiene il record repo_update_info per una specifica banca"""
+    return db.query(RepoUpdateInfo).filter(RepoUpdateInfo.bank == bank).first()
+
+def update_repo_update_info_by_bank(db: Session, bank: str, repo_info_data):
+    """Aggiorna il record repo_update_info per una specifica banca"""
+    existing_repo_info = get_repo_update_info_by_bank(db, bank)
+    if not existing_repo_info:
+        # Se non esiste, crea un nuovo record
+        new_data = repo_info_data.model_dump(exclude_unset=True)
+        new_data['bank'] = bank
+        db_repo_info = RepoUpdateInfo(**new_data)
+        db.add(db_repo_info)
+        db.commit()
+        db.refresh(db_repo_info)
+        return db_repo_info
+
+    update_data = repo_info_data.model_dump(exclude_unset=True)
+    if update_data:
+        db.query(RepoUpdateInfo).filter(RepoUpdateInfo.id == existing_repo_info.id).update(values=update_data, synchronize_session=False)
+        db.commit()
+    return get_repo_update_info_by_bank(db, bank)
+
 # Flow Execution CRUD functions
 def create_flow_execution(db: Session, flow_execution):
     db_flow = FlowExecutionHistory(**flow_execution.model_dump())
@@ -573,6 +713,8 @@ db.crud.get_repo_update_info = get_repo_update_info
 db.crud.create_repo_update_info = create_repo_update_info
 db.crud.update_repo_update_info = update_repo_update_info
 db.crud.delete_repo_update_info = delete_repo_update_info
+db.crud.get_repo_update_info_by_bank = get_repo_update_info_by_bank
+db.crud.update_repo_update_info_by_bank = update_repo_update_info_by_bank
 db.crud.create_flow_execution = create_flow_execution
 db.crud.get_flow_executions = get_flow_executions
 db.crud.get_flow_execution_by_id = get_flow_execution_by_id

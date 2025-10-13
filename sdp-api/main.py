@@ -180,6 +180,13 @@ app.include_router(api_router, prefix="/api/v1")
 # ----------------- Eventi di startup ----------------- #
 @app.on_event("startup")
 def startup_event():
+    # Setup file di configurazione (copia da install_dir a ~/.sdp-api/ se necessario)
+    try:
+        from core.config_setup import setup_config_files
+        setup_config_files()
+    except Exception as e:
+        logging.warning(f"[STARTUP] Errore setup config files: {e}")
+
     db_url = settings.DATABASE_URL
     if not db_url:
         logging.warning(
@@ -204,14 +211,28 @@ def startup_event():
 
         # Percorsi richiesti
         ingestion_ps1 = os.path.join(base_folder, "Ingestion", "ingestion.ps1")
-        banks_file = os.path.join(base_folder, "Ingestion", "banks_default.json")
 
-        if not os.path.exists(ingestion_ps1) or not os.path.exists(banks_file):
+        # Cerca banks_default.json in ordine di priorità:
+        # 1. ~/.sdp-api/banks_default.json (modificabile dall'utente)
+        # 2. App/Ingestion/banks_default.json (default installazione)
+        config_banks_file = os.path.join(os.path.expanduser("~"), ".sdp-api", "banks_default.json")
+        original_banks_file = os.path.join(base_folder, "Ingestion", "banks_default.json")
+
+        if os.path.exists(config_banks_file):
+            banks_file = config_banks_file
+            logger.info(f"[STARTUP] Usando banks_default.json da config directory: {config_banks_file}")
+        elif os.path.exists(original_banks_file):
+            banks_file = original_banks_file
+            logger.info(f"[STARTUP] Usando banks_default.json da installazione: {original_banks_file}")
+        else:
+            banks_file = None
+
+        if not os.path.exists(ingestion_ps1) or not banks_file:
             logging.warning(
                 "[STARTUP] Alberatura incompleta (script o JSON mancante). Attendo /folder/update."
             )
             logging.warning(
-                f"[STARTUP] Mancano i seguenti file: {ingestion_ps1} o {banks_file}. Attendo /folder/update."
+                f"[STARTUP] Mancano i seguenti file: {ingestion_ps1} o banks_default.json. Attendo /folder/update."
             )
             return
 
