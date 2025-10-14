@@ -14,34 +14,60 @@ function Login({ setIsAuthenticated }) {
   const [apiPort, setApiPort] = useState("8000");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [banksLoading, setBanksLoading] = useState(true);
   const navigate = useNavigate();
 
   const baseURL = `${apiAddress}:${apiPort}/api/v1`;
 
-  // Recupera banche disponibili
+  // Recupera banche disponibili con retry
   useEffect(() => {
+    let mounted = true;
+    let retryCount = 0;
+    const maxRetries = 10; // Prova per 10 volte (5 secondi)
+
     const fetchInitialData = async () => {
+      if (!mounted) return;
+
       try {
         // Crea un client axios temporaneo senza autenticazione
         const tempClient = axios.create({
           baseURL: baseURL,
           headers: { 'Content-Type': 'application/json' },
+          timeout: 3000, // Timeout di 3 secondi per ogni tentativo
         });
 
         // Banche disponibili
         try {
           const banksData = await tempClient.get("/banks/available");
-          setAvailableBanks(banksData.data.banks || []);
-          if (banksData.data.current_bank) setSelectedBank(banksData.data.current_bank);
-        } catch {
-          console.log("Nessuna banca configurata");
+          if (mounted) {
+            setAvailableBanks(banksData.data.banks || []);
+            if (banksData.data.current_bank) setSelectedBank(banksData.data.current_bank);
+            setBanksLoading(false);
+          }
+        } catch (err) {
+          console.log(`Tentativo ${retryCount + 1}/${maxRetries} fallito:`, err.message);
+
+          if (retryCount < maxRetries && mounted) {
+            retryCount++;
+            // Retry dopo 500ms
+            setTimeout(() => fetchInitialData(), 500);
+          } else if (mounted) {
+            console.error("Backend non disponibile dopo", maxRetries, "tentativi");
+            setError("Backend non disponibile. Verifica che il server sia avviato.");
+            setBanksLoading(false);
+          }
         }
       } catch (err) {
         console.error("Errore fetch dati iniziali:", err);
+        if (mounted) setBanksLoading(false);
       }
     };
 
     fetchInitialData();
+
+    return () => {
+      mounted = false;
+    };
   }, [baseURL]);
 
   // Cambia banca
@@ -113,6 +139,23 @@ function Login({ setIsAuthenticated }) {
   return (
     <div className="login-page">
       <h2 className="title">Welcome back!</h2>
+
+      {banksLoading && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '12px',
+          background: '#f0f9ff',
+          borderRadius: '8px',
+          marginBottom: '16px',
+          color: '#0369a1'
+        }}>
+          <Loader2 size={16} className="loading-spin" />
+          <span>Caricamento banche in corso...</span>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit}>
         <div className="bank-selection">
           <label htmlFor="bankSelect">
@@ -125,10 +168,12 @@ function Login({ setIsAuthenticated }) {
               id="bankSelect"
               value={selectedBank}
               onChange={(e) => handleBankChange(e.target.value)}
-              disabled={loading}
+              disabled={loading || banksLoading}
               required
             >
-              <option value="">Seleziona una banca...</option>
+              <option value="">
+                {banksLoading ? "Caricamento..." : "Seleziona una banca..."}
+              </option>
               {availableBanks.map((bank, index) => (
                 <option key={bank.value || index} value={bank.label}>
                   {bank.label}
@@ -178,11 +223,16 @@ function Login({ setIsAuthenticated }) {
 
         {error && <div className="error-message">{error}</div>}
 
-        <button type="submit" disabled={loading} className="login-btn">
+        <button type="submit" disabled={loading || banksLoading} className="login-btn">
           {loading ? (
             <>
               <Loader2 size={16} className="loading-spin" />
               Accesso in corso...
+            </>
+          ) : banksLoading ? (
+            <>
+              <Loader2 size={16} className="loading-spin" />
+              Inizializzazione...
             </>
           ) : (
             <>

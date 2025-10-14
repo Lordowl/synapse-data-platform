@@ -144,6 +144,46 @@ fn main() {
                         // Salva il PID nello state
                         let state = app.state::<Mutex<BackendState>>();
                         state.lock().unwrap().pid = Some(pid);
+
+                        // Aspetta che il backend sia pronto (max 30 secondi)
+                        println!("⏳ Attesa avvio backend...");
+                        let max_attempts = 60; // 60 tentativi * 500ms = 30 secondi
+                        let mut attempts = 0;
+                        let backend_ready = loop {
+                            attempts += 1;
+
+                            // Prova a connettersi alla porta
+                            if TcpStream::connect_timeout(
+                                &"127.0.0.1:8000".parse().unwrap(),
+                                Duration::from_millis(500)
+                            ).is_ok() {
+                                println!("✅ Backend pronto dopo {} tentativi!", attempts);
+                                break true;
+                            }
+
+                            if attempts >= max_attempts {
+                                eprintln!("❌ Timeout: backend non risponde dopo {} secondi", max_attempts / 2);
+                                break false;
+                            }
+
+                            std::thread::sleep(Duration::from_millis(500));
+                        };
+
+                        if !backend_ready {
+                            use std::ffi::OsStr;
+                            use std::os::windows::ffi::OsStrExt;
+                            let msg = "Il backend non si è avviato correttamente.\nControlla i log per maggiori dettagli.";
+                            let wide: Vec<u16> = OsStr::new(msg).encode_wide().chain(std::iter::once(0)).collect();
+                            let title: Vec<u16> = OsStr::new("Errore Avvio Backend").encode_wide().chain(std::iter::once(0)).collect();
+                            unsafe {
+                                windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
+                                    None,
+                                    windows::core::PCWSTR(wide.as_ptr()),
+                                    windows::core::PCWSTR(title.as_ptr()),
+                                    windows::Win32::UI::WindowsAndMessaging::MB_OK | windows::Win32::UI::WindowsAndMessaging::MB_ICONWARNING
+                                );
+                            }
+                        }
                     }
                     Err(e) => {
                         eprintln!("❌ Errore avvio backend: {}", e);
@@ -168,6 +208,34 @@ fn main() {
                         // Salva il PID nello state
                         let state = app.state::<Mutex<BackendState>>();
                         state.lock().unwrap().pid = Some(pid);
+
+                        // Aspetta che il backend sia pronto (max 30 secondi)
+                        println!("⏳ Attesa avvio backend...");
+                        let max_attempts = 60; // 60 tentativi * 500ms = 30 secondi
+                        let mut attempts = 0;
+                        let backend_ready = loop {
+                            attempts += 1;
+
+                            // Prova a connettersi alla porta
+                            if TcpStream::connect_timeout(
+                                &"127.0.0.1:8000".parse().unwrap(),
+                                Duration::from_millis(500)
+                            ).is_ok() {
+                                println!("✅ Backend pronto dopo {} tentativi!", attempts);
+                                break true;
+                            }
+
+                            if attempts >= max_attempts {
+                                eprintln!("❌ Timeout: backend non risponde dopo {} secondi", max_attempts / 2);
+                                break false;
+                            }
+
+                            std::thread::sleep(Duration::from_millis(500));
+                        };
+
+                        if !backend_ready {
+                            eprintln!("⚠️  Il backend non si è avviato correttamente. Controlla i log.");
+                        }
                     }
                     Err(e) => {
                         eprintln!("❌ Errore avvio backend: {}", e);
