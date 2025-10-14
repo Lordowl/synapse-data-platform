@@ -168,13 +168,14 @@ def get_packages_ready(
 
     try:
         # Filtra per banca dell'utente corrente (case-insensitive)
+        # NON filtrare per Type_reportisica - restituisci sia settimanali che mensili
         query = db.query(
             models.ReportMapping.package,
             models.ReportMapping.ws_precheck,
             models.ReportMapping.ws_production,
-            models.ReportMapping.bank
+            models.ReportMapping.bank,
+            models.ReportMapping.Type_reportisica
         ).filter(
-            models.ReportMapping.Type_reportisica == "Settimanale",
             func.lower(models.ReportMapping.bank) == func.lower(current_user.bank)
         )
 
@@ -187,6 +188,7 @@ def get_packages_ready(
                 "ws_precheck": r[1],
                 "ws_produzione": r[2],
                 "bank": r[3],
+                "type_reportistica": r[4],  # Aggiungi Type_reportisica
                 "user": "N/D",
                 "data_esecuzione": None,
                 "pre_check": False,

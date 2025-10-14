@@ -192,7 +192,6 @@ function LogsTabContent({
       case "warning":
         return <AlertTriangle className="result-icon warning" />;
       case "failed":
-      case "error":
         return <XCircle className="result-icon error" />;
       default:
         return <Clock className="result-icon default" />;
@@ -206,7 +205,6 @@ function LogsTabContent({
       case "warning":
         return "result-warning";
       case "failed":
-      case "error":
         return "result-error";
       default:
         return "result-default";
@@ -279,7 +277,6 @@ function LogsTabContent({
           <option value="success">Success</option>
           <option value="warning">Warning</option>
           <option value="failed">Failed</option>
-          <option value="error">Error</option>
         </select>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <label htmlFor="start-date" style={{ fontWeight: '500' }}>Da:</label>

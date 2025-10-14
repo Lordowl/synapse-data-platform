@@ -132,7 +132,7 @@ function ExecutionTabContent({
                 <td data-label="Package">{flow.package || "N/A"}</td>
                 <td data-label="Anno">{flow.anno || "N/A"}</td>
                 <td data-label="Sett.">{flow.settimana || "N/A"}</td>
-                <td data-label="Flusso">{flow.name || <span className="muted-text italic">{flow.id}</span>}</td>
+                <td data-label="Flusso" title={flow.name || flow.id}>{flow.name || <span className="muted-text italic">{flow.id}</span>}</td>
                 <td data-label="Ultima Esec." style={{ fontSize: '0.85rem' }}>
                   {flow.lastRun ? new Date(flow.lastRun).toLocaleString("it-IT", {
                     day: '2-digit',

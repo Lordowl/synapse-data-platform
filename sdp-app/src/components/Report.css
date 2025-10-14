@@ -44,7 +44,6 @@
   .report-header-icon-bg { padding: var(--space-2); background-color: var(--primary-bg); border-radius: var(--rounded-base); display: inline-flex; align-items: center; justify-content: center; box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark), calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light); }
   .report-header-icon { width: 1.5rem; height: 1.5rem; color: var(--accent-color); }
   .report-header-title { font-size: var(--text-xl); font-weight: 700; color: var(--text-color); margin: 0; text-align: left; }
-  .report-header-subtitle { font-size: var(--text-xs); color: var(--text-color-muted); margin-top: var(--space-0-5); }
   .report-header-back-button { width: auto; flex-shrink: 0; }
   
   

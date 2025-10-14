@@ -30,7 +30,8 @@ def ensure_config_exists():
 # === SICUREZZA JWT ===
 SECRET_KEY={secret_key}
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+ACCESS_TOKEN_EXPIRE_MINUTES=11520
+REFRESH_TOKEN_EXPIRE_DAYS=8
 
 # === DATABASE ===
 DATABASE_URL=sqlite:///./sdp.db
@@ -68,12 +69,35 @@ if not is_during_setup:
     ensure_config_exists()
 
 
+def get_banks_from_config(banks_config):
+    """
+    Estrae l'array delle banche dalla configurazione, supportando sia il formato
+    vecchio (array diretto) che il nuovo (oggetto con chiave 'banks').
+
+    Args:
+        banks_config: Configurazione caricata da banks_default.json (list o dict)
+
+    Returns:
+        list: Array delle banche, oppure [] se il formato non è riconosciuto
+    """
+    if isinstance(banks_config, list):
+        # Formato vecchio: array diretto di banche
+        return banks_config
+    elif isinstance(banks_config, dict) and "banks" in banks_config:
+        # Formato nuovo: oggetto con chiave 'banks'
+        return banks_config["banks"]
+    else:
+        # Formato non riconosciuto
+        logging.warning(f"Formato banks_default.json non riconosciuto: {type(banks_config)}")
+        return []
+
+
 class Settings(BaseSettings):
     # === SICUREZZA JWT ===
     SECRET_KEY: str = Field(default="temp-secret-key-will-be-replaced")
     ALGORITHM: str = Field(default="HS256")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=10080)  # 7 giorni in minuti (7 * 24 * 60)
-    REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7)
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=11520)  # 8 giorni in minuti (8 * 24 * 60)
+    REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=8)
     
     # === DATABASE ===
     DATABASE_URL: str = Field(default="sqlite:///./sdp.db")
@@ -214,7 +238,8 @@ class ConfigManager:
 
         try:
             with open(banks_file, "r", encoding="utf-8") as f:
-                banks_data = json.load(f)
+                banks_config = json.load(f)
+                banks_data = get_banks_from_config(banks_config)
         except Exception as e:
             logging.error(f"Errore caricamento JSON banche: {e}")
             return {}

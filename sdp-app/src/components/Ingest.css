@@ -29,14 +29,13 @@
    ========================================================================== */
 .ingest-header-container {
   flex-shrink: 0;
-  padding-top: var(--space-4); /* Solo padding verticale */
+  padding-top: var(--space-4);
   margin-bottom: var(--space-4);
 }
+
 .ingest-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap; 
   gap: var(--space-3);
   padding: var(--space-4);
   border-radius: var(--rounded-xl);
@@ -44,20 +43,44 @@
   box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
               calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
 }
-.ingest-header-title-group { display: flex; align-items: left; gap: var(--space-3);  }
-.ingest-header-icon-bg { padding: var(--space-2); background-color: var(--primary-bg); border-radius: var(--rounded-base); display: inline-flex; box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark), calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light); }
+
+.ingest-header-title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.ingest-header-icon-bg {
+  padding: var(--space-2);
+  background-color: var(--primary-bg);
+  border-radius: var(--rounded-base);
+  display: inline-flex;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-distance) var(--shadow-distance) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-dark),
+              calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * var(--shadow-blur-multiplier)) var(--neomorphic-light);
+}
+
 .ingest-header-icon { width: 1.5rem; height: 1.5rem; color: var(--accent-color); }
-.ingest-header-title { font-size: var(--text-xl); font-weight: 700; color: var(--text-color); margin: 0; }
-.ingest-header-subtitle { font-size: var(--text-xs); color: var(--text-color-muted); margin-top: var(--space-0-5); }
-.ingest-header-actions-group { display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0; }
+.ingest-header-title { font-size: var(--text-lg); font-weight: 700; color: var(--text-color); margin: 0; }
+.ingest-header-subtitle { font-size: var(--text-xs); color: var(--text-color-muted); margin: 0; margin-top: 2px; }
+
+.ingest-header .tab-nav-container {
+  flex: 1;
+  display: flex;
+  justify-content: flex-start;
+  padding: 0;
+  margin: 0 0 0 var(--space-4);
+  min-width: 0;
+}
+
+.ingest-header-back-button {
+  flex-shrink: 0;
+}
   
 /* ==========================================================================
    3. NAVIGAZIONE A TAB
    ========================================================================== */
-.ingest-content-wrapper .tab-nav-container {
-  padding: 0;
-  margin-bottom: var(--space-4);
-}
 /* Stili per .tab-nav-grid, .tab-button, etc. sono assunti globali/da altri file CSS */
   
 /* ==========================================================================
@@ -250,36 +273,57 @@
   text-align: center;
 }
 
-/* Colonna 5: Nome Flusso (può andare a capo) */
+/* Colonna 5: Settimana */
 .ingest-table th:nth-child(5),
 .ingest-table td:nth-child(5) {
+  width: 10%;
+  min-width: 80px;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* Colonna 6: Nome Flusso (può andare a capo) */
+.ingest-table th:nth-child(6),
+.ingest-table td:nth-child(6) {
   width: 30%;
   min-width: 200px;
 }
 
 /* Solo per la colonna del nome permettiamo il text wrapping */
-.ingest-table td:nth-child(5) {
+.ingest-table td:nth-child(6) {
   white-space: normal;
   word-wrap: break-word;
   line-height: 1.4;
 }
 
-/* Colonna 6: Ultima Esecuzione */
-.ingest-table th:nth-child(6),
-.ingest-table td:nth-child(6) {
-  width: 20%;
-  min-width: 150px;
+/* Colonna 7: Ultima Esecuzione */
+.ingest-table th:nth-child(7),
+.ingest-table td:nth-child(7) {
+  width: 18%;
+  min-width: 140px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-/* Colonna 7: Risultato (badge) */
-.ingest-table th:nth-child(7),
-.ingest-table td:nth-child(7) {
+/* Colonna 8: Status */
+.ingest-table th:nth-child(8),
+.ingest-table td:nth-child(8) {
   width: 12%;
   min-width: 100px;
   text-align: center;
   white-space: nowrap;
+}
+
+/* Colonna 9: Dettagli */
+.ingest-table th:nth-child(9),
+.ingest-table td:nth-child(9) {
+  width: 25%;
+  min-width: 200px;
+  max-width: 400px;
+  text-align: left;
+  vertical-align: top;
+  white-space: normal;
+  word-wrap: break-word;
 }
 
 /* ==========================================================================
@@ -332,24 +376,6 @@
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .btn-disabled-visual { opacity: 0.7; cursor: wait; }
 
-td[data-label="Dettagli"],
-th:has-text("Dettagli") {
-  min-width: 200px;   /* puoi aumentare se serve più spazio */
-  max-width: 400px;   /* evita che esploda in larghezza */
-  text-align: left;
-  vertical-align: top;
-}
-/* Colonna 8: Dettagli */
-.ingest-table th:nth-child(8),
-.ingest-table td:nth-child(8) {
-  width: 25%;
-  min-width: 200px;
-  max-width: 400px;
-  text-align: left;
-  vertical-align: top;
-  white-space: normal;
-  word-wrap: break-word;
-}
 /* Stile del contenuto dei dettagli */
 .flow-detail-content {
   white-space: pre-wrap;   /* rispetta gli a capo */

@@ -1,10 +1,13 @@
-[
-  {
-    "label": "Sparkasse",
-    "ini_path": "main_ingestion_SPK.ini"
-  },
-  {
-    "label": "CiviBank",
-    "ini_path": "main_ingestion_CB.ini"
-  }
-]
+{
+  "settings_path": "H:\\570 Measurement & data Office\\IrionDQ",
+  "banks": [
+    {
+      "label": "Sparkasse",
+      "ini_path": "main_ingestion_SPK.ini"
+    },
+    {
+      "label": "CiviBank",
+      "ini_path": "main_ingestion_CB.ini"
+    }
+  ]
+}

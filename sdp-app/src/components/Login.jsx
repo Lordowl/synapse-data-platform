@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { open } from "@tauri-apps/plugin-dialog";
-import { FolderOpen, Building, User, Lock, LogIn, Loader2 } from "lucide-react";
+import { Building, User, Lock, LogIn, Loader2 } from "lucide-react";
 import axios from "axios";
 import apiClient from "../api/apiClient";
 import "./Login.css";
@@ -9,7 +8,6 @@ import "./Login.css";
 function Login({ setIsAuthenticated }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [selectedFolder, setSelectedFolder] = useState("");
   const [selectedBank, setSelectedBank] = useState("");
   const [availableBanks, setAvailableBanks] = useState([]);
   const [apiAddress, setApiAddress] = useState("http://127.0.0.1");
@@ -20,7 +18,7 @@ function Login({ setIsAuthenticated }) {
 
   const baseURL = `${apiAddress}:${apiPort}/api/v1`;
 
-  // Recupera folder corrente e banche disponibili
+  // Recupera banche disponibili
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
@@ -29,14 +27,6 @@ function Login({ setIsAuthenticated }) {
           baseURL: baseURL,
           headers: { 'Content-Type': 'application/json' },
         });
-
-        // Folder corrente
-        try {
-          const folderData = await tempClient.get("/folder/current");
-          if (folderData.data.folder_path) setSelectedFolder(folderData.data.folder_path);
-        } catch {
-          console.log("Nessun folder configurato");
-        }
 
         // Banche disponibili
         try {
@@ -53,62 +43,6 @@ function Login({ setIsAuthenticated }) {
 
     fetchInitialData();
   }, [baseURL]);
-
-  // Seleziona cartella
-  const handleFolderSelect = async () => {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: "Seleziona Cartella API",
-    });
-
-    if (!selected) return;
-    let folderPath = Array.isArray(selected) ? selected[0] : selected;
-
-    if (!folderPath.endsWith("App\\Ingestion") && !folderPath.endsWith("App/Ingestion")) {
-      folderPath = `${folderPath}${folderPath.endsWith("\\") || folderPath.endsWith("/") ? "" : "\\"}App\\Ingestion`;
-    }
-
-    setSelectedFolder(folderPath);
-
-    // Aggiorna il folder sul backend (ora è pubblico, non serve token)
-    try {
-      // Crea un client axios temporaneo per questa chiamata pre-login
-      const tempClient = axios.create({
-        baseURL: baseURL,
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      const response = await tempClient.post("/folder/update", { folder_path: folderPath });
-
-      // Mostra informazioni sugli account admin creati
-      if (response.data.admin_accounts && response.data.admin_accounts.length > 0) {
-        console.log("📋 Account admin creati:");
-        response.data.admin_accounts.forEach(account => {
-          console.log(`   🏦 ${account.bank}: ${account.username} / ${account.password}`);
-        });
-      }
-
-      // Dopo aver aggiornato il folder, ricarica le banche disponibili
-      try {
-        const banksData = await tempClient.get("/banks/available");
-        setAvailableBanks(banksData.data.banks || []);
-        if (banksData.data.current_bank) setSelectedBank(banksData.data.current_bank);
-      } catch {
-        console.log("Errore caricamento banche");
-      }
-
-      setError("");
-
-      // Mostra messaggio di successo con info sugli admin
-      if (response.data.note) {
-        console.log("✅ " + response.data.note);
-      }
-    } catch (err) {
-      console.error("Errore aggiornamento folder:", err);
-      setError(err.response?.data?.detail || err.message);
-    }
-  };
 
   // Cambia banca
   const handleBankChange = async (bankLabel) => {
@@ -140,7 +74,7 @@ function Login({ setIsAuthenticated }) {
     const formData = new URLSearchParams();
     formData.append("username", username);
     formData.append("password", password);
-    formData.append("bank", selectedBank); // ora invia label
+    formData.append("bank", selectedBank);
 
     try {
       const response = await fetch(`${baseURL}/auth/token`, {
@@ -159,9 +93,8 @@ function Login({ setIsAuthenticated }) {
 
       apiClient.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
-      // Aggiornamento folder e banca post-login
+      // Aggiornamento banca post-login
       try {
-        if (selectedFolder) await apiClient.post("/folder/update", { folder_path: selectedFolder });
         await apiClient.post("/banks/update", { label: selectedBank });
       } catch (updateErr) {
         console.warn("Errore aggiornamento post-login:", updateErr);
@@ -181,32 +114,6 @@ function Login({ setIsAuthenticated }) {
     <div className="login-page">
       <h2 className="title">Welcome back!</h2>
       <form onSubmit={handleSubmit}>
-        <div className="api-connection">
-          <label htmlFor="apiFolder">
-            <FolderOpen size={16} />
-            API Folder
-          </label>
-          <div className="input-group">
-            <input
-              type="text"
-              id="apiFolder"
-              value={selectedFolder}
-              readOnly
-              disabled={loading}
-              placeholder="Seleziona la cartella di configurazione..."
-            />
-            <button
-              type="button"
-              onClick={handleFolderSelect}
-              disabled={loading}
-              className="folder-select-btn"
-            >
-              <FolderOpen size={16} />
-              Seleziona
-            </button>
-          </div>
-        </div>
-
         <div className="bank-selection">
           <label htmlFor="bankSelect">
             <Building size={16} />

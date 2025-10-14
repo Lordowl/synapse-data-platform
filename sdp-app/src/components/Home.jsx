@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Database, BarChart3, Settings, LogOut, User, Building } from "lucide-react";
+import { Database, BarChart3, Settings, LogOut, User, Building, Layers } from "lucide-react";
 import apiClient from "../api/apiClient";
 import { useAppContext } from "../context/AppContext";
 import "./Home.css";
@@ -61,7 +61,7 @@ function Home({ setIsAuthenticated }) {
     <div className="home-page-wrapper">
       <div className="home-header">
         <img src={logoToShow} alt="Logo Banca" className="home-logo" />
-        <h1>Control Center</h1>
+        <h1>Cruscotto operativo</h1>
       </div>
 
       <div className="user-info-box">
@@ -105,8 +105,8 @@ function Home({ setIsAuthenticated }) {
                   className="nav-link"
                 >
                   <button className="btn btn-primary">
-                    <Database size={20} />
-                    <span>Ingest</span>
+                    <Layers size={20} />
+                    <span>Ingestion</span>
                   </button>
                 </Link>
               ) : (
@@ -118,7 +118,7 @@ function Home({ setIsAuthenticated }) {
               )
             ) : (
               <div className="loading-state">
-                <Database className="loading-icon" />
+                <Layers className="loading-icon" />
                 <p>Caricamento dati INI...</p>
               </div>
             )
@@ -151,7 +151,7 @@ function Home({ setIsAuthenticated }) {
       </div>
 
       <div className="version-footer">
-        <small style={{color: '#666', fontSize: '12px'}}>Versione 0.2.7 </small>
+        <small style={{color: '#666', fontSize: '12px'}}>Versione 0.2.8 </small>
       </div>
     </div>
   );

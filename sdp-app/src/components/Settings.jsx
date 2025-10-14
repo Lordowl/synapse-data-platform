@@ -4,7 +4,6 @@ import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
 import apiClient from "../api/apiClient";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   Settings as SettingsIcon,
   Users,
@@ -12,7 +11,6 @@ import {
   Edit,
   ExternalLink,
   Save,
-  Upload,
   Plus,
   Trash2,
   RefreshCw,
@@ -30,10 +28,7 @@ import "./Settings.css";
 function MetadataFileTabContent({
   metadataPathFromIni,
   onOpenMetadataFile,
-  onLoadFileFromDialog,
-  onResetToIni,
   loadingStates,
-  hasLocalMetadata,
 }) {
   return (
     <div className="tab-content-padding">
@@ -67,37 +62,6 @@ function MetadataFileTabContent({
             >
               <ExternalLink className="btn-icon-md" /> Apri File Metadati
             </button>
-          </div>
-        </div>
-
-        <div className="metadata-card">
-          <div className="metadata-card-header">
-            <div className="metadata-card-icon-bg">
-              <Upload className="metadata-card-icon" />
-            </div>
-            <h3 className="metadata-card-title">Carica File Metadati da Locale</h3>
-          </div>
-          <p className="metadata-card-description">
-            Seleziona un file Excel (.xlsx, .xls) dal tuo computer per importare i metadati.
-          </p>
-          <div className="metadata-card-input-group">
-            <button
-              onClick={onLoadFileFromDialog}
-              className="btn btn-primary w-full"
-              disabled={loadingStates?.loadingConfigFile}
-            >
-              <Upload className="btn-icon-md" /> Carica File da Locale
-            </button>
-            {hasLocalMetadata && (
-              <button
-                onClick={onResetToIni}
-                className="btn btn-outline w-full"
-                disabled={loadingStates?.loadingConfigFile}
-                style={{ marginTop: '8px' }}
-              >
-                <RefreshCw className="btn-icon-md" /> Ripristina File da INI
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -149,16 +113,13 @@ function LogsTabContent({ logEntries, onRefreshLogs }) {
       </div>
 
       <div className="logs-controls-grid">
-        <div className="search-input-wrapper">
-          <Search className="search-input-icon" />
-          <input
-            type="text"
-            placeholder="Cerca per azione, utente, dettagli..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="form-input"
-          />
-        </div>
+        <input
+          type="text"
+          placeholder="Cerca per azione, utente, dettagli..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="form-input"
+        />
         <div className="date-filter-group">
           <input
             type="date"
@@ -320,17 +281,14 @@ function PermissionsTabContent({
       </div>
 
       <div className="permissions-controls-bar">
-        <div className="search-input-wrapper">
-          <Search className="search-input-icon" />
-          <input
-            type="text"
-            placeholder="Cerca utente per email..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="form-input"
-            disabled={anyActionLoading}
-          />
-        </div>
+        <input
+          type="text"
+          placeholder="Cerca utente per email..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="form-input"
+          disabled={anyActionLoading}
+        />
         <select
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value)}
@@ -914,23 +872,27 @@ function Settings() {
 
 
   const TABS = useMemo(() => {
-    const baseTabs = [
-      { id: "metadata_file", label: "File Metadati", icon: Database, description: "Percorso file metadati" },
-      { id: "config", label: "Config File", icon: Edit, description: "Visualizza e apri il file .ini" },
-    ];
+    const baseTabs = [];
 
+    // Mostra tab File Metadati e Config solo se l'utente ha il permesso "ingest"
+    if (currentUser && currentUser.permissions && currentUser.permissions.includes("ingest")) {
+      baseTabs.push(
+        { id: "metadata_file", label: "File Metadati", icon: Database },
+        { id: "config", label: "Config File", icon: Edit }
+      );
+    }
+
+    // Mostra tab Permessi e Log solo per admin
     if (currentUser && currentUser.role === "admin") {
       baseTabs.push({
         id: "permissions",
         label: "Permessi",
         icon: Users,
-        description: "Gestione accessi utenti",
       });
       baseTabs.push({
         id: "logs",
         label: "Log",
         icon: ListChecks,
-        description: "Visualizza log applicativi",
       });
     }
 
@@ -938,10 +900,14 @@ function Settings() {
   }, [currentUser]);
 
   useEffect(() => {
-    if (currentUser && currentUser.role !== "admin" && (activeTab === "permissions" || activeTab === "logs")) {
-      setActiveTab("metadata_file");
+    if (!currentUser) return;
+
+    // Se l'utente non ha accesso al tab corrente, passa al primo tab disponibile
+    const hasAccessToCurrentTab = TABS.some(tab => tab.id === activeTab);
+    if (!hasAccessToCurrentTab && TABS.length > 0) {
+      setActiveTab(TABS[0].id);
     }
-  }, [currentUser, activeTab]);
+  }, [currentUser, activeTab, TABS]);
 
   const openCreateModal = () => {
     const selectedBank = sessionStorage.getItem("selectedBank") || "";
@@ -1021,34 +987,6 @@ function Settings() {
     }
   };
 
-  const handleSaveMetadataFile = async () => {
-    toast.success(`Percorso "${metadataFilePath}" salvato (simulazione).`);
-  };
-
-  const handleOpenSharePoint = async (type) => {
-    console.log("premuto handleopen");
-  };
-
-  const handleLoadFileFromDialog = async () => {
-    try {
-      const selectedPath = await openDialog({
-        multiple: false,
-        title: "Seleziona il file Excel",
-        filters: [{ name: "Excel Files", extensions: ["xlsx", "xls"] }],
-      });
-
-      if (typeof selectedPath === "string" && selectedPath) {
-        setMetadataFilePath(selectedPath);
-        toast.success("Percorso file aggiornato!");
-      } else {
-        console.log("Selezione annullata dall'utente.");
-      }
-    } catch (error) {
-      console.error("Errore dialog:", error);
-      toast.error("Impossibile aprire la finestra di dialogo.");
-    }
-  };
-
   const handlePermissionChange = async (id, field, valueOrUpdater) => {
     setHasUnsavedChanges(true);
     setPermissions((prev) =>
@@ -1089,6 +1027,14 @@ function Settings() {
       ));
 
       toast.success("Permessi salvati!");
+
+      // Ricarica i dati dell'utente corrente per aggiornare i permessi
+      try {
+        const userResponse = await apiClient.get("/users/me");
+        setCurrentUser(userResponse.data);
+      } catch (error) {
+        console.error("Errore nel ricaricare l'utente corrente:", error);
+      }
     } catch (error) {
       console.error("Errore nel salvataggio dei permessi:", error);
       toast.error(error.response?.data?.detail || "Impossibile salvare i permessi.");
@@ -1128,11 +1074,6 @@ function Settings() {
     } finally {
       setAuthLoading(false);
     }
-  };
-
-  const handleResetToIni = () => {
-    setMetadataFilePath(null);
-    toast.success("Ripristinato percorso file metadati da INI");
   };
 
   const openPasswordChangeModal = (userId, username) => {
@@ -1184,10 +1125,7 @@ function Settings() {
           <MetadataFileTabContent
             metadataPathFromIni={metadataPath}
             onOpenMetadataFile={handleOpenMetadataFile}
-            onLoadFileFromDialog={handleLoadFileFromDialog}
-            onResetToIni={handleResetToIni}
             loadingStates={loadingStates}
-            hasLocalMetadata={metadataFilePath !== null}
           />
         );
       case "permissions":
@@ -1252,7 +1190,7 @@ function Settings() {
               </div>
               <div>
                 <h1 className="settings-header-title">Impostazioni</h1>
-                <p className="settings-header-subtitle">Configurazione, permessi e log</p>
+                <p className="settings-header-subtitle">Banca: {sessionStorage.getItem("selectedBank") || "N/A"}</p>
               </div>
             </div>
             <button
@@ -1265,29 +1203,36 @@ function Settings() {
           </div>
         </header>
 
-        <nav className="tab-nav-container">
-          <div className={`tab-nav-grid ${TABS.length === 3 ? "three-tabs" : ""}`}>
-            {TABS.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`tab-button ${activeTab === tab.id ? "active" : ""}`}
-                  disabled={isAnyLoadingInProgress && activeTab !== tab.id}
-                >
-                  <div className="tab-button-header">
-                    <Icon className="tab-button-icon" />
-                    <span className="tab-button-label">{tab.label}</span>
-                  </div>
-                  <p className="tab-button-description">{tab.description}</p>
-                </button>
-              );
-            })}
+        {TABS.length === 0 ? (
+          <div className="tab-content-padding">
+            <p className="error-message">Non hai i permessi necessari per accedere alle impostazioni.</p>
           </div>
-        </nav>
+        ) : (
+          <>
+            <nav className="tab-nav-container">
+              <div className={`tab-nav-grid ${TABS.length === 3 ? "three-tabs" : ""}`}>
+                {TABS.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`tab-button ${activeTab === tab.id ? "active" : ""}`}
+                      disabled={isAnyLoadingInProgress && activeTab !== tab.id}
+                    >
+                      <div className="tab-button-header">
+                        <Icon className="tab-button-icon" />
+                        <span className="tab-button-label">{tab.label}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </nav>
 
-        <main className="tab-content-main">{renderActiveTabContent()}</main>
+            <main className="tab-content-main">{renderActiveTabContent()}</main>
+          </>
+        )}
       </div>
 
       <CreateUserModal

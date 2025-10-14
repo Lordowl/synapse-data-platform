@@ -232,6 +232,7 @@ function Report() {
             ws_precheck: pkg.ws_precheck,
             ws_produzione: pkg.ws_produzione,
             bank: pkg.bank,
+            type_reportistica: pkg.type_reportistica, // Aggiungi il tipo di reportistica
             user: logEntry.user || "N/D",
             data_esecuzione: logEntry.data_esecuzione,
             pre_check: logEntry.pre_check,
@@ -494,18 +495,46 @@ function Report() {
     }
   };
 
-  // Dati per la tabella di pubblicazione - presi da packagesReady
+  // Dati per la tabella di pubblicazione - presi da packagesReady e filtrati per periodicità
   const publicationData = useMemo(() => {
-    return packagesReady.map((pkg, index) => ({
+    console.log('=== Filtro Package per Periodicità ===');
+    console.log('Totale package disponibili:', packagesReady.length);
+    console.log('Periodicità selezionata:', currentPeriodicity);
+
+    // Filtra i package in base alla periodicità corrente
+    const filteredPackages = packagesReady.filter(pkg => {
+      const typeReportistica = pkg.type_reportistica?.toLowerCase() || '';
+
+      // Se type_reportistica non è definito, NON mostrarlo (comportamento corretto)
+      if (!typeReportistica) {
+        return false;
+      }
+
+      // Settimanale: Type_reportisica contiene "settimanale"
+      // Mensile: Type_reportisica contiene "mensile"
+      if (currentPeriodicity === 'settimanale') {
+        return typeReportistica.includes('settimanale');
+      } else if (currentPeriodicity === 'mensile') {
+        return typeReportistica.includes('mensile');
+      }
+
+      return false;
+    });
+
+    console.log(`Package filtrati per ${currentPeriodicity}:`, filteredPackages.length);
+    console.log('Package:', filteredPackages.map(p => `${p.package} (${p.type_reportistica})`).join(', '));
+
+    return filteredPackages.map((pkg, index) => ({
       id: `pub-${index}`,
       package: pkg.package,
       user: pkg.user,
       data_esecuzione: pkg.data_esecuzione,
       pre_check: pkg.pre_check,
       prod: pkg.prod,
-      dettagli: pkg.dettagli
+      dettagli: pkg.dettagli,
+      bank: pkg.bank // Aggiungi anche la banca se serve
     }));
-  }, [packagesReady]);
+  }, [packagesReady, currentPeriodicity]);
 
   // Verifica se tutte le righe della prima tabella sono verdi (disponibilita_server = true)
   const allFirstTableGreen = useMemo(() => {
@@ -537,9 +566,7 @@ function Report() {
                 <h1 className="report-header-title">
                   Cruscotto Reportistica
                 </h1>
-                <p className="report-header-subtitle">
-                  Elaborazione e monitoraggio report.
-                </p>
+                <p className="report-header-subtitle">Banca: {sessionStorage.getItem("selectedBank") || "N/A"}</p>
               </div>
             </div>
             {/* Pulsante Indietro */}

@@ -143,7 +143,7 @@ def create_default_admin_if_not_exists():
 app = FastAPI(
     title="Cruscotto Operativo API",
     description="API per il Cruscotto Operativo.",
-    version="1.0.0",
+    version="0.2.8",
 )
 
 
@@ -187,10 +187,71 @@ def startup_event():
     except Exception as e:
         logging.warning(f"[STARTUP] Errore setup config files: {e}")
 
+    # Leggi il file banks_default.json per configurare automaticamente il settings_path
+    # Prima cerca in ~/.sdp-api/, altrimenti usa quello nel pacchetto installato
+    config_banks_file = os.path.join(os.path.expanduser("~"), ".sdp-api", "banks_default.json")
+    if not os.path.exists(config_banks_file):
+        config_banks_file = os.path.join(os.path.dirname(__file__), "config", "banks_default.json")
+
+    if os.path.exists(config_banks_file):
+        try:
+            with open(config_banks_file, "r", encoding="utf-8") as f:
+                banks_config = json.load(f)
+
+            # Supporta sia la vecchia struttura (array) che la nuova (oggetto con settings_path)
+            if isinstance(banks_config, dict):
+                settings_path_from_file = banks_config.get("settings_path")
+            else:
+                # Vecchia struttura: solo array, nessun settings_path
+                settings_path_from_file = None
+
+            if settings_path_from_file and os.path.exists(settings_path_from_file):
+                logging.info(f"[STARTUP] Trovato banks_default.json con settings_path: {settings_path_from_file}")
+
+                # Normalizza il percorso
+                folder = settings_path_from_file
+                if folder.endswith(os.path.join("App", "Ingestion")):
+                    folder = folder[:-len(os.path.join("App", "Ingestion"))].rstrip(os.sep)
+                elif folder.endswith("App/Ingestion"):
+                    folder = folder[:-len("App/Ingestion")].rstrip("/")
+
+                # Verifica i file obbligatori
+                ingestion_ps1 = os.path.join(folder, "App", "Ingestion", "ingestion.ps1")
+                banks_file = os.path.join(folder, "App", "Ingestion", "banks_default.json")
+
+                if os.path.exists(ingestion_ps1) and os.path.exists(banks_file):
+                    # Configura il database e settings path
+                    db_path = os.path.join(folder, "App", "Dashboard", "sdp.db")
+                    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+                    new_db_url = f"sqlite:///{db_path}"
+
+                    config_manager.update_setting("DATABASE_URL", new_db_url)
+                    config_manager.update_setting("SETTINGS_PATH", folder)
+
+                    logging.info(f"[STARTUP] Configurazione automatica completata: {folder}")
+
+                    # Ricrea engine SQLAlchemy
+                    from sqlalchemy import create_engine
+                    from sqlalchemy.orm import sessionmaker
+                    import db.database as database
+
+                    database.engine = create_engine(new_db_url, connect_args={"check_same_thread": False})
+                    database.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=database.engine)
+                    models.Base.metadata.create_all(bind=database.engine)
+
+                    logging.info(f"[STARTUP] Database configurato: {new_db_url}")
+                else:
+                    logging.warning(f"[STARTUP] File obbligatori mancanti in {folder}")
+            else:
+                if settings_path_from_file:
+                    logging.warning(f"[STARTUP] settings_path in banks_default.json non valido o inesistente: {settings_path_from_file}")
+        except Exception as e:
+            logging.warning(f"[STARTUP] Errore durante la lettura di banks_default.json: {e}")
+
     db_url = settings.DATABASE_URL
     if not db_url:
         logging.warning(
-            "[STARTUP] Nessun DATABASE_URL configurato. Attendo /folder/update."
+            "[STARTUP] Nessun DATABASE_URL configurato. Modifica app_config.json con il percorso corretto."
         )
         return
 
@@ -238,7 +299,10 @@ def startup_event():
 
         # Leggi tutti i file .ini dal JSON
         with open(banks_file, "r", encoding="utf-8") as f:
-            banks_data = json.load(f)
+            banks_config = json.load(f)
+
+        from core.config import get_banks_from_config
+        banks_data = get_banks_from_config(banks_config)
 
         ini_paths = [
             os.path.join(base_folder, "Ingestion", bank["ini_path"])

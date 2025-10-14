@@ -128,7 +128,7 @@
   .main-actions .nav-link, .secondary-actions .nav-link,
   .main-actions .btn, .secondary-actions .btn {
     width: auto;
-    min-width: 150px;
+    min-width: 180px;
   }
 
   .home-logo {

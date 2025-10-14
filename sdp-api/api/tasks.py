@@ -174,7 +174,10 @@ def execute_selected_flows(
             selected_bank = next(iter(ini_contents), None)
         metadata_file_path = ini_contents.get(selected_bank, {}).get("data", {}).get("DEFAULT", {}).get("filemetadati", "")
 
-    logger.info(f"Flow IDs string: {flow_ids_str}, Log key: {log_key}, Anno: {anno_int}, Settimana: {settimana_int}, Metadata file: {metadata_file_path}")
+    # Recupera il path del file ini in base alla banca selezionata
+    config_path = Path(folder_path) / "CONFIG" / f"{selected_bank}.ini"
+
+    logger.info(f"Flow IDs string: {flow_ids_str}, Log key: {log_key}, Anno: {anno_int}, Settimana: {settimana_int}, Metadata file: {metadata_file_path}, Config file: {config_path}")
 
     command_args = [
         "powershell.exe",
@@ -185,6 +188,7 @@ def execute_selected_flows(
         "-settimana", str(settimana or ""),
         "-log_key", log_key,
         "-filemetadati", metadata_file_path,
+        "-config", str(config_path),
     ]
     logger.info(f"Comando esecuzione: {' '.join(command_args)}")
 

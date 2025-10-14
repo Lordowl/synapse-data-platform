@@ -186,7 +186,7 @@ export const useIngestFlows = (flowsData, generalParams, setGeneralParams, fetch
 
   return {
     selectedFlows,
-    setSelectedFlows,
+    setSelectedFlows, // Esporta la funzione per resettare le selezioni
     searchTerm,
     setSearchTerm,
     packageFilter,

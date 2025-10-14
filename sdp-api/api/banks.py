@@ -12,10 +12,15 @@ def get_available_banks(db: Session = Depends(get_db_optional)):
         # Database non ancora inizializzato
         return {"banks": [], "current_bank": None}
 
-    banks = crud.get_banks(db)
-    current = crud.get_current_bank(db)
-    current_bank = current.label if current else None
-    return {"banks": banks, "current_bank": current_bank}
+    try:
+        banks = crud.get_banks(db)
+        current = crud.get_current_bank(db)
+        current_bank = current.label if current else None
+        return {"banks": banks, "current_bank": current_bank}
+    except Exception as e:
+        # Se c'è un errore (es. tabella non esiste), restituisci lista vuota
+        print(f"[WARNING] Errore caricamento banche: {e}")
+        return {"banks": [], "current_bank": None}
 
 @router.post("/update")
 def update_bank(bank: schemas.BankUpdate, db: Session = Depends(get_db)):

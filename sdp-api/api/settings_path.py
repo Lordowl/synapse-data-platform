@@ -61,7 +61,10 @@ async def update_folder_path(data: FolderUpdate):
 
         # --- 3. Verifica tutti i .ini dal JSON ---
         with open(banks_file, "r", encoding="utf-8") as f:
-            banks_data = json.load(f)
+            banks_config = json.load(f)
+
+        from core.config import get_banks_from_config
+        banks_data = get_banks_from_config(banks_config)
 
         ini_paths = [os.path.join(folder, "App", "Ingestion", bank["ini_path"]) for bank in banks_data]
         missing_ini = [p for p in ini_paths if not os.path.exists(p)]
@@ -209,8 +212,11 @@ async def read_ini(current_user: User = Depends(get_current_user)):
             raise HTTPException(status_code=404, detail=f"File banks_default.json non trovato: {banks_json_path}")
 
         import json
+        from core.config import get_banks_from_config
+
         with open(banks_json_path, "r", encoding="utf-8") as f:
-            banks_data = json.load(f)
+            banks_config = json.load(f)
+        banks_data = get_banks_from_config(banks_config)
 
         # --- Leggi tutti gli INI ---
         import configparser
@@ -256,8 +262,10 @@ async def get_ini_path(bank: str, current_user: User = Depends(get_current_user)
         if not os.path.exists(banks_json_path):
             raise HTTPException(status_code=404, detail=f"File banks_default.json non trovato: {banks_json_path}")
 
+        from core.config import get_banks_from_config
         with open(banks_json_path, "r", encoding="utf-8") as f:
-            banks_data = json.load(f)
+            banks_config = json.load(f)
+        banks_data = get_banks_from_config(banks_config)
 
         # Trova la banca richiesta
         bank_info = next((b for b in banks_data if b["label"] == bank), None)
@@ -343,8 +351,10 @@ async def open_log_file(data: OpenLogRequest, current_user: User = Depends(get_c
         if not os.path.exists(banks_json_path):
             raise HTTPException(status_code=404, detail=f"File banks_default.json non trovato")
 
+        from core.config import get_banks_from_config
         with open(banks_json_path, "r", encoding="utf-8") as f:
-            banks_data = json.load(f)
+            banks_config = json.load(f)
+        banks_data = get_banks_from_config(banks_config)
 
         bank_info = next((b for b in banks_data if b["label"] == bank), None)
         if not bank_info:
