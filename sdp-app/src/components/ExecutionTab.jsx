@@ -63,11 +63,6 @@ function ExecutionTabContent({
           <Filter className="ingest-section-icon" />
           <div>
             <h2 className="ingest-section-title">Selezione Flussi</h2>
-            {metadataFilePath && (
-              <p style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px' }}>
-                Usando file metadati locale
-              </p>
-            )}
           </div>
         </div>
         <button
@@ -138,7 +133,8 @@ function ExecutionTabContent({
                     day: '2-digit',
                     month: '2-digit',
                     hour: '2-digit',
-                    minute: '2-digit'
+                    minute: '2-digit',
+                    timeZone: 'Europe/Rome'
                   }) : "N/A"}
                 </td>
                 <td data-label="Status"><span className={`status-badge ${getStatusBadgeColor(flow.result)}`}>{flow.result || "N/A"}</span></td>

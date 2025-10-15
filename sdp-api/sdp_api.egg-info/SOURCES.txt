@@ -13,6 +13,7 @@ api/users.py
 core/__init__.py
 core/auditing.py
 core/config.py
+core/config_setup.py
 core/security.py
 core/utils/__init__.py
 db/__init__.py

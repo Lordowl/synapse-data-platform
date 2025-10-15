@@ -46,8 +46,10 @@ def get_flows_history_latest(
         history_map = {}
         for exec in all_executions:
             if exec.element_id not in history_map:
+                # Aggiungi 'Z' per indicare UTC, altrimenti JS interpreta come local time
+                timestamp_str = exec.timestamp.isoformat() + 'Z' if exec.timestamp else None
                 history_map[exec.element_id] = {
-                    "timestamp": exec.timestamp.isoformat() if exec.timestamp else None,
+                    "timestamp": timestamp_str,
                     "result": exec.result,
                     "error_lines": exec.error_lines or "",
                     "log_key": exec.log_key,
@@ -75,8 +77,10 @@ def get_execution_details(
         )
         details_list = []
         for exec in all_executions:
+            # Aggiungi 'Z' per indicare UTC, altrimenti JS interpreta come local time
+            timestamp_str = exec.timestamp.isoformat() + 'Z' if exec.timestamp else None
             details_list.append({
-                "timestamp": exec.timestamp.isoformat() if exec.timestamp else None,
+                "timestamp": timestamp_str,
                 "result": exec.result,
                 "error_lines": exec.error_lines or "",
                 "log_key": exec.log_key,
@@ -93,7 +97,7 @@ def get_execution_details(
 # --- Schemi Pydantic ---
 class FlowExecutionLog(BaseModel):
     id: int
-    timestamp: datetime
+    timestamp: str  # Stringa ISO con 'Z' invece di datetime
     element_id: str
     status: str
     duration_seconds: Optional[int]
@@ -126,9 +130,12 @@ def format_log(log: models.FlowExecutionHistory) -> FlowExecutionLog:
         if 'error_message' in log.details:
             message += f" - {log.details['error_message']}"
 
+    # Converti timestamp in stringa ISO con 'Z' per indicare UTC
+    timestamp_str = log.timestamp.isoformat() + 'Z' if log.timestamp else None
+
     return FlowExecutionLog(
         id=log.id,
-        timestamp=log.timestamp,
+        timestamp=timestamp_str,
         element_id=log.flow_id_str,
         status=log.status or "unknown",
         duration_seconds=log.duration_seconds,
@@ -245,7 +252,7 @@ def get_debug_counts(
                     "flow_id_str": h.flow_id_str,
                     "log_key": h.log_key,
                     "status": h.status,
-                    "timestamp": h.timestamp.isoformat() if h.timestamp else None,
+                    "timestamp": h.timestamp.isoformat() + 'Z' if h.timestamp else None,
                     "anno": h.anno,
                     "settimana": h.settimana
                 } for h in sample_history
@@ -256,7 +263,7 @@ def get_debug_counts(
                     "log_key": d.log_key,
                     "element_id": d.element_id,
                     "result": d.result,
-                    "timestamp": d.timestamp.isoformat() if d.timestamp else None,
+                    "timestamp": d.timestamp.isoformat() + 'Z' if d.timestamp else None,
                     "anno": d.anno,
                     "settimana": d.settimana
                 } for d in sample_details

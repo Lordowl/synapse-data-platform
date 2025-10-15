@@ -135,12 +135,10 @@ def execute_selected_flows(
         logger.error(f"File .ps1 non trovato: {script_path}")
         raise HTTPException(500, "File di esecuzione .ps1 non trovato.")
 
-    # Recupero INI e template log
+    # Recupero INI e template log usando la banca dell'utente loggato
     ini_contents = config_manager.get_ini_contents()
-    selected_bank = request.params.get("selectedBank") if isinstance(request.params, dict) else None
-    if not selected_bank:
-        selected_bank = next(iter(ini_contents), None)
-    filelog_template = ini_contents.get(selected_bank, {}).get("data", {}).get("DEFAULT", {}).get("filelog")
+    # Usa la banca dell'utente loggato invece di selectedBank dai params
+    filelog_template = ini_contents.get(current_user.bank, {}).get("data", {}).get("DEFAULT", {}).get("filelog")
 
     def extract_folder_from_template(template: str) -> str | None:
         if not template:
@@ -150,6 +148,7 @@ def execute_selected_flows(
 
     folder_name = extract_folder_from_template(filelog_template)
     log_folder = Path(folder_path) / "App" / "Ingestion" / (folder_name or "log")
+    logger.info(f"Cartella log determinata per banca '{current_user.bank}': {log_folder}")
     if not log_folder.exists():
         log_folder.mkdir(parents=True, exist_ok=True)
         logger.warning(f"Cartella log creata: {log_folder}")
@@ -168,15 +167,16 @@ def execute_selected_flows(
     metadata_file_path = request.params.get("metadataFilePath")
 
     if not metadata_file_path:
-        # Fallback: prendi il path dal file INI
-        selected_bank = request.params.get("selectedBank") if isinstance(request.params, dict) else None
-        if not selected_bank:
-            selected_bank = next(iter(ini_contents), None)
-        metadata_file_path = ini_contents.get(selected_bank, {}).get("data", {}).get("DEFAULT", {}).get("filemetadati", "")
+        # Fallback: prendi il path dal file INI usando la banca dell'utente loggato
+        metadata_file_path = ini_contents.get(current_user.bank, {}).get("data", {}).get("DEFAULT", {}).get("filemetadati", "")
 
-    # Recupera il path del file ini in base alla banca selezionata
-    config_path = Path(folder_path) / "CONFIG" / f"{selected_bank}.ini"
+    bank_record = db.query(models.Bank).filter(models.Bank.label == current_user.bank).first()
 
+    if not bank_record or not bank_record.ini_path:
+        logger.error(f"Nessun file di configurazione trovato per la banca: {current_user.bank}")
+        raise HTTPException(500, f"File di configurazione non trovato per la banca {current_user.bank}")
+    config_path = Path(folder_path) / "App" /"Ingestion"/ bank_record.ini_path
+    logger.info(f"Config file determinato dal DB: {config_path}")
     logger.info(f"Flow IDs string: {flow_ids_str}, Log key: {log_key}, Anno: {anno_int}, Settimana: {settimana_int}, Metadata file: {metadata_file_path}, Config file: {config_path}")
 
     command_args = [
@@ -248,11 +248,13 @@ def execute_selected_flows(
         log_files = list(log_folder.glob(f"*_{log_key}.log"))
         if log_files:
             log_file_path = log_files[0]
+            logger.info(f"File di log trovato con log_key: {log_file_path}")
         else:
             all_logs = list(log_folder.glob("*.log"))
             if not all_logs:
                 raise HTTPException(500, f"Nessun file .log trovato in {log_folder}")
             log_file_path = max(all_logs, key=os.path.getctime)
+            logger.warning(f"Log con log_key non trovato, usando file più recente: {log_file_path}")
         # Lettura log
         for enc in ["cp1252", "utf-8", "latin-1"]:
             try:
@@ -280,7 +282,8 @@ def execute_selected_flows(
         current_id = None
         buffer = []
         start_patterns = ["Inizio processo elemento con ID"]
-        id_regex = re.compile(r"ID\s+(\d+)")
+        # Regex più flessibile: cattura ID con lettere, numeri, slash, underscore, trattini
+        id_regex = re.compile(r"ID\s+([\w/\-]+)")
         for line in all_lines:
             line_clean = line.strip()
             for pattern in start_patterns:
@@ -288,15 +291,18 @@ def execute_selected_flows(
                     match = id_regex.search(line_clean)
                     if match:
                         if current_id is not None:
+                            logger.info(f"Salvando dettagli per elemento: {current_id}")
                             elem_status = save_element_detail(current_id, buffer, script_failed=(result.returncode != 0))
                             elements_results.append(elem_status)
                         buffer = []
                         current_id = match.group(1).strip()
+                        logger.info(f"Nuovo elemento trovato nel log: ID={current_id}, riga='{line_clean[:100]}'")
                     break
             else:
                 if current_id is not None:
                     buffer.append(line)
         if current_id:
+            logger.info(f"Salvando dettagli per ultimo elemento: {current_id}")
             elem_status = save_element_detail(current_id, buffer, script_failed=(result.returncode != 0))
             elements_results.append(elem_status)
 
