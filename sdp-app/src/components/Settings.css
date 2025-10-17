@@ -257,8 +257,8 @@
     display: flex;
     flex-direction: row;
     align-items: center;
-    justify-content: space-between;
-    padding: var(--space-6);
+    gap: var(--space-3);
+    padding: var(--space-4);
     border-radius: var(--rounded-xl);
     background: var(--primary-bg);
     box-shadow: var(--shadow-distance) var(--shadow-distance)
@@ -267,13 +267,20 @@
       calc(var(--shadow-distance) * -1) calc(var(--shadow-distance) * -1)
         calc(var(--shadow-distance) * var(--shadow-blur-multiplier))
         var(--neomorphic-light);
-    gap: var(--space-4);
   }
   .settings-header-title-group {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
-    flex-grow: 1;
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+  .settings-header .tab-nav-container {
+    flex: 1;
+    display: flex;
+    justify-content: flex-start;
+    padding: 0;
+    margin: 0 0 0 var(--space-4);
+    min-width: 0;
   }
   .settings-header-icon-bg {
     padding: var(--space-2);
@@ -301,6 +308,12 @@
     margin: 0;
     text-align: left;
   }
+  .settings-header-subtitle {
+    font-size: var(--text-xs);
+    color: var(--text-color-muted);
+    margin: 0;
+    margin-top: 2px;
+  }
   .settings-header-actions-group {
     display: flex;
     flex-direction: row;
@@ -312,30 +325,16 @@
   }
 
   /* --- NAVIGAZIONE TAB --- */
-  .tab-nav-container {
-    margin-bottom: var(--space-6);
-    padding: 0 var(--space-6);
-    flex-shrink: 0;
-  }
 .tab-nav-grid {
-  display: grid;
-  /* Per 4 tab (quando l'utente è admin) - larghezza fissa per ogni tab */
-  grid-template-columns: repeat(4, 280px);
-  gap: var(--space-4);
-  transition: all 0.3s ease-in-out;
-  justify-content: center; /* Centra le tab se c'è spazio extra */
-}
-
-/* Per 3 tab (quando l'utente non è admin) */
-.tab-nav-grid.three-tabs {
-  grid-template-columns: repeat(3, 280px);
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: nowrap;
 }
   .tab-button {
-    padding: var(--space-3) var(--space-4);
+    padding: var(--space-2) var(--space-3);
     border-radius: var(--rounded-base);
     background: var(--primary-bg);
     border: none;
-    text-align: left;
     box-shadow: calc(var(--shadow-distance) / 1.5)
         calc(var(--shadow-distance) / 1.5)
         calc(var(--shadow-distance) * var(--shadow-blur-multiplier) / 1.5)
@@ -347,6 +346,7 @@
     cursor: pointer;
     color: var(--text-color-muted);
     outline: none;
+    white-space: nowrap;
   }
   .tab-button:hover {
     color: var(--accent-color);
@@ -375,12 +375,11 @@
   .tab-button-header {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
-    margin-bottom: var(--space-1);
+    gap: var(--space-2);
   }
   .tab-button-icon {
-    width: 1rem;
-    height: 1rem;
+    width: 0.9rem;
+    height: 0.9rem;
     color: currentColor;
   }
   .tab-button-label {
@@ -388,15 +387,6 @@
     font-weight: 600;
     color: currentColor;
     user-select: none;
-  }
-  .tab-button-description {
-    font-size: var(--text-xs);
-    color: currentColor;
-    opacity: 0.8;
-    user-select: none;
-  }
-  .tab-button.active .tab-button-description {
-    opacity: 1;
   }
 
   /* --- CONTENUTO TAB (Scroll e Layout Base) --- */
@@ -640,13 +630,13 @@
   }
   .permissions-access-to-cell {
     display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    align-items: center;
+    flex-direction: column;
+    gap: var(--space-2);
+    align-items: flex-start;
+    padding: 0;
   }
   .checkbox-label {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: var(--space-2);
     font-size: var(--text-sm);
@@ -654,6 +644,7 @@
     font-weight: normal;
     cursor: pointer;
     user-select: none;
+    white-space: nowrap;
   }
   .permissions-table-wrapper {
     overflow-x: auto;
@@ -682,6 +673,7 @@
     text-align: left;
     font-size: var(--text-sm);
     border-bottom: 1px solid var(--neomorphic-dark);
+    vertical-align: top;
   }
   .permissions-table th {
     font-weight: 600;
@@ -697,6 +689,10 @@
   }
   .permissions-table tr:hover td {
     background-color: #e8edf2;
+  }
+  .permissions-table td .form-input,
+  .permissions-table td .form-select {
+    margin: 0;
   }
   .permissions-footer-count {
     font-size: var(--text-sm);
@@ -941,7 +937,7 @@
     align-items: center;
     z-index: 1000;
   }
-  
+
   .modal-content {
     background-color: white;
     padding: 25px;
@@ -950,34 +946,44 @@
     max-width: 500px;
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
   }
-  
+
   .modal-content h2 {
     margin-top: 0;
     margin-bottom: 20px;
   }
-  
+
   .form-group {
     margin-bottom: 15px;
   }
-  
+
   .form-group label {
     display: block;
     margin-bottom: 5px;
     font-weight: bold;
   }
-  
-  .form-group input, .form-group select {
+
+  .form-group input:not([type="checkbox"]), .form-group select {
     width: 100%;
     padding: 8px;
     border: 1px solid #ccc;
     border-radius: 4px;
   }
-  
+
   .modal-actions {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
     margin-top: 20px;
+  }
+
+  .permissions-checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin-top: var(--space-2);
+    padding: var(--space-3);
+    background-color: var(--primary-bg);
+    border-radius: var(--rounded-base);
   }
 
   .password-input-group {
@@ -1151,4 +1157,18 @@
   color: #ced4da;
   cursor: not-allowed;
   background-color: transparent;
+}
+/* --- Form spacing adjustments --- */
+input[type="checkbox"],
+input[type="radio"] {
+  margin-right: 8px;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+label:has(input[type="checkbox"]),
+label:has(input[type="radio"]) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

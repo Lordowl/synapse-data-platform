@@ -283,7 +283,7 @@ function PermissionsTabContent({
       <div className="permissions-controls-bar">
         <input
           type="text"
-          placeholder="Cerca utente per email..."
+          placeholder="Cerca utente per username..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="form-input"
@@ -598,7 +598,7 @@ function CreateUserModal({
 
           <div className="form-group">
             <label>Permessi Accesso Moduli</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+            <div className="permissions-checkbox-group">
               {ALL_ACCESS_MODULES.map((module) => (
                 <label key={module.id} className="checkbox-label">
                   <input
@@ -837,7 +837,7 @@ function Settings() {
           if (permissionsResult.status === "fulfilled") {
             setPermissions(permissionsResult.value.data.map((dbUser) => ({
               id: dbUser.id,
-              user: dbUser.email || dbUser.username,
+              user: dbUser.username || dbUser.email,
               role: dbUser.role,
               accessTo: dbUser.permissions || [],
             })));
@@ -943,7 +943,7 @@ function Settings() {
 
       setPermissions((prev) => [{
         id: createdUser.id,
-        user: createdUser.email || createdUser.username,
+        user: createdUser.username || createdUser.email,
         role: createdUser.role,
         accessTo: createdUser.permissions || [],
       }, ...prev]);
@@ -1193,9 +1193,33 @@ function Settings() {
                 <p className="settings-header-subtitle">Banca: {sessionStorage.getItem("selectedBank") || "N/A"}</p>
               </div>
             </div>
+
+            {TABS.length > 0 && (
+              <nav className="tab-nav-container">
+                <div className={`tab-nav-grid ${TABS.length === 3 ? "three-tabs" : ""}`}>
+                  {TABS.map((tab) => {
+                    const Icon = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`tab-button ${activeTab === tab.id ? "active" : ""}`}
+                        disabled={isAnyLoadingInProgress && activeTab !== tab.id}
+                      >
+                        <div className="tab-button-header">
+                          <Icon className="tab-button-icon" />
+                          <span className="tab-button-label">{tab.label}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </nav>
+            )}
+
             <button
               onClick={() => navigate("/home")}
-              className="btn btn-outline"
+              className="btn btn-outline settings-header-back-button"
               disabled={isAnyLoadingInProgress}
             >
               ← Indietro
@@ -1208,30 +1232,7 @@ function Settings() {
             <p className="error-message">Non hai i permessi necessari per accedere alle impostazioni.</p>
           </div>
         ) : (
-          <>
-            <nav className="tab-nav-container">
-              <div className={`tab-nav-grid ${TABS.length === 3 ? "three-tabs" : ""}`}>
-                {TABS.map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`tab-button ${activeTab === tab.id ? "active" : ""}`}
-                      disabled={isAnyLoadingInProgress && activeTab !== tab.id}
-                    >
-                      <div className="tab-button-header">
-                        <Icon className="tab-button-icon" />
-                        <span className="tab-button-label">{tab.label}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </nav>
-
-            <main className="tab-content-main">{renderActiveTabContent()}</main>
-          </>
+          <main className="tab-content-main">{renderActiveTabContent()}</main>
         )}
       </div>
 

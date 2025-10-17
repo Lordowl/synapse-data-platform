@@ -55,7 +55,7 @@ CORS_ORIGINS=["*"]
 
 setup(
     name='sdp-api',
-    version='0.2.8',
+    version='0.2.9',
     packages=find_packages(),
     py_modules=['main'],  # Includi i moduli necessari
     include_package_data=True,

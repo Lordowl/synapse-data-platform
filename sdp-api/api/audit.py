@@ -16,8 +16,10 @@ def read_audit_logs(
     db: Session = Depends(get_db),
     admin_user: models.User = Security(get_current_active_admin)
 ):
-    """Recupera il registro delle attività. Accessibile solo agli admin."""
-    logs = db.query(models.AuditLog).order_by(models.AuditLog.timestamp.desc()).offset(skip).limit(limit).all()
+    """Recupera il registro delle attività filtrato per banca. Accessibile solo agli admin."""
+    logs = db.query(models.AuditLog).filter(
+        models.AuditLog.bank == admin_user.bank
+    ).order_by(models.AuditLog.timestamp.desc()).offset(skip).limit(limit).all()
     
     results = []
     for log in logs:

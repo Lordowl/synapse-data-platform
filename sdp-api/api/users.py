@@ -21,14 +21,17 @@ def create_new_user(
     """
     Crea un nuovo utente. Se la password non è fornita, ne genera una casuale.
     Endpoint accessibile solo agli admin.
+    Username ed email devono essere unici solo all'interno della stessa banca.
     """
-    db_user_by_username = crud.get_user_by_username(db, username=user.username)
+    # Verifica unicità username solo nella stessa banca
+    db_user_by_username = crud.get_user_by_username(db, username=user.username, bank=user.bank)
     if db_user_by_username:
-        raise HTTPException(status_code=400, detail="Username already registered")
+        raise HTTPException(status_code=400, detail=f"Username already registered in bank {user.bank}")
 
-    db_user_by_email = crud.get_user_by_email(db, email=user.email)
+    # Verifica unicità email solo nella stessa banca
+    db_user_by_email = crud.get_user_by_email(db, email=user.email, bank=user.bank)
     if db_user_by_email:
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(status_code=400, detail=f"Email already registered in bank {user.bank}")
 
     created_user = crud.create_user(db=db, user=user, bank=user.bank)
 
@@ -76,8 +79,8 @@ def read_all_users(
     skip: int = 0, limit: int = 100, db: Session = Depends(get_db),
     admin_user: models.User = Security(get_current_active_admin)
 ):
-    """Restituisce una lista di tutti gli utenti nel database."""
-    users = crud.get_users(db, skip=skip, limit=limit)
+    """Restituisce una lista degli utenti della stessa banca dell'admin loggato."""
+    users = crud.get_users(db, bank=admin_user.bank, skip=skip, limit=limit)
     return users
 
 @router.put("/{user_id}", response_model=schemas.UserInDB)
@@ -91,6 +94,10 @@ def update_user_data(
     old_user = crud.get_user(db, user_id)
     if not old_user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Verifica che l'admin possa modificare solo utenti della sua banca
+    if old_user.bank != admin_user.bank:
+        raise HTTPException(status_code=403, detail="Cannot modify users from other banks")
     
     old_role = old_user.role
     old_permissions = old_user.permissions
@@ -128,6 +135,10 @@ def change_user_password(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Verifica che l'admin possa modificare solo utenti della sua banca
+    if user.bank != admin_user.bank:
+        raise HTTPException(status_code=403, detail="Cannot modify users from other banks")
+
     from core.security import get_password_hash
     user.hashed_password = get_password_hash(password_data.new_password)
     db.commit()
@@ -160,6 +171,10 @@ def remove_user_data(
     user_to_delete = crud.get_user(db, user_id=user_id)
     if not user_to_delete:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Verifica che l'admin possa eliminare solo utenti della sua banca
+    if user_to_delete.bank != admin_user.bank:
+        raise HTTPException(status_code=403, detail="Cannot delete users from other banks")
 
     deleted_user_username = user_to_delete.username # Salva il nome prima di cancellare
     crud.delete_user(db, user_id=user_id)
