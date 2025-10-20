@@ -97,8 +97,8 @@ class ReportisticaUpdate(BaseModel):
 
 class ReportisticaInDB(ReportisticaBase):
     id: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

@@ -40,20 +40,30 @@ def get_reportistica_items(
     """
     Recupera tutti gli elementi di reportistica con filtri opzionali.
     """
-    if banca or anno or settimana or package:
-        # Usa filtri se specificati
-        items = crud.get_reportistica_by_filters(
-            db=db,
-            banca=banca,
-            anno=anno,
-            settimana=settimana,
-            package=package
-        )
-    else:
-        # Recupera tutti gli elementi
-        items = crud.get_reportistica_items(db=db, skip=skip, limit=limit)
+    try:
+        print(f"[DEBUG] get_reportistica_items called by user: {current_user.username}, bank: {current_user.bank}")
+        print(f"[DEBUG] Filters - banca: {banca}, anno: {anno}, settimana: {settimana}, package: {package}")
 
-    return items
+        if banca or anno or settimana or package:
+            # Usa filtri se specificati
+            items = crud.get_reportistica_by_filters(
+                db=db,
+                banca=banca,
+                anno=anno,
+                settimana=settimana,
+                package=package
+            )
+        else:
+            # Recupera tutti gli elementi
+            items = crud.get_reportistica_items(db=db, skip=skip, limit=limit)
+
+        print(f"[DEBUG] Found {len(items)} items")
+        return items
+    except Exception as e:
+        print(f"[ERROR] get_reportistica_items failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Errore nel recupero dati reportistica: {str(e)}")
 
 @router.get("/publication-logs/latest")
 def get_latest_publication_logs(

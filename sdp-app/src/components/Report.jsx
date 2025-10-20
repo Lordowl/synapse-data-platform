@@ -117,11 +117,9 @@ function Report() {
   const periodicityConfig = PERIODICITY_CONFIG[currentPeriodicity] || PERIODICITY_CONFIG.settimanale;
 
   const [filters, setFilters] = useState(() => {
-    // Imposta automaticamente la banca selezionata dal sessionStorage
-    const selectedBank = sessionStorage.getItem("selectedBank");
     return {
-      banca: selectedBank || "Tutti",
       package: "Tutti",
+      disponibilita_server: "Tutti", // Nuovo filtro per disponibilità server
       // Filtri dinamici basati sulla periodicità (solo mese per report mensili)
       ...periodicityConfig.defaultFilters,
       periodicity: currentPeriodicity // Mantieni per retrocompatibilità
@@ -133,9 +131,13 @@ function Report() {
   const [loading, setLoading] = useState(true);
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
   const [repoUpdateInfo, setRepoUpdateInfo] = useState({ anno: 2025, settimana: 29, semaforo: 0 });
+
+  // Stato per tracciare le azioni in corso (es. "pubblica-pre-check", "pubblica-report")
+  // Quando global !== null, tutti i controlli vengono disabilitati per prevenire azioni concorrenti
   const [loadingActions, setLoadingActions] = useState({
-    global: null,
+    global: null, // null = nessuna azione in corso, altrimenti contiene il nome dell'azione
   });
+
   const [toast, setToast] = useState({ message: '', type: 'info', visible: false });
 
   // Toast functions
@@ -163,17 +165,6 @@ function Report() {
   }, [toast.visible]);
 
   // Estrai valori univoci per i dropdown dai dati
-  const uniqueBanks = useMemo(() => {
-    const banks = [...new Set(reportTasks.map(task => task.banca).filter(Boolean))];
-
-    // Aggiungi "Tutti" all'inizio se ci sono banche
-    if (banks.length > 0) {
-      return ["Tutti", ...banks];
-    }
-
-    return ["Tutti"];
-  }, [reportTasks]);
-
   const uniquePackages = useMemo(() => {
     const packages = [...new Set(reportTasks.map(task => task.package).filter(Boolean))];
     return ["Tutti", ...packages];
@@ -202,7 +193,7 @@ function Report() {
     }
   }, []);
 
-  // Funzione per caricare i package pronti dalla tabella report_data
+  // Funzione per caricare i data dalla tabella report_data
   const fetchPackagesReady = useCallback(async () => {
     try {
       // Carica i package disponibili
@@ -348,13 +339,18 @@ function Report() {
         (currentPeriodicity === 'settimanale' && isWeeklyTask) ||
         (currentPeriodicity === 'mensile' && isMonthlyTask);
 
-      // Filtro per banca - sempre true per ora (disabilitato)
-      const matchesBanca = true;
-
       // Filtro per package
       const matchesPackage = !filters.package || filters.package === "Tutti" || task.package === filters.package;
 
-      return matchesPeriodicity && matchesBanca && matchesPackage;
+      // Filtro per disponibilità server
+      const matchesDisponibilita =
+        !filters.disponibilita_server ||
+        filters.disponibilita_server === "Tutti" ||
+        (filters.disponibilita_server === "Disponibile" && task.disponibilita_server === true) ||
+        (filters.disponibilita_server === "Non disponibile" && task.disponibilita_server === false) ||
+        (filters.disponibilita_server === "N/D" && task.disponibilita_server === null);
+
+      return matchesPeriodicity && matchesPackage && matchesDisponibilita;
     });
 
     console.log('Filtered tasks:', filtered);
@@ -410,6 +406,8 @@ function Report() {
       return;
     }
 
+    // INIZIO AZIONE: imposta loadingActions.global al nome dell'azione
+    // Questo disabilita tutti i controlli dell'interfaccia tramite disabled={loadingActions.global !== null}
     setLoadingActions(prev => ({ ...prev, global: actionName }));
 
     try {
@@ -440,7 +438,7 @@ function Report() {
         // Simula chiamata API
         await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // Setta prod = true per tutti i package pronti
+        // Setta prod = true per tutti i data
         setPackagesReady(prev => prev.map(pkg => ({
           ...pkg,
           prod: true,
@@ -451,7 +449,7 @@ function Report() {
 
         // Dopo 2 secondi, resetta tutto e avanza alla settimana successiva
         setTimeout(() => {
-          // Reset pre_check e prod per i package pronti
+          // Reset pre_check e prod per i data
           setPackagesReady(prev => prev.map(pkg => ({
             ...pkg,
             pre_check: false,
@@ -491,6 +489,8 @@ function Report() {
       console.error('Errore nell\'azione:', error);
       showToast(`Errore nell'esecuzione di '${actionName}'.`, "error");
     } finally {
+      // FINE AZIONE: resetta loadingActions.global a null
+      // Questo riabilita tutti i controlli dell'interfaccia
       setLoadingActions(prev => ({ ...prev, global: null }));
     }
   };
@@ -576,6 +576,7 @@ function Report() {
                 navigate("/home", { replace: true });
               }}
               className="btn btn-outline report-header-back-button"
+              // Disabilitato quando c'è un'azione in corso (loadingActions.global !== null)
               disabled={loadingActions.global !== null}
             >
               ← Indietro
@@ -605,36 +606,56 @@ function Report() {
 
 
         <section className="report-filters-section">
-          <div className="filter-row">
-            <div className="filter-group">
-              <label htmlFor="banca-filter" className="form-label">Banca</label>
-              <select
-                id="banca-filter"
-                className="form-select"
-                value={filters.banca}
-                onChange={e => handleFilterChange('banca', e.target.value)}
-                disabled={loadingActions.global !== null}
-              >
-                {uniqueBanks.map(bank => (
-                  <option key={bank} value={bank}>{bank}</option>
-                ))}
-              </select>
-            </div>
+          <div className="ingest-filters-bar">
+            <select
+              id="settimana-select"
+              className="form-select form-select-sm"
+              value={repoUpdateInfo.settimana || ''}
+              onChange={(e) => setRepoUpdateInfo(prev => ({...prev, settimana: parseInt(e.target.value)}))}
+              disabled={loadingActions.global !== null}
+            >
+              {Array.from({length: 52}, (_, i) => (
+                <option key={i + 1} value={i + 1}>Settimana {i + 1}</option>
+              ))}
+            </select>
 
-            <div className="filter-group">
-              <label htmlFor="package-filter" className="form-label">Package</label>
-              <select
-                id="package-filter"
-                className="form-select"
-                value={filters.package}
-                onChange={e => handleFilterChange('package', e.target.value)}
-                disabled={loadingActions.global !== null}
-              >
-                {uniquePackages.map(pkg => (
-                  <option key={pkg} value={pkg}>{pkg}</option>
-                ))}
-              </select>
-            </div>
+            <select
+              id="anno-select"
+              className="form-select form-select-sm"
+              value={repoUpdateInfo.anno || ''}
+              onChange={(e) => setRepoUpdateInfo(prev => ({...prev, anno: parseInt(e.target.value)}))}
+              disabled={loadingActions.global !== null}
+            >
+              <option value="2024">2024</option>
+              <option value="2025">2025</option>
+              <option value="2026">2026</option>
+            </select>
+
+            <select
+              id="package-filter"
+              className="form-select"
+              value={filters.package}
+              onChange={e => handleFilterChange('package', e.target.value)}
+              disabled={loadingActions.global !== null}
+            >
+              <option value="Tutti">Tutti i Package</option>
+              {uniquePackages.filter(pkg => pkg !== "Tutti").map(pkg => (
+                <option key={pkg} value={pkg}>{pkg}</option>
+              ))}
+            </select>
+
+            <select
+              id="disponibilita-filter"
+              className="form-select"
+              value={filters.disponibilita_server}
+              onChange={e => handleFilterChange('disponibilita_server', e.target.value)}
+              disabled={loadingActions.global !== null}
+            >
+              <option value="Tutti">Tutte le Disponibilità</option>
+              <option value="Disponibile">Disponibile</option>
+              <option value="Non disponibile">Non disponibile</option>
+              <option value="N/D">N/D</option>
+            </select>
 
             <div className="filter-group overall-status-group">
               <label className="form-label">Status Complessivo</label>
@@ -654,36 +675,6 @@ function Report() {
               </div>
             </div>
           </div>
-
-          {/* Dati di Controllo spostati qui sotto i filtri */}
-          <div className="filter-row" style={{ marginTop: '1rem' }}>
-            <div className="filter-group">
-              <label htmlFor="anno-select" className="form-label">Anno</label>
-              <select
-                id="anno-select"
-                value={repoUpdateInfo.anno || ''}
-                onChange={(e) => setRepoUpdateInfo(prev => ({...prev, anno: parseInt(e.target.value)}))}
-                className="form-select"
-              >
-                <option value="2024">2024</option>
-                <option value="2025">2025</option>
-                <option value="2026">2026</option>
-              </select>
-            </div>
-            <div className="filter-group">
-              <label htmlFor="settimana-select" className="form-label">Settimana</label>
-              <select
-                id="settimana-select"
-                value={repoUpdateInfo.settimana || ''}
-                onChange={(e) => setRepoUpdateInfo(prev => ({...prev, settimana: parseInt(e.target.value)}))}
-                className="form-select"
-              >
-                {Array.from({length: 52}, (_, i) => (
-                  <option key={i + 1} value={i + 1}>{i + 1}</option>
-                ))}
-              </select>
-            </div>
-          </div>
         </section>
 
         <section className="report-tasks-section">
@@ -694,7 +685,6 @@ function Report() {
                   <th>Finalità</th>
                   <th>Package</th>
                   <th>Nome File</th>
-                  <th>Banca</th>
                   <th>Anno</th>
                   <th>Settimana</th>
                   <th>Data Modifica</th>
@@ -705,14 +695,14 @@ function Report() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="9" style={{ textAlign: 'center', padding: '2rem' }}>
+                    <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>
                       <RefreshCw className="spin" size={20} />
                       <span style={{ marginLeft: '0.5rem' }}>Caricamento dati reportistica...</span>
                     </td>
                   </tr>
                 ) : filteredReportTasks.length === 0 ? (
                   <tr>
-                    <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
+                    <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
                       Nessuna attività di reportistica {currentPeriodicity} trovata per i filtri selezionati.
                     </td>
                   </tr>
@@ -722,7 +712,6 @@ function Report() {
                       <td>{task.finalita || 'N/D'}</td>
                       <td><strong>{task.package || 'N/D'}</strong></td>
                       <td>{task.nome_file || 'N/D'}</td>
-                      <td>{task.banca || 'N/D'}</td>
                       <td>{task.anno || 'N/D'}</td>
                       <td>{task.settimana || 'N/D'}</td>
                       <td>{formatDateTime(task.data_esecuzione)}</td>
@@ -764,9 +753,9 @@ function Report() {
           </div>
         </section>
 
-        {/* Seconda tabella - Package pronti per la pubblicazione */}
+        {/* Seconda tabella - data per la pubblicazione */}
         <section className="report-tasks-section" style={{ marginTop: '2rem' }}>
-          <h3 style={{ marginBottom: '1rem' }}>✅ Package Pronti per la Pubblicazione</h3>
+          <h3 style={{ marginBottom: '1rem' }}> Package per la Pubblicazione</h3>
 
           <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
             {/* Tabella compatta */}

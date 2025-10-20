@@ -143,7 +143,7 @@ def create_default_admin_if_not_exists():
 app = FastAPI(
     title="Cruscotto Operativo API",
     description="API per il Cruscotto Operativo.",
-    version="0.2.9",
+    version="0.2.10",
 )
 
 
@@ -373,6 +373,59 @@ def test_packages():
         return {
             "count": len(results),
             "packages": [{"package": r[0], "bank": r[1]} for r in results if r[0]]
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+@app.get("/debug-reportistica-table", tags=["Debug"])
+def debug_reportistica_table():
+    """Endpoint di debug PUBBLICO per verificare se la tabella reportistica esiste"""
+    from db import SessionLocal
+    from db import models
+    import sqlalchemy
+    db = SessionLocal()
+    try:
+        inspector = sqlalchemy.inspect(engine)
+        tables = inspector.get_table_names()
+
+        # Verifica se la tabella esiste
+        table_exists = "reportistica" in tables
+
+        # Conta elementi se esiste
+        count = 0
+        sample_data = []
+        if table_exists:
+            try:
+                count = db.query(models.Reportistica).count()
+                sample_data = db.query(models.Reportistica).limit(5).all()
+                sample_data = [
+                    {
+                        "id": item.id,
+                        "banca": item.banca,
+                        "package": item.package,
+                        "nome_file": item.nome_file,
+                        "anno": item.anno,
+                        "settimana": item.settimana,
+                        "disponibilita_server": item.disponibilita_server
+                    }
+                    for item in sample_data
+                ]
+            except Exception as e:
+                return {
+                    "table_exists": table_exists,
+                    "error_reading_data": str(e),
+                    "all_tables": tables
+                }
+
+        return {
+            "table_exists": table_exists,
+            "count": count,
+            "sample_data": sample_data,
+            "all_tables": tables
         }
     except Exception as e:
         import traceback

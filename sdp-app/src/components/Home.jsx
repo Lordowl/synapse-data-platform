@@ -126,12 +126,12 @@ function Home({ setIsAuthenticated }) {
 
           {/* Mostra il pulsante Reportistica solo se l'utente ha il permesso 'reportistica' */}
           {user?.permissions?.includes('reportistica') && (
-            //  <Link to="/report" className="nav-link">
+            <Link to="/report" className="nav-link">
               <button className="btn btn-primary">
                 <BarChart3 size={20} />
                 <span>Reportistica WIP</span>
               </button>
-            //* </Link> 
+             </Link> 
           )}
         </div>
 
@@ -151,7 +151,7 @@ function Home({ setIsAuthenticated }) {
       </div>
 
       <div className="version-footer">
-        <small style={{color: '#666', fontSize: '12px'}}>Versione 0.2.9 </small>
+        <small style={{color: '#666', fontSize: '12px'}}>Versione 0.2.10 </small>
       </div>
     </div>
   );
