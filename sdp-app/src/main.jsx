@@ -5,7 +5,7 @@ import { AppProvider } from './context/AppContext';
 import App from "./App";
 
 // Disabilita il menu contestuale (tasto destro) per prevenire inspect
-document.addEventListener('contextmenu', (e) => {
+/* document.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   return false;
 });
@@ -33,7 +33,7 @@ document.addEventListener('keydown', (e) => {
     return false;
   }
 });
-
+ */
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <AppProvider>

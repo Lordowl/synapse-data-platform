@@ -159,13 +159,34 @@ def get_reportistica_by_id(db: Session, reportistica_id: int):
     """Recupera un elemento di reportistica per ID."""
     return db.query(models.Reportistica).filter(models.Reportistica.id == reportistica_id).first()
 
-def get_reportistica_by_nome_file(db: Session, nome_file: str):
-    """Recupera un elemento di reportistica per nome file."""
-    return db.query(models.Reportistica).filter(models.Reportistica.nome_file == nome_file).first()
+def get_reportistica_by_nome_file(db: Session, nome_file: str, banca: str):
+    """Recupera un elemento di reportistica per nome file e banca.
 
-def create_reportistica(db: Session, reportistica: schemas.ReportisticaCreate):
-    """Crea un nuovo elemento di reportistica."""
-    db_reportistica = models.Reportistica(**reportistica.model_dump())
+    Note:
+        - La coppia (nome_file, banca) è unica nel database
+        - Banca è obbligatoria
+        - Confronto case-insensitive per banca
+    """
+    from sqlalchemy import func
+
+    return db.query(models.Reportistica).filter(
+        models.Reportistica.nome_file == nome_file,
+        func.lower(models.Reportistica.banca) == func.lower(banca)
+    ).first()
+
+def create_reportistica(db: Session, reportistica: schemas.ReportisticaCreate, banca: str):
+    """Crea un nuovo elemento di reportistica.
+
+    Args:
+        db: Database session
+        reportistica: Dati del report (senza banca)
+        banca: Banca dell'utente loggato (automatico da current_user.bank)
+    """
+    # Aggiungi la banca ai dati
+    db_reportistica = models.Reportistica(
+        **reportistica.model_dump(),
+        banca=banca  # ✅ Banca presa dall'utente loggato
+    )
     db.add(db_reportistica)
     db.commit()
     db.refresh(db_reportistica)
@@ -197,10 +218,13 @@ def delete_reportistica(db: Session, reportistica_id: int):
 
 def get_reportistica_by_filters(db: Session, banca: str = None, anno: int = None, settimana: int = None, package: str = None):
     """Recupera elementi di reportistica con filtri."""
+    from sqlalchemy import func
+
     query = db.query(models.Reportistica)
 
     if banca:
-        query = query.filter(models.Reportistica.banca == banca)
+        # Case-insensitive comparison per gestire discrepanze tra maiuscole/minuscole
+        query = query.filter(func.lower(models.Reportistica.banca) == func.lower(banca))
     if anno:
         query = query.filter(models.Reportistica.anno == anno)
     if settimana:

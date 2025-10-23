@@ -10,8 +10,12 @@ import subprocess
 import sys
 import os
 import traceback
+import logging
 from pydantic import BaseModel
 from datetime import datetime
+
+# Configura logger per questo modulo
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -30,7 +34,6 @@ class PackageReady(BaseModel):
 def get_reportistica_items(
     skip: int = 0,
     limit: int = 100,
-    banca: Optional[str] = Query(None, description="Filtra per banca"),
     anno: Optional[int] = Query(None, description="Filtra per anno"),
     settimana: Optional[int] = Query(None, description="Filtra per settimana"),
     package: Optional[str] = Query(None, description="Filtra per package"),
@@ -38,31 +41,29 @@ def get_reportistica_items(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Recupera tutti gli elementi di reportistica con filtri opzionali.
+    Recupera tutti gli elementi di reportistica della banca dell'utente loggato.
+
+    Note:
+        - Filtra automaticamente per current_user.bank
+        - Altri filtri opzionali: anno, settimana, package
     """
     try:
-        print(f"[DEBUG] get_reportistica_items called by user: {current_user.username}, bank: {current_user.bank}")
-        print(f"[DEBUG] Filters - banca: {banca}, anno: {anno}, settimana: {settimana}, package: {package}")
+        logger.info(f"get_reportistica_items called by user: {current_user.username}, bank: {current_user.bank}")
+        logger.debug(f"Filters - anno: {anno}, settimana: {settimana}, package: {package}")
 
-        if banca or anno or settimana or package:
-            # Usa filtri se specificati
-            items = crud.get_reportistica_by_filters(
-                db=db,
-                banca=banca,
-                anno=anno,
-                settimana=settimana,
-                package=package
-            )
-        else:
-            # Recupera tutti gli elementi
-            items = crud.get_reportistica_items(db=db, skip=skip, limit=limit)
+        # ✅ Filtra SEMPRE per la banca dell'utente loggato
+        items = crud.get_reportistica_by_filters(
+            db=db,
+            banca=current_user.bank,  # ✅ Automatico
+            anno=anno,
+            settimana=settimana,
+            package=package
+        )
 
-        print(f"[DEBUG] Found {len(items)} items")
+        logger.debug(f"Found {len(items)} items for bank {current_user.bank}")
         return items
     except Exception as e:
-        print(f"[ERROR] get_reportistica_items failed: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"get_reportistica_items failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Errore nel recupero dati reportistica: {str(e)}")
 
 @router.get("/publication-logs/latest")
@@ -138,9 +139,7 @@ def get_latest_publication_logs(
         return result
 
     except Exception as e:
-        print(f"[ERROR] get_latest_publication_logs: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"get_latest_publication_logs failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/packages-ready-test")
@@ -160,8 +159,7 @@ def get_packages_ready_test():
         results = query.all()
         return {"count": len(results), "data": [{"package": r[0], "ws": r[1], "bank": r[3]} for r in results if r[0]]}
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.error(f"packages_ready_test failed: {e}", exc_info=True)
         return {"error": str(e)}
     finally:
         db.close()
@@ -174,7 +172,7 @@ def get_packages_ready(
     """Recupera i package pronti dalla tabella report_mapping filtrati per banca utente"""
     from sqlalchemy import func
 
-    print(f"[DEBUG] packages-ready endpoint called for user: {current_user.username}, bank: {current_user.bank}")
+    logger.info(f"test-packages-v2 endpoint called for user: {current_user.username}, bank: {current_user.bank}")
 
     try:
         # Filtra per banca dell'utente corrente (case-insensitive)
@@ -190,7 +188,7 @@ def get_packages_ready(
         )
 
         results = query.all()
-        print(f"[DEBUG] Found {len(results)} packages for bank {current_user.bank}")
+        logger.debug(f"Found {len(results)} packages for bank {current_user.bank}")
 
         return [
             {
@@ -208,9 +206,7 @@ def get_packages_ready(
             for r in results if r[0]
         ]
     except Exception as e:
-        print(f"[ERROR] {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"test-packages-v2 failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{reportistica_id}", response_model=schemas.ReportisticaInDB)
@@ -220,11 +216,22 @@ def get_reportistica_item(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Recupera un elemento di reportistica specifico per ID.
+    Recupera un elemento di reportistica specifico per ID della propria banca.
+
+    Note:
+        - Può visualizzare solo elementi della propria banca
     """
     item = crud.get_reportistica_by_id(db=db, reportistica_id=reportistica_id)
     if not item:
         raise HTTPException(status_code=404, detail="Elemento reportistica non trovato")
+
+    # ✅ Verifica che l'elemento appartenga alla banca dell'utente
+    if item.banca != current_user.bank:
+        raise HTTPException(
+            status_code=403,
+            detail="Non hai i permessi per visualizzare questo elemento (appartiene a un'altra banca)"
+        )
+
     return item
 
 @router.post("/", response_model=schemas.ReportisticaInDB)
@@ -234,14 +241,32 @@ def create_reportistica_item(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Crea un nuovo elemento di reportistica.
-    """
-    # Verifica che il nome file non esista già
-    existing_item = crud.get_reportistica_by_nome_file(db=db, nome_file=reportistica.nome_file)
-    if existing_item:
-        raise HTTPException(status_code=400, detail="Un elemento con questo nome file esiste già")
+    Crea un nuovo elemento di reportistica per la banca dell'utente loggato.
 
-    return crud.create_reportistica(db=db, reportistica=reportistica)
+    Note:
+        - banca viene automaticamente settata a current_user.bank
+        - La coppia (nome_file, banca) deve essere unica
+    """
+    logger.info(f"Creating reportistica item for bank: {current_user.bank}, file: {reportistica.nome_file}")
+
+    # ✅ Verifica che la coppia (nome_file, banca utente) non esista già
+    existing_item = crud.get_reportistica_by_nome_file(
+        db=db,
+        nome_file=reportistica.nome_file,
+        banca=current_user.bank  # ✅ Usa la banca dell'utente loggato
+    )
+    if existing_item:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Un elemento con nome file '{reportistica.nome_file}' esiste già per la tua banca"
+        )
+
+    # ✅ Passa la banca dell'utente loggato
+    return crud.create_reportistica(
+        db=db,
+        reportistica=reportistica,
+        banca=current_user.bank  # ✅ Automatico
+    )
 
 @router.put("/{reportistica_id}", response_model=schemas.ReportisticaInDB)
 def update_reportistica_item(
@@ -251,17 +276,35 @@ def update_reportistica_item(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Aggiorna un elemento di reportistica esistente.
+    Aggiorna un elemento di reportistica della banca dell'utente loggato.
+
+    Note:
+        - Può modificare solo elementi della propria banca
+        - Se viene modificato nome_file, verifica che non esista già nella banca
     """
     existing_item = crud.get_reportistica_by_id(db=db, reportistica_id=reportistica_id)
     if not existing_item:
         raise HTTPException(status_code=404, detail="Elemento reportistica non trovato")
 
-    # Se il nome file viene cambiato, verifica che non esista già
+    # ✅ Verifica che l'elemento appartenga alla banca dell'utente (case-insensitive)
+    if existing_item.banca.lower() != current_user.bank.lower():
+        raise HTTPException(
+            status_code=403,
+            detail="Non hai i permessi per modificare questo elemento (appartiene a un'altra banca)"
+        )
+
+    # ✅ Se il nome file viene cambiato, verifica che non esista già nella stessa banca
     if reportistica_data.nome_file and reportistica_data.nome_file != existing_item.nome_file:
-        existing_with_name = crud.get_reportistica_by_nome_file(db=db, nome_file=reportistica_data.nome_file)
-        if existing_with_name:
-            raise HTTPException(status_code=400, detail="Un elemento con questo nome file esiste già")
+        existing_with_name = crud.get_reportistica_by_nome_file(
+            db=db,
+            nome_file=reportistica_data.nome_file,
+            banca=current_user.bank  # ✅ Verifica solo nella banca dell'utente
+        )
+        if existing_with_name and existing_with_name.id != reportistica_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Un elemento con nome file '{reportistica_data.nome_file}' esiste già per la tua banca"
+            )
 
     return crud.update_reportistica(db=db, reportistica_id=reportistica_id, reportistica_data=reportistica_data)
 
@@ -272,12 +315,24 @@ def delete_reportistica_item(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Elimina un elemento di reportistica.
+    Elimina un elemento di reportistica della banca dell'utente loggato.
+
+    Note:
+        - Può eliminare solo elementi della propria banca
     """
-    item = crud.delete_reportistica(db=db, reportistica_id=reportistica_id)
-    if not item:
+    # ✅ Prima verifica che l'elemento esista e appartenga alla banca dell'utente
+    existing_item = crud.get_reportistica_by_id(db=db, reportistica_id=reportistica_id)
+    if not existing_item:
         raise HTTPException(status_code=404, detail="Elemento reportistica non trovato")
 
+    # ✅ Verifica che l'elemento appartenga alla banca dell'utente
+    if existing_item.banca != current_user.bank:
+        raise HTTPException(
+            status_code=403,
+            detail="Non hai i permessi per eliminare questo elemento (appartiene a un'altra banca)"
+        )
+
+    item = crud.delete_reportistica(db=db, reportistica_id=reportistica_id)
     return {"message": "Elemento reportistica eliminato con successo"}
 
 @router.patch("/{reportistica_id}/disponibilita", response_model=schemas.ReportisticaInDB)
@@ -288,11 +343,21 @@ def toggle_disponibilita_server(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Aggiorna solo lo stato di disponibilità server per un elemento.
+    Aggiorna solo lo stato di disponibilità server per un elemento della propria banca.
+
+    Note:
+        - Può modificare solo elementi della propria banca
     """
     existing_item = crud.get_reportistica_by_id(db=db, reportistica_id=reportistica_id)
     if not existing_item:
         raise HTTPException(status_code=404, detail="Elemento reportistica non trovato")
+
+    # ✅ Verifica che l'elemento appartenga alla banca dell'utente (case-insensitive)
+    if existing_item.banca.lower() != current_user.bank.lower():
+        raise HTTPException(
+            status_code=403,
+            detail="Non hai i permessi per modificare questo elemento (appartiene a un'altra banca)"
+        )
 
     update_data = schemas.ReportisticaUpdate(disponibilita_server=disponibilita)
     return crud.update_reportistica(db=db, reportistica_id=reportistica_id, reportistica_data=update_data)
@@ -305,7 +370,7 @@ async def publish_precheck(
     import traceback
     from sqlalchemy import func
 
-    print(f"[DEBUG] publish_precheck called for user: {current_user.username}, bank: {current_user.bank}")
+    logger.info(f"publish_precheck called for user: {current_user.username}, bank: {current_user.bank}")
 
     try:
         # Prendi i dati dalla tabella report_mapping filtrati per banca dell'utente (case-insensitive)
@@ -318,7 +383,7 @@ async def publish_precheck(
         )
 
         results = query.all()
-        print(f"[DEBUG] Found {len(results)} records from report_mapping")
+        logger.debug(f"Found {len(results)} records from report_mapping")
 
         if not results:
             raise HTTPException(
@@ -332,12 +397,12 @@ async def publish_precheck(
         # Estrai lista dei package
         pbi_packages = [row[1] for row in results if row[1]]
 
-        print(f"[DEBUG] Workspace: {workspace}")
-        print(f"[DEBUG] Packages: {pbi_packages}")
+        logger.info(f"Workspace: {workspace}")
+        logger.info(f"Packages to publish: {pbi_packages}")
 
         script_dir = os.path.join(os.path.dirname(__file__), "..", "scripts")
         script_path = os.path.join(script_dir, "main.py")
-        print(f"[DEBUG] script_path: {script_path} exists={os.path.exists(script_path)}")
+        logger.debug(f"script_path: {script_path} exists={os.path.exists(script_path)}")
 
         venv_dir = os.path.join(os.path.dirname(__file__), "..", "venv")
         python_exe = (
@@ -347,7 +412,7 @@ async def publish_precheck(
         )
         if not os.path.exists(python_exe):
             python_exe = sys.executable
-        print(f"[DEBUG] python_exe: {python_exe} exists={os.path.exists(python_exe)}")
+        logger.debug(f"python_exe: {python_exe} exists={os.path.exists(python_exe)}")
 
         # Use subprocess.Popen instead of asyncio.create_subprocess_exec for Windows compatibility
         def run_script():
@@ -385,9 +450,10 @@ async def publish_precheck(
         loop = asyncio.get_event_loop()
         returncode, stdout, stderr = await loop.run_in_executor(None, run_script)
 
-        print("[DEBUG] Script return code:", returncode)
-        print("[DEBUG] Script stdout:", stdout)
-        print("[DEBUG] Script stderr:", stderr)
+        logger.info(f"Script completed with return code: {returncode}")
+        logger.debug(f"Script stdout: {stdout}")
+        if stderr:
+            logger.warning(f"Script stderr: {stderr}")
 
         # Parse dello stdout per estrarre il JSON dei risultati
         import json
@@ -400,11 +466,11 @@ async def publish_precheck(
             if match:
                 json_str = match.group(1)
                 packages_details = json.loads(json_str)
-                print(f"[DEBUG] Parsed packages details: {packages_details}")
+                logger.debug(f"Parsed packages details: {packages_details}")
             else:
-                print("[DEBUG] No [RESULT] JSON found in output")
+                logger.debug("No [RESULT] JSON found in output")
         except Exception as e:
-            print(f"[DEBUG] Error parsing packages details: {e}")
+            logger.warning(f"Error parsing packages details: {e}")
 
         # Salva un log per ogni package con il suo dettaglio specifico
         for package_name in pbi_packages:
@@ -442,8 +508,7 @@ async def publish_precheck(
     except HTTPException:
         raise
     except Exception as e:
-        print("[DEBUG] Exception caught in publish_precheck:")
-        traceback.print_exc()
+        logger.error(f"Exception in publish_precheck: {e}", exc_info=True)
 
         # Salva anche gli errori nel database
         try:
@@ -459,7 +524,7 @@ async def publish_precheck(
             )
             db.add(log_entry)
             db.commit()
-        except:
-            pass
+        except Exception as db_error:
+            logger.error(f"Failed to save error log to database: {db_error}")
 
         raise HTTPException(status_code=500, detail=str(e))

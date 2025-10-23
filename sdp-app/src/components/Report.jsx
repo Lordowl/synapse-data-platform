@@ -4,10 +4,62 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   BarChart3, Filter, Play, FileText, PlusSquare, Copy, UploadCloud, Send,
   RefreshCw, CheckCircle, XCircle, AlertTriangle, ListChecks, Eye, AlertCircle,
-  Calendar, Clock
+  Calendar, Clock, X
 } from "lucide-react";
 import "./Report.css";
 import apiClient from "../api/apiClient";
+
+// --- Componente Modal per Dettagli ---
+function DetailsModal({ isOpen, onClose, title, content }) {
+  // Chiudi modal con tasto ESC
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEsc);
+      document.body.style.overflow = 'hidden'; // Previeni scroll del body
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEsc);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(content);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="modal-title">{title}</h3>
+          <button className="modal-close-btn" onClick={onClose} aria-label="Chiudi modal">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="modal-body">
+          <pre className="details-content">{content}</pre>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-outline" onClick={handleCopy}>
+            <Copy size={16} className="btn-icon-sm" /> Copia
+          </button>
+          <button className="btn btn-primary-action" onClick={onClose}>
+            Chiudi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // --- Configurazione per periodicità ---
 const PERIODICITY_CONFIG = {
@@ -140,9 +192,21 @@ function Report() {
 
   const [toast, setToast] = useState({ message: '', type: 'info', visible: false });
 
+  // Stato per il modal dei dettagli
+  const [detailsModal, setDetailsModal] = useState({ isOpen: false, title: '', content: '' });
+
   // Toast functions
   const showToast = useCallback((message, type = 'info') => {
     setToast({ message, type, visible: true });
+  }, []);
+
+  // Modal functions
+  const showDetailsModal = useCallback((title, content) => {
+    setDetailsModal({ isOpen: true, title, content });
+  }, []);
+
+  const closeDetailsModal = useCallback(() => {
+    setDetailsModal({ isOpen: false, title: '', content: '' });
   }, []);
 
   const getToastIcon = (type) => {
@@ -332,12 +396,9 @@ function Report() {
   // Filtra task per periodicità corrente + altri filtri
   const filteredReportTasks = useMemo(() => {
     const filtered = reportTasks.filter(task => {
-      // Filtro per periodicità: settimanali (hanno settimana) vs mensili (non hanno settimana)
-      const isWeeklyTask = task.settimana !== null && task.settimana !== undefined;
-      const isMonthlyTask = task.settimana === null || task.settimana === undefined;
-      const matchesPeriodicity =
-        (currentPeriodicity === 'settimanale' && isWeeklyTask) ||
-        (currentPeriodicity === 'mensile' && isMonthlyTask);
+      // ✅ Prima tabella: mostra SEMPRE tutti i record (configurazioni generiche)
+      // I record con settimana/anno null sono configurazioni, non esecuzioni periodiche
+      const matchesPeriodicity = true; // Sempre visibili
 
       // Filtro per package
       const matchesPackage = !filters.package || filters.package === "Tutti" || task.package === filters.package;
@@ -359,15 +420,15 @@ function Report() {
     return filtered;
   }, [reportTasks, currentPeriodicity, filters]);
 
-  // Status basato sulla prima tabella - reattivo
+  // Status basato su TUTTI i task (non filtrati) - non deve dipendere dai filtri
   const semaphoreStatus = useMemo(() => {
-    if (filteredReportTasks.length === 0) {
+    if (reportTasks.length === 0) {
       return 'danger'; // Rosso se non ci sono dati
     }
 
-    const allGreen = filteredReportTasks.every(task => task.disponibilita_server === true);
-    const someGreen = filteredReportTasks.some(task => task.disponibilita_server === true);
-    const allRed = filteredReportTasks.every(task => task.disponibilita_server === false);
+    const allGreen = reportTasks.every(task => task.disponibilita_server === true);
+    const someGreen = reportTasks.some(task => task.disponibilita_server === true);
+    const allRed = reportTasks.every(task => task.disponibilita_server === false);
 
     if (allGreen) {
       return 'success'; // Verde se tutti disponibili
@@ -378,7 +439,7 @@ function Report() {
     }
 
     return 'danger'; // Default rosso
-  }, [filteredReportTasks]);
+  }, [reportTasks]);
 
   const handleTaskSelection = (taskId) => {
     setSelectedTaskIds(prev => {
@@ -537,10 +598,11 @@ function Report() {
   }, [packagesReady, currentPeriodicity]);
 
   // Verifica se tutte le righe della prima tabella sono verdi (disponibilita_server = true)
+  // Usa reportTasks (non filtrati) per seguire il semaforo
   const allFirstTableGreen = useMemo(() => {
-    return filteredReportTasks.length > 0 &&
-           filteredReportTasks.every(task => task.disponibilita_server === true);
-  }, [filteredReportTasks]);
+    return reportTasks.length > 0 &&
+           reportTasks.every(task => task.disponibilita_server === true);
+  }, [reportTasks]);
 
   // Verifica se tutte le righe della seconda tabella hanno pre_check = true
   const allPreCheckGreen = useMemo(() => {
@@ -569,6 +631,33 @@ function Report() {
                 <p className="report-header-subtitle">Banca: {sessionStorage.getItem("selectedBank") || "N/A"}</p>
               </div>
             </div>
+
+            {/* Tab periodicità nell'header */}
+            <nav className="tab-nav-container">
+              <div className="tab-nav-grid">
+                <button
+                  onClick={() => handlePeriodicityChange('settimanale')}
+                  className={`tab-button ${currentPeriodicity === 'settimanale' ? 'active' : ''}`}
+                  disabled={loadingActions.global !== null}
+                >
+                  <div className="tab-button-header">
+                    <Clock className="tab-button-icon" />
+                    <span className="tab-button-label">Settimanali</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => handlePeriodicityChange('mensile')}
+                  className={`tab-button ${currentPeriodicity === 'mensile' ? 'active' : ''}`}
+                  disabled={loadingActions.global !== null}
+                >
+                  <div className="tab-button-header">
+                    <Calendar className="tab-button-icon" />
+                    <span className="tab-button-label">Mensili</span>
+                  </div>
+                </button>
+              </div>
+            </nav>
+
             {/* Pulsante Indietro */}
             <button
               onClick={() => {
@@ -584,78 +673,73 @@ function Report() {
           </div>
         </header>
 
-
-        <section className="periodicity-selector-section">
-          <div className="periodicity-toggle">
-            <button 
-              className={`btn ${currentPeriodicity === 'settimanale' ? 'btn-primary-action' : 'btn-outline'} periodicity-toggle-btn`}
-              onClick={() => handlePeriodicityChange('settimanale')}
-              disabled={loadingActions.global !== null}
-            >
-              <Clock size={16} className="btn-icon-sm"/> Report Settimanali
-            </button>
-            <button 
-              className={`btn ${currentPeriodicity === 'mensile' ? 'btn-primary-action' : 'btn-outline'} periodicity-toggle-btn`}
-              onClick={() => handlePeriodicityChange('mensile')}
-              disabled={loadingActions.global !== null}
-            >
-              <Calendar size={16} className="btn-icon-sm"/> Report Mensili
-            </button>
-          </div>
-        </section>
-
-
         <section className="report-filters-section">
           <div className="ingest-filters-bar">
-            <select
-              id="settimana-select"
-              className="form-select form-select-sm"
-              value={repoUpdateInfo.settimana || ''}
-              onChange={(e) => setRepoUpdateInfo(prev => ({...prev, settimana: parseInt(e.target.value)}))}
-              disabled={loadingActions.global !== null}
-            >
-              {Array.from({length: 52}, (_, i) => (
-                <option key={i + 1} value={i + 1}>Settimana {i + 1}</option>
-              ))}
-            </select>
+            <div className="filter-group">
+              <label className="form-label" htmlFor="settimana-select">Settimana</label>
+              <select
+                id="settimana-select"
+                className="form-select form-select-sm"
+                style={{ height: '1.75rem', minHeight: '1.75rem', maxHeight: '1.75rem', padding: '0.2rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2', margin: '0', boxSizing: 'border-box' }}
+                value={repoUpdateInfo.settimana || ''}
+                onChange={(e) => setRepoUpdateInfo(prev => ({...prev, settimana: parseInt(e.target.value)}))}
+                disabled={loadingActions.global !== null}
+              >
+                {Array.from({length: 52}, (_, i) => (
+                  <option key={i + 1} value={i + 1}>Settimana {i + 1}</option>
+                ))}
+              </select>
+            </div>
 
-            <select
-              id="anno-select"
-              className="form-select form-select-sm"
-              value={repoUpdateInfo.anno || ''}
-              onChange={(e) => setRepoUpdateInfo(prev => ({...prev, anno: parseInt(e.target.value)}))}
-              disabled={loadingActions.global !== null}
-            >
-              <option value="2024">2024</option>
-              <option value="2025">2025</option>
-              <option value="2026">2026</option>
-            </select>
+            <div className="filter-group">
+              <label className="form-label" htmlFor="anno-select">Anno</label>
+              <select
+                id="anno-select"
+                className="form-select form-select-sm"
+                style={{ height: '1.75rem', minHeight: '1.75rem', maxHeight: '1.75rem', padding: '0.2rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2', margin: '0', boxSizing: 'border-box' }}
+                value={repoUpdateInfo.anno || ''}
+                onChange={(e) => setRepoUpdateInfo(prev => ({...prev, anno: parseInt(e.target.value)}))}
+                disabled={loadingActions.global !== null}
+              >
+                <option value="2024">2024</option>
+                <option value="2025">2025</option>
+                <option value="2026">2026</option>
+              </select>
+            </div>
 
-            <select
-              id="package-filter"
-              className="form-select"
-              value={filters.package}
-              onChange={e => handleFilterChange('package', e.target.value)}
-              disabled={loadingActions.global !== null}
-            >
-              <option value="Tutti">Tutti i Package</option>
-              {uniquePackages.filter(pkg => pkg !== "Tutti").map(pkg => (
-                <option key={pkg} value={pkg}>{pkg}</option>
-              ))}
-            </select>
+            <div className="filter-group">
+              <label className="form-label" htmlFor="package-filter">Package</label>
+              <select
+                id="package-filter"
+                className="form-select"
+                style={{ height: '1.75rem', minHeight: '1.75rem', maxHeight: '1.75rem', padding: '0.2rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2', margin: '0', boxSizing: 'border-box' }}
+                value={filters.package}
+                onChange={e => handleFilterChange('package', e.target.value)}
+                disabled={loadingActions.global !== null}
+              >
+                <option value="Tutti">Tutti i Package</option>
+                {uniquePackages.filter(pkg => pkg !== "Tutti").map(pkg => (
+                  <option key={pkg} value={pkg}>{pkg}</option>
+                ))}
+              </select>
+            </div>
 
-            <select
-              id="disponibilita-filter"
-              className="form-select"
-              value={filters.disponibilita_server}
-              onChange={e => handleFilterChange('disponibilita_server', e.target.value)}
-              disabled={loadingActions.global !== null}
-            >
-              <option value="Tutti">Tutte le Disponibilità</option>
-              <option value="Disponibile">Disponibile</option>
-              <option value="Non disponibile">Non disponibile</option>
-              <option value="N/D">N/D</option>
-            </select>
+            <div className="filter-group">
+              <label className="form-label" htmlFor="disponibilita-filter">Disponibilità File</label>
+              <select
+                id="disponibilita-filter"
+                className="form-select"
+                style={{ height: '1.75rem', minHeight: '1.75rem', maxHeight: '1.75rem', padding: '0.2rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2', margin: '0', boxSizing: 'border-box' }}
+                value={filters.disponibilita_server}
+                onChange={e => handleFilterChange('disponibilita_server', e.target.value)}
+                disabled={loadingActions.global !== null}
+              >
+                <option value="Tutti">Tutti</option>
+                <option value="Disponibile">Disponibile</option>
+                <option value="Non disponibile">Non disponibile</option>
+                <option value="N/D">N/D</option>
+              </select>
+            </div>
 
             <div className="filter-group overall-status-group">
               <label className="form-label">Status Complessivo</label>
@@ -688,7 +772,7 @@ function Report() {
                   <th>Anno</th>
                   <th>Settimana</th>
                   <th>Data Modifica</th>
-                  <th>Disponibilità Server</th>
+                  <th>Disponibilità File</th>
                   <th>Dettagli</th>
                 </tr>
               </thead>
@@ -736,7 +820,7 @@ function Report() {
                       title={task.dettagli || 'N/D'}
                       onClick={() => {
                         if (task.dettagli && task.dettagli.length > 100) {
-                          alert(task.dettagli);
+                          showDetailsModal(`Dettagli - ${task.nome_file}`, task.dettagli);
                         }
                       }}>
                         {task.dettagli ?
@@ -816,8 +900,7 @@ function Report() {
                       title={item.dettagli || 'N/D'}
                       onClick={() => {
                         if (item.dettagli && item.dettagli.length > 100) {
-                          // Mostra dettagli completi in un alert
-                          alert(item.dettagli);
+                          showDetailsModal(`Dettagli Pubblicazione - ${item.package}`, item.dettagli);
                         }
                       }}>
                         {item.dettagli ?
@@ -845,7 +928,7 @@ function Report() {
                 className="btn btn-outline"
                 onClick={() => handleGlobalAction('pubblica-pre-check')}
                 disabled={!allFirstTableGreen || loadingActions.global !== null}
-                title={!allFirstTableGreen ? "Tutte le righe della prima tabella devono avere disponibilità server verde" : "Pubblica in Pre-Check"}
+                title={!allFirstTableGreen ? "Tutte le righe della prima tabella devono avere disponibilità file verde" : `Pubblica Report ${periodicityConfig.label} in Pre-Check`}
                 style={{
                   opacity: (!allFirstTableGreen || loadingActions.global !== null) ? '0.4' : '1',
                   cursor: (!allFirstTableGreen || loadingActions.global !== null) ? 'not-allowed' : 'pointer',
@@ -854,13 +937,13 @@ function Report() {
                   width: '100%'
                 }}
               >
-                <CheckCircle className="btn-icon-md" /> Pubblica in Pre-Check
+                <CheckCircle className="btn-icon-md" /> Pubblica Report {periodicityConfig.label} in Pre-Check
               </button>
               <button
                 className="btn btn-outline"
                 onClick={() => handleGlobalAction('pubblica-report')}
                 disabled={!allPreCheckGreen || loadingActions.global !== null}
-                title={!allPreCheckGreen ? "Tutte le righe devono avere Pre-Check verde" : "Pubblica Report"}
+                title={!allPreCheckGreen ? "Tutte le righe devono avere Pre-Check verde" : `Pubblica Report ${periodicityConfig.label}`}
                 style={{
                   opacity: (!allPreCheckGreen || loadingActions.global !== null) ? '0.4' : '1',
                   cursor: (!allPreCheckGreen || loadingActions.global !== null) ? 'not-allowed' : 'pointer',
@@ -869,13 +952,21 @@ function Report() {
                   width: '100%'
                 }}
               >
-                <Send className="btn-icon-md" /> Pubblica Report
+                <Send className="btn-icon-md" /> Pubblica Report {periodicityConfig.label}
               </button>
             </div>
           </div>
         </section>
 
       </div>
+
+      {/* Modal per i dettagli */}
+      <DetailsModal
+        isOpen={detailsModal.isOpen}
+        onClose={closeDetailsModal}
+        title={detailsModal.title}
+        content={detailsModal.content}
+      />
     </div>
   );
 }

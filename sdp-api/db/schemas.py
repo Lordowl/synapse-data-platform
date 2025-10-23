@@ -71,10 +71,9 @@ class AuditLogInDB(AuditLogBase):
 # --- Schemi per Reportistica ---
 
 class ReportisticaBase(BaseModel):
-    banca: Optional[str] = None
     anno: Optional[int] = None
     settimana: Optional[int] = None
-    nome_file: str
+    nome_file: str  # ✅ Obbligatorio
     package: Optional[str] = None
     finalita: Optional[str] = None
     disponibilita_server: Optional[bool] = False
@@ -82,10 +81,17 @@ class ReportisticaBase(BaseModel):
     dettagli: Optional[str] = None
 
 class ReportisticaCreate(ReportisticaBase):
+    """Schema per creare un nuovo elemento di reportistica.
+
+    Note:
+        - nome_file è obbligatorio
+        - banca viene presa automaticamente dall'utente loggato (current_user.bank)
+        - La coppia (nome_file, banca) deve essere unica per ogni banca
+    """
     pass
 
 class ReportisticaUpdate(BaseModel):
-    banca: Optional[str] = None
+    # banca NON può essere modificata (viene sempre presa da current_user.bank)
     anno: Optional[int] = None
     settimana: Optional[int] = None
     nome_file: Optional[str] = None
@@ -97,6 +103,7 @@ class ReportisticaUpdate(BaseModel):
 
 class ReportisticaInDB(ReportisticaBase):
     id: int
+    banca: str  # ✅ Presente nel DB, ma non in input
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

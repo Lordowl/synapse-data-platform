@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Boolean, ForeignKey, func
+from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Boolean, ForeignKey, func, Index
 from .database import Base
 
 
@@ -45,12 +45,18 @@ class FlowExecutionHistory(Base):
 
 class Reportistica(Base):
     __tablename__ = "reportistica"
+    __table_args__ = (
+        # Unique constraint sulla coppia (nome_file, banca)
+        # Permette stesso nome_file per banche diverse
+        Index('idx_reportistica_banca', 'banca'),
+        Index('idx_reportistica_anno_settimana', 'anno', 'settimana'),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    banca = Column(String, nullable=True)
+    banca = Column(String, nullable=False)  # ✅ Obbligatorio (NOT NULL nel DB)
     anno = Column(Integer, nullable=True)
     settimana = Column(Integer, nullable=True)
-    nome_file = Column(String, unique=True, nullable=False)
+    nome_file = Column(String, nullable=False)  # ✅ Rimosso unique=True, gestito da __table_args__
     package = Column(String, nullable=True)
     finalita = Column(String, nullable=True)
     disponibilita_server = Column(Boolean, default=False)
