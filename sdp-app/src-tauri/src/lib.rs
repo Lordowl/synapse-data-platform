@@ -56,7 +56,7 @@ pub fn run() {
                 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
                 match StdCommand::new(backend_path)
-                    .args(&["--host", "127.0.0.1", "--port", "8000"])
+                    .args(&["--host", "127.0.0.1", "--port", "9123"])
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
                     .creation_flags(CREATE_NO_WINDOW)
@@ -78,7 +78,7 @@ pub fn run() {
             #[cfg(not(target_os = "windows"))]
             {
                 match StdCommand::new(backend_path)
-                    .args(&["--host", "127.0.0.1", "--port", "8000"])
+                    .args(&["--host", "127.0.0.1", "--port", "9123"])
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
                     .spawn()

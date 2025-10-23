@@ -41,7 +41,7 @@ LOG_LEVEL=INFO
 
 # === SERVER ===
 HOST=127.0.0.1
-PORT=8000
+PORT=9123
 
 # === AGGIORNAMENTI ===
 AUTO_UPDATE_CHECK=true
@@ -53,9 +53,17 @@ CORS_ORIGINS=["*"]
         env_file.write_text(content)
         print(f"[INFO] Configurazione creata")
     
+    # IMPORTANTE: Correggi HOST se è impostato su 0.0.0.0 (richiede permessi admin)
+    if env_file.exists():
+        content = env_file.read_text()
+        if "HOST=0.0.0.0" in content:
+            print(f"[INFO] Correzione HOST da 0.0.0.0 a 127.0.0.1 per evitare errori di permessi")
+            content = content.replace("HOST=0.0.0.0", "HOST=127.0.0.1")
+            env_file.write_text(content)
+
     # Carica IMMEDIATAMENTE il file .env
     load_dotenv(env_file, override=True)
-    
+
     return env_file
 
 
@@ -92,6 +100,46 @@ def get_banks_from_config(banks_config):
         return []
 
 
+def get_database_path_from_config() -> str:
+    """
+    Legge il settings_path dal file banks_default.json o config.json
+    e restituisce il percorso del database in settings_path/App/Dashboard/sdp.db
+    """
+    # Prova prima config.json (runtime), poi banks_default.json (default)
+    config_dir = Path.home() / ".sdp-api"
+    config_json = config_dir / "config.json"
+    banks_default = Path(__file__).parent.parent / "config" / "banks_default.json"
+
+    settings_path = None
+
+    # Prova config.json
+    if config_json.exists():
+        try:
+            with open(config_json, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+                settings_path = config_data.get("settings_path")
+        except Exception as e:
+            logging.warning(f"Errore lettura config.json: {e}")
+
+    # Se non trovato, prova banks_default.json
+    if not settings_path and banks_default.exists():
+        try:
+            with open(banks_default, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
+                settings_path = config_data.get("settings_path")
+        except Exception as e:
+            logging.warning(f"Errore lettura banks_default.json: {e}")
+
+    # Se trovato settings_path, costruisci il percorso del database
+    if settings_path:
+        db_path = Path(settings_path) / "App" / "Dashboard" / "sdp.db"
+        return f"sqlite:///{db_path}"
+
+    # Fallback: usa home directory
+    fallback_path = Path.home() / ".sdp-api" / "sdp.db"
+    return f"sqlite:///{fallback_path}"
+
+
 class Settings(BaseSettings):
     # === SICUREZZA JWT ===
     SECRET_KEY: str = Field(default="temp-secret-key-will-be-replaced")
@@ -100,14 +148,14 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=8)
 
     # === DATABASE ===
-    DATABASE_URL: str = Field(default_factory=lambda: f"sqlite:///{Path.home() / '.sdp-api' / 'sdp.db'}")
+    DATABASE_URL: str = Field(default_factory=get_database_path_from_config)
     
     # === LOGGING ===
     LOG_LEVEL: str = Field(default="INFO")
     
     # === SERVER ===
     host: str = Field(default="127.0.0.1")
-    port: int = Field(default=8000)
+    port: int = Field(default=9123)
     
     # === AGGIORNAMENTI ===
     auto_update_check: bool = Field(default=True)

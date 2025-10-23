@@ -129,7 +129,7 @@ fn main() {
                 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
                 match StdCommand::new(&exe_path)
-                    .args(&["--host", "127.0.0.1", "--port", "8000"])
+                    .args(&["--host", "127.0.0.1", "--port", "9123"])
                     .current_dir(&working_dir)
                     .stdout(Stdio::from(stdout_file))
                     .stderr(Stdio::from(stderr_file))
@@ -194,7 +194,7 @@ fn main() {
             #[cfg(not(target_os = "windows"))]
             {
                 match StdCommand::new(&exe_path)
-                    .args(&["--host", "127.0.0.1", "--port", "8000"])
+                    .args(&["--host", "127.0.0.1", "--port", "9123"])
                     .current_dir(&working_dir)
                     .stdout(Stdio::from(stdout_file))
                     .stderr(Stdio::from(stderr_file))
