@@ -101,10 +101,10 @@ fn main() {
 
             // Controlla se il backend è già in esecuzione
             if TcpStream::connect_timeout(
-                &"127.0.0.1:8000".parse().unwrap(),
+                &"127.0.0.1:9123".parse().unwrap(),
                 Duration::from_millis(500)
             ).is_ok() {
-                println!("ℹ️  Backend già in esecuzione sulla porta 8000, skip avvio");
+                println!("ℹ️  Backend già in esecuzione sulla porta 9123, skip avvio");
                 return Ok(());
             }
 
@@ -154,7 +154,7 @@ fn main() {
 
                             // Prova a connettersi alla porta
                             if TcpStream::connect_timeout(
-                                &"127.0.0.1:8000".parse().unwrap(),
+                                &"127.0.0.1:9123".parse().unwrap(),
                                 Duration::from_millis(500)
                             ).is_ok() {
                                 println!("✅ Backend pronto dopo {} tentativi!", attempts);
@@ -218,7 +218,7 @@ fn main() {
 
                             // Prova a connettersi alla porta
                             if TcpStream::connect_timeout(
-                                &"127.0.0.1:8000".parse().unwrap(),
+                                &"127.0.0.1:9123".parse().unwrap(),
                                 Duration::from_millis(500)
                             ).is_ok() {
                                 println!("✅ Backend pronto dopo {} tentativi!", attempts);

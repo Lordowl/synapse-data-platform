@@ -37,8 +37,8 @@ DATABASE_URL=sqlite:///./sdp.db
 LOG_LEVEL=INFO
 
 # Server
-HOST=0.0.0.0
-PORT=8000
+HOST=127.0.0.1
+PORT=9123
 
 # Aggiornamenti
 AUTO_UPDATE_CHECK=true
@@ -55,7 +55,7 @@ CORS_ORIGINS=["*"]
 
 setup(
     name='sdp-api',
-    version='0.2.12',
+    version='0.2.13',
     packages=find_packages(),
     py_modules=['main'],  # Includi i moduli necessari
     include_package_data=True,

@@ -98,7 +98,7 @@ echo        cd dist
 echo        sdp-api.exe
 echo.
 echo [INFO] Opzioni aggiuntive:
-echo        sdp-api.exe --host 0.0.0.0 --port 8000
+echo        sdp-api.exe --host 0.0.0.0 --port 9123
 echo        sdp-api.exe --config (mostra configurazione)
 echo        sdp-api.exe --regenerate-secret (rigenera SECRET_KEY)
 echo.

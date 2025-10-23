@@ -11,7 +11,7 @@ function Login({ setIsAuthenticated }) {
   const [selectedBank, setSelectedBank] = useState("");
   const [availableBanks, setAvailableBanks] = useState([]);
   const [apiAddress, setApiAddress] = useState("http://127.0.0.1");
-  const [apiPort, setApiPort] = useState("8000");
+  const [apiPort, setApiPort] = useState("9123");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [banksLoading, setBanksLoading] = useState(true);
