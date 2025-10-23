@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Database, BarChart3, Settings, LogOut, User, Building, Layers } from "lucide-react";
+import {
+  Database,
+  BarChart3,
+  Settings,
+  LogOut,
+  User,
+  Building,
+  Layers,
+} from "lucide-react";
 import apiClient from "../api/apiClient";
 import { useAppContext } from "../context/AppContext";
 import "./Home.css";
@@ -28,14 +36,16 @@ function Home({ setIsAuthenticated }) {
         // Usa apiClient per entrambe le chiamate per coerenza
         const [responseUser, responseIni] = await Promise.all([
           apiClient.get("/users/me"),
-          apiClient.get("/folder/ini")
+          apiClient.get("/folder/ini"),
         ]);
 
         setUser(responseUser.data);
         setIniData(responseIni.data.inis);
       } catch (err) {
         console.error("Errore nel recuperare i dati:", err);
-        setError("Impossibile caricare i dati. Prova a fare di nuovo il login.");
+        setError(
+          "Impossibile caricare i dati. Prova a fare di nuovo il login."
+        );
       } finally {
         setLoading(false);
       }
@@ -76,16 +86,22 @@ function Home({ setIsAuthenticated }) {
           <div className="user-details">
             <div className="user-item">
               <User size={20} />
-              <span>Benvenuto, <strong>{user.username}</strong>!</span>
+              <span>
+                Benvenuto, <strong>{user.username}</strong>!
+              </span>
             </div>
             <div className="user-item">
               <Settings size={20} />
-              <span>Ruolo: <em>{user.role}</em></span>
+              <span>
+                Ruolo: <em>{user.role}</em>
+              </span>
             </div>
             {selectedBank && (
               <div className="user-item">
                 <Building size={20} />
-                <span>Banca: <strong>{selectedBank}</strong></span>
+                <span>
+                  Banca: <strong>{selectedBank}</strong>
+                </span>
               </div>
             )}
           </div>
@@ -95,13 +111,16 @@ function Home({ setIsAuthenticated }) {
       <div className="home-button-container">
         <div className="main-actions">
           {/* Mostra il pulsante Ingest solo se l'utente ha il permesso 'ingest' */}
-          {user?.permissions?.includes('ingest') && (
-            !loading ? (
+          {user?.permissions?.includes("ingest") &&
+            (!loading ? (
               // Usa metadataFilePath dal context se disponibile, altrimenti dal file INI
-              (metadataFilePath || currentIni?.data?.DEFAULT?.filemetadati) ? (
+              metadataFilePath || currentIni?.data?.DEFAULT?.filemetadati ? (
                 <Link
                   to="/ingest"
-                  state={{ metadataFilePath: metadataFilePath || currentIni.data.DEFAULT.filemetadati }}
+                  state={{
+                    metadataFilePath:
+                      metadataFilePath || currentIni.data.DEFAULT.filemetadati,
+                  }}
                   className="nav-link"
                 >
                   <button className="btn btn-primary">
@@ -112,7 +131,8 @@ function Home({ setIsAuthenticated }) {
               ) : (
                 <div className="error-state">
                   <p className="error-message">
-                    File metadati non trovato. Caricalo da Settings o configura il file INI.
+                    File metadati non trovato. Caricalo da Settings o configura
+                    il file INI.
                   </p>
                 </div>
               )
@@ -121,17 +141,16 @@ function Home({ setIsAuthenticated }) {
                 <Layers className="loading-icon" />
                 <p>Caricamento dati INI...</p>
               </div>
-            )
-          )}
+            ))}
 
           {/* Mostra il pulsante Reportistica solo se l'utente ha il permesso 'reportistica' */}
-          {user?.permissions?.includes('reportistica') && (
-            <Link to="/report" className="nav-link">
+          {user?.permissions?.includes("reportistica") && (
+            // <Link to="/report" className="nav-link">
               <button className="btn btn-primary">
                 <BarChart3 size={20} />
                 <span>Reportistica WIP</span>
               </button>
-             </Link> 
+            // </Link>
           )}
         </div>
 
@@ -151,7 +170,9 @@ function Home({ setIsAuthenticated }) {
       </div>
 
       <div className="version-footer">
-        <small style={{color: '#666', fontSize: '12px'}}>Versione 0.2.11 </small>
+        <small style={{ color: "#666", fontSize: "12px" }}>
+          Versione 0.2.11{" "}
+        </small>
       </div>
     </div>
   );

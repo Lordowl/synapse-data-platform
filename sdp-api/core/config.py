@@ -98,15 +98,15 @@ class Settings(BaseSettings):
     ALGORITHM: str = Field(default="HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=11520)  # 8 giorni in minuti (8 * 24 * 60)
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=8)
-    
+
     # === DATABASE ===
-    DATABASE_URL: str = Field(default="sqlite:///./sdp.db")
+    DATABASE_URL: str = Field(default_factory=lambda: f"sqlite:///{Path.home() / '.sdp-api' / 'sdp.db'}")
     
     # === LOGGING ===
     LOG_LEVEL: str = Field(default="INFO")
     
     # === SERVER ===
-    host: str = Field(default="0.0.0.0")
+    host: str = Field(default="127.0.0.1")
     port: int = Field(default=8000)
     
     # === AGGIORNAMENTI ===
