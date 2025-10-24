@@ -50,7 +50,11 @@
 
   /* Tab navigation nell'header (usa stili globali da Settings.css) */
   .report-header .tab-nav-container {
-    flex-shrink: 0;
+    flex: 1;
+    display: flex;
+    justify-content: flex-start;
+    padding: 0;
+    margin: 0 0 0 var(--space-4);
   }
   
   
@@ -116,6 +120,7 @@
   .status-dot.active-success { background-color: var(--accent-color-success); box-shadow: 0 0 10px var(--accent-color-success-light); }
   .status-dot.active-warning { background-color: #f59e0b; box-shadow: 0 0 10px #fef3c7; }
   .status-dot.active-danger { background-color: var(--accent-color); box-shadow: 0 0 10px var(--accent-color-light); }
+  .status-dot.active-muted { background-color: #9ca3af; box-shadow: 0 0 10px #d1d5db; }
   
   
   /* Sezione Tabella Attività */

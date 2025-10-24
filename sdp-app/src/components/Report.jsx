@@ -98,11 +98,11 @@ const getDisponibilitaServerText = (disponibilita_server) => {
   } else if (disponibilita_server === false) {
     return 'Non disponibile';
   }
-  return 'N/D';
+  return '';
 };
 
 const formatDateTime = (dateString) => {
-  if (!dateString) return 'N/D';
+  if (!dateString) return '';
   try {
     return new Date(dateString).toLocaleString('it-IT', {
       year: 'numeric',
@@ -423,7 +423,13 @@ function Report() {
   // Status basato su TUTTI i task (non filtrati) - non deve dipendere dai filtri
   const semaphoreStatus = useMemo(() => {
     if (reportTasks.length === 0) {
-      return 'danger'; // Rosso se non ci sono dati
+      return 'muted'; // Grigio se non ci sono dati
+    }
+
+    // Controlla se tutti hanno null (non ancora eseguiti)
+    const allNull = reportTasks.every(task => task.disponibilita_server === null);
+    if (allNull) {
+      return 'muted'; // Grigio se nessuno è stato eseguito
     }
 
     const allGreen = reportTasks.every(task => task.disponibilita_server === true);
@@ -682,7 +688,15 @@ function Report() {
                 className="form-select form-select-sm"
                 style={{ height: '1.75rem', minHeight: '1.75rem', maxHeight: '1.75rem', padding: '0.2rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2', margin: '0', boxSizing: 'border-box' }}
                 value={repoUpdateInfo.settimana || ''}
-                onChange={(e) => setRepoUpdateInfo(prev => ({...prev, settimana: parseInt(e.target.value)}))}
+                onChange={async (e) => {
+                  const newSettimana = parseInt(e.target.value);
+                  setRepoUpdateInfo(prev => ({...prev, settimana: newSettimana}));
+                  try {
+                    await apiClient.put('/repo-update/', { settimana: newSettimana });
+                  } catch (error) {
+                    console.error('Errore aggiornamento settimana:', error);
+                  }
+                }}
                 disabled={loadingActions.global !== null}
               >
                 {Array.from({length: 52}, (_, i) => (
@@ -698,7 +712,15 @@ function Report() {
                 className="form-select form-select-sm"
                 style={{ height: '1.75rem', minHeight: '1.75rem', maxHeight: '1.75rem', padding: '0.2rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2', margin: '0', boxSizing: 'border-box' }}
                 value={repoUpdateInfo.anno || ''}
-                onChange={(e) => setRepoUpdateInfo(prev => ({...prev, anno: parseInt(e.target.value)}))}
+                onChange={async (e) => {
+                  const newAnno = parseInt(e.target.value);
+                  setRepoUpdateInfo(prev => ({...prev, anno: newAnno}));
+                  try {
+                    await apiClient.put('/repo-update/', { anno: newAnno });
+                  } catch (error) {
+                    console.error('Errore aggiornamento anno:', error);
+                  }
+                }}
                 disabled={loadingActions.global !== null}
               >
                 <option value="2024">2024</option>
@@ -737,7 +759,6 @@ function Report() {
                 <option value="Tutti">Tutti</option>
                 <option value="Disponibile">Disponibile</option>
                 <option value="Non disponibile">Non disponibile</option>
-                <option value="N/D">N/D</option>
               </select>
             </div>
 
@@ -807,7 +828,10 @@ function Report() {
                             ? '#22c55e'
                             : task.disponibilita_server === false
                               ? '#ef4444'
-                              : '#e5e7eb',
+                              : 'transparent',
+                          border: task.disponibilita_server === null || task.disponibilita_server === undefined
+                            ? '1px solid #9ca3af'
+                            : 'none',
                           borderRadius: '4px'
                         }}></div>
                       </td>
@@ -873,9 +897,10 @@ function Report() {
                           height: '8px',
                           backgroundColor: item.pre_check === true
                             ? '#22c55e'
-                            : item.pre_check === false
-                              ? '#ef4444'
-                              : '#e5e7eb',
+                            : 'transparent',
+                          border: item.pre_check !== true
+                            ? '1px solid #9ca3af'
+                            : 'none',
                           borderRadius: '4px'
                         }}></div>
                       </td>
@@ -885,9 +910,10 @@ function Report() {
                           height: '8px',
                           backgroundColor: item.prod === true
                             ? '#22c55e'
-                            : item.prod === false
-                              ? '#ef4444'
-                              : '#e5e7eb',
+                            : 'transparent',
+                          border: item.prod !== true
+                            ? '1px solid #9ca3af'
+                            : 'none',
                           borderRadius: '4px'
                         }}></div>
                       </td>
