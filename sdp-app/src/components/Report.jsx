@@ -502,45 +502,51 @@ function Report() {
       } else if (actionName === 'pubblica-report') {
         showToast(`Avvio pubblicazione Report in Produzione...`, "info");
 
-        // Simula chiamata API
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        try {
+          // Chiama lo stesso endpoint API di pre-check
+          const response = await apiClient.post('/reportistica/publish-precheck');
 
-        // Setta prod = true per tutti i data
-        setPackagesReady(prev => prev.map(pkg => ({
-          ...pkg,
-          prod: true,
-          dettagli: 'Pubblicato in produzione con successo'
-        })));
+          console.log('Risultati pubblicazione produzione:', response.data);
+          console.log(`Aggiornati ${response.data.packages.length} package:`, response.data.packages);
 
-        showToast(`Report pubblicato in Produzione!`, "success");
+          // Ricarica i dati dal database per mostrare i log aggiornati
+          await fetchPackagesReady();
 
-        // Dopo 2 secondi, resetta tutto e avanza alla settimana successiva
-        setTimeout(() => {
-          // Reset pre_check e prod per i data
-          setPackagesReady(prev => prev.map(pkg => ({
-            ...pkg,
-            pre_check: false,
-            prod: false,
-            dettagli: null
-          })));
+          showToast(`Report pubblicato in Produzione con successo! (${response.data.packages.length} package aggiornati)`, "success");
 
-          // Reset disponibilita_server per i report tasks
-          setReportTasks(prev => prev.map(task => ({
-            ...task,
-            disponibilita_server: null,
-            dettagli: null,
-            // Avanza settimana +1
-            settimana: task.settimana !== null ? task.settimana + 1 : task.settimana
-          })));
+          // Dopo 2 secondi, resetta tutto e avanza alla settimana successiva
+          setTimeout(() => {
+            // Reset pre_check e prod per i data
+            setPackagesReady(prev => prev.map(pkg => ({
+              ...pkg,
+              pre_check: false,
+              prod: false,
+              dettagli: null
+            })));
 
-          // Aggiorna repo update info con settimana +1
-          setRepoUpdateInfo(prev => ({
-            ...prev,
-            settimana: prev.settimana + 1
-          }));
+            // Reset disponibilita_server per i report tasks
+            setReportTasks(prev => prev.map(task => ({
+              ...task,
+              disponibilita_server: null,
+              dettagli: null,
+              // Avanza settimana +1
+              settimana: task.settimana !== null ? task.settimana + 1 : task.settimana
+            })));
 
-          showToast(`✅ Sistema avanzato alla settimana ${repoUpdateInfo.settimana + 1}`, "success");
-        }, 2000);
+            // Aggiorna repo update info con settimana +1
+            setRepoUpdateInfo(prev => ({
+              ...prev,
+              settimana: prev.settimana + 1
+            }));
+
+            showToast(`✅ Sistema avanzato alla settimana ${repoUpdateInfo.settimana + 1}`, "success");
+          }, 2000);
+
+        } catch (error) {
+          console.error('Errore pubblicazione produzione:', error);
+          showToast(`Errore durante la pubblicazione: ${error.response?.data?.detail || error.message}`, "error");
+          throw error; // Re-throw per il catch esterno
+        }
 
       } else {
         // Azioni generiche
