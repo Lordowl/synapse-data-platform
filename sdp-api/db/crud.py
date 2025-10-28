@@ -215,25 +215,40 @@ def delete_reportistica(db: Session, reportistica_id: int):
     db.delete(db_reportistica)
     db.commit()
     return db_reportistica
-
 def get_reportistica_by_filters(db: Session, banca: str = None, anno: int = None, settimana: int = None, package: str = None):
-    """Recupera elementi di reportistica con filtri."""
+    """Recupera elementi di reportistica con filtri, includendo tipo_reportistica dal mapping."""
     from sqlalchemy import func
+    from sqlalchemy.orm import aliased
 
-    query = db.query(models.Reportistica)
+    # Alias per il mapping
+    mapping = aliased(models.ReportMapping)
 
+    # Join tra Reportistica e ReportMapping
+    query = db.query(
+        models.Reportistica,
+        mapping.Type_reportisica.label("tipo_reportistica")
+    ).outerjoin(
+        mapping,
+        models.Reportistica.package == mapping.package  # join corretto
+    )
+
+    # Applica filtri
     if banca:
-        # Case-insensitive comparison per gestire discrepanze tra maiuscole/minuscole
         query = query.filter(func.lower(models.Reportistica.banca) == func.lower(banca))
     if anno:
         query = query.filter(models.Reportistica.anno == anno)
     if settimana:
         query = query.filter(models.Reportistica.settimana == settimana)
-    if package:
+    if package and package.lower() != "tutti":
         query = query.filter(models.Reportistica.package == package)
 
-    return query.all()
+    results = query.all()
 
+    # Trasforma in lista di dict già pronta per JSON
+    return [
+        {**item[0].__dict__, "tipo_reportistica": item[1]}
+        for item in results
+    ]
 # --- CRUD operations for RepoUpdateInfo ---
 
 def get_repo_update_info(db: Session):

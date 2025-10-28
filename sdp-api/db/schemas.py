@@ -71,6 +71,7 @@ class AuditLogInDB(AuditLogBase):
 # --- Schemi per Reportistica ---
 
 class ReportisticaBase(BaseModel):
+    tipo_reportistica: Optional[str] = None  # settimanale/mensile
     anno: Optional[int] = None
     settimana: Optional[int] = None
     nome_file: str  # ✅ Obbligatorio

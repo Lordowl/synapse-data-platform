@@ -4,7 +4,7 @@ block_cipher = None
 
 a = Analysis(
     ['main.py'],
-    pathex=[],
+    pathex=['.'],
     binaries=[],
     datas=[
         ('api/auth.py', 'api'),
@@ -16,6 +16,11 @@ a = Analysis(
         ('api/repo_update.py', 'api'),
         ('api/settings_path.py', 'api'),
         ('api/banks.py', 'api'),
+        ('db/database.py', 'db'),
+        ('db/models.py', 'db'),
+        ('db/schemas.py', 'db'),
+        ('db/crud.py', 'db'),
+        ('db/init_banks.py', 'db'),
         ('core/config.py', 'core'),
         ('core/config_setup.py', 'core'),
         ('core/security.py', 'core'),

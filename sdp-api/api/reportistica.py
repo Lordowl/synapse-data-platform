@@ -2,7 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from db import get_db
-from db import crud, schemas, models
+from db import crud
+from db import schemas
+import db.models as models
 from core.security import get_current_user
 from db.models import User
 import asyncio
@@ -30,7 +32,7 @@ class PackageReady(BaseModel):
     prod: bool = False
     log: str = "In attesa di elaborazione"
 
-@router.get("/", response_model=List[schemas.ReportisticaInDB])
+@router.get("/")
 def get_reportistica_items(
     skip: int = 0,
     limit: int = 100,
@@ -41,31 +43,77 @@ def get_reportistica_items(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Recupera tutti gli elementi di reportistica della banca dell'utente loggato.
+    Recupera tutti gli elementi di reportistica della banca dell'utente loggato
+    includendo il tipo_reportistica mappato da ReportMapping.
 
-    Note:
-        - Filtra automaticamente per current_user.bank
-        - Altri filtri opzionali: anno, settimana, package
+    Filtri opzionali: anno, settimana, package
     """
+    from sqlalchemy import func
+    from sqlalchemy.orm import aliased
+
     try:
-        logger.info(f"get_reportistica_items called by user: {current_user.username}, bank: {current_user.bank}")
-        logger.debug(f"Filters - anno: {anno}, settimana: {settimana}, package: {package}")
+        from sqlalchemy import text
+        import logging
+        logger = logging.getLogger(__name__)
 
-        # ✅ Filtra SEMPRE per la banca dell'utente loggato
-        items = crud.get_reportistica_by_filters(
-            db=db,
-            banca=current_user.bank,  # ✅ Automatico
-            anno=anno,
-            settimana=settimana,
-            package=package
-        )
+        # Usa query SQL diretta per bypassare problemi PyInstaller con modelli SQLAlchemy
+        # FORCE REBUILD 2025-10-28 16:11 - Fixed disponibilita_server boolean
+        logger.info("USANDO QUERY SQL DIRETTA - VERSION 16:00")
 
-        logger.debug(f"Found {len(items)} items for bank {current_user.bank}")
-        return items
+        sql = text("""
+            SELECT id, banca, tipo_reportistica, anno, settimana, nome_file, package,
+                   finalita, disponibilita_server, ultima_modifica, dettagli,
+                   created_at, updated_at
+            FROM reportistica
+            WHERE LOWER(banca) = LOWER(:banca)
+            {anno_filter}
+            {settimana_filter}
+            {package_filter}
+            LIMIT :limit OFFSET :skip
+        """.format(
+            anno_filter="AND anno = :anno" if anno else "",
+            settimana_filter="AND settimana = :settimana" if settimana else "",
+            package_filter="AND package = :package" if (package and package.lower() != "tutti") else ""
+        ))
+
+        params = {"banca": current_user.bank, "limit": limit, "skip": skip}
+        if anno:
+            params["anno"] = anno
+        if settimana:
+            params["settimana"] = settimana
+        if package and package.lower() != "tutti":
+            params["package"] = package
+
+        logger.info(f"Executing SQL with params: {params}")
+        result = db.execute(sql, params)
+        rows = result.fetchall()
+        logger.info(f"Got {len(rows)} rows, first row: {rows[0] if rows else 'none'}")
+
+        # Costruisci dict da righe SQL
+        return [
+            {
+                "id": row[0],
+                "banca": row[1],
+                "tipo_reportistica": row[2],
+                "anno": row[3],
+                "settimana": row[4],
+                "nome_file": row[5],
+                "package": row[6],
+                "finalita": row[7],
+                "disponibilita_server": bool(row[8]) if row[8] is not None else None,
+                "ultima_modifica": row[9],
+                "dettagli": row[10],
+                "created_at": row[11],
+                "updated_at": row[12]
+            }
+            for row in rows
+        ]
+
     except Exception as e:
-        logger.error(f"get_reportistica_items failed: {e}", exc_info=True)
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Errore nel recupero reportistica: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Errore nel recupero dati reportistica: {str(e)}")
-
 @router.get("/publication-logs/latest")
 def get_latest_publication_logs(
     publication_type: Optional[str] = Query(None, description="Filtra per tipo: precheck o production"),

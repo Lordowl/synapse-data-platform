@@ -54,6 +54,7 @@ class Reportistica(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     banca = Column(String, nullable=False)  # ✅ Obbligatorio (NOT NULL nel DB)
+    tipo_reportistica = Column(String, nullable=True)  # settimanale/mensile
     anno = Column(Integer, nullable=True)
     settimana = Column(Integer, nullable=True)
     nome_file = Column(String, nullable=False)  # ✅ Rimosso unique=True, gestito da __table_args__
