@@ -1,20 +1,23 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import text, func, desc
 from typing import List, Optional, Dict, Any
-from db import get_db
-from db import crud
-from db import schemas
-import db.models as models
-from core.security import get_current_user
-from db.models import User
+from datetime import datetime, timezone
+from pydantic import BaseModel
 import asyncio
 import subprocess
 import sys
 import os
 import traceback
 import logging
-from pydantic import BaseModel
-from datetime import datetime
+import json
+import re
+
+from db import get_db, crud, schemas
+import db.models as models
+from db.models import User
+from core.security import get_current_user
+
 
 # Configura logger per questo modulo
 logger = logging.getLogger(__name__)
@@ -114,6 +117,24 @@ def get_reportistica_items(
         logger = logging.getLogger(__name__)
         logger.error(f"Errore nel recupero reportistica: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Errore nel recupero dati reportistica: {str(e)}")
+
+@router.get("/is-sync-running")
+def is_sync_running(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Verifica se c'è un sync in corso nella tabella sync_runs.
+    Restituisce {"is_running": true/false}
+    """
+    try:
+        sql = text("SELECT COUNT(*) FROM sync_runs WHERE status = 'running'")
+        count = db.execute(sql).scalar()
+        return {"is_running": count > 0}
+    except Exception as e:
+        logger.error(f"Errore nel verificare sync status: {e}")
+        return {"is_running": False}
+
 @router.get("/publication-logs/latest")
 def get_latest_publication_logs(
     publication_type: Optional[str] = Query(None, description="Filtra per tipo: precheck o production"),

@@ -183,6 +183,7 @@ function Report() {
   const [loading, setLoading] = useState(true);
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
   const [repoUpdateInfo, setRepoUpdateInfo] = useState({ anno: 2025, settimana: 29, semaforo: 0 });
+  const [syncRunning, setSyncRunning] = useState(false); // Stato per tracciare se c'è un sync in corso
 
   // Stato per tracciare le azioni in corso (es. "pubblica-pre-check", "pubblica-report")
   // Quando global !== null, tutti i controlli vengono disabilitati per prevenire azioni concorrenti
@@ -228,6 +229,11 @@ function Report() {
     }
   }, [toast.visible]);
 
+  // Debug: log quando syncRunning cambia
+  useEffect(() => {
+    console.log("syncRunning changed to:", syncRunning);
+  }, [syncRunning]);
+
   // Estrai valori univoci per i dropdown dai dati
   const uniquePackages = useMemo(() => {
     const packages = [...new Set(reportTasks.map(task => task.package).filter(Boolean))];
@@ -256,6 +262,28 @@ function Report() {
       // Mantiene i valori di default se non riesce a caricare
     }
   }, []);
+
+ const fetchSyncStatus = useCallback(async () => {
+  try {
+    // Usa l'endpoint /is-sync-running
+    try {
+      const response = await apiClient.get("/reportistica/is-sync-running");
+      console.log("Is sync running response:", response.data);
+      setSyncRunning(response.data?.is_running || false);
+      return; // Se funziona, usciamo dalla funzione
+    } catch (innerError) {
+      // Se l'errore è 422, ignoriamo e continuiamo con il fallback
+      console.log("Errore previsto, utilizzo fallback:", innerError.response?.status);
+      
+      // Per qualsiasi errore, impostiamo semplicemente is_running a false
+      setSyncRunning(false);
+    }
+  } catch (error) {
+    // Questo catch esterno non dovrebbe mai essere raggiunto, ma per sicurezza
+    console.error("Errore critico nel verificare sync status:", error);
+    setSyncRunning(false);
+  }
+}, []);
 
   // Funzione per caricare i data dalla tabella report_data
   const fetchPackagesReady = useCallback(async () => {
@@ -352,6 +380,7 @@ function Report() {
         setReportTasks(mappedData);
         await fetchRepoUpdateInfo();
         await fetchPackagesReady();
+        await fetchSyncStatus(); // Verifica se c'è un sync in corso
 
       } catch (error) {
         console.error('Error fetching reportistica data:', error);
@@ -384,7 +413,7 @@ function Report() {
     return () => {
       clearInterval(interval);
     };
-  }, [showToast, fetchRepoUpdateInfo, fetchPackagesReady]);
+  }, [showToast, fetchRepoUpdateInfo, fetchPackagesReady, fetchSyncStatus]);
 
   // Funzione per cambiare periodicità
   const handlePeriodicityChange = (newPeriodicity) => {
@@ -696,6 +725,34 @@ function Report() {
               disabled={loadingActions.global !== null}
             >
               ← Indietro
+            </button>
+
+            {/* Pulsante Aggiorna */}
+            <button
+              onClick={async () => {
+                console.log("Refresh button clicked");
+                showToast("Aggiornamento dati in corso...", "info");
+                try {
+                  await fetchSyncStatus();
+                  showToast("Dati aggiornati con successo", "success");
+                } catch (error) {
+                  showToast("Errore durante l'aggiornamento", "error");
+                }
+              }}
+              className="btn btn-outline"
+              disabled={syncRunning || loadingActions.global !== null}
+              title={syncRunning ? "Sync in corso, aggiornamento disabilitato" : "Aggiorna dati"}
+              style={{
+                opacity: (syncRunning || loadingActions.global !== null) ? '0.5' : '1',
+                cursor: (syncRunning || loadingActions.global !== null) ? 'not-allowed' : 'pointer'
+              }}
+            >
+              <RefreshCw
+                size={16}
+                className={syncRunning ? "spin" : ""}
+                style={{ marginRight: '0.5rem' }}
+              />
+              Aggiorna
             </button>
           </div>
         </header>

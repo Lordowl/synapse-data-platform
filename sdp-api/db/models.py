@@ -15,6 +15,21 @@ class User(Base):
     bank = Column(String, index=True, nullable=True)
 
 
+class SyncRun(Base):
+    __tablename__ = "sync_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    bank = Column(String, index=True, nullable=True)
+    start_time = Column(DateTime(timezone=True), server_default=func.now())
+    end_time = Column(DateTime(timezone=True), nullable=True)
+    status = Column(String, index=True, nullable=False)
+    files_processed = Column(Integer, default=0)
+    files_copied = Column(Integer, default=0)
+    files_skipped = Column(Integer, default=0)
+    files_failed = Column(Integer, default=0)
+    error_details = Column(Text, nullable=True)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
@@ -87,9 +102,11 @@ class RepoUpdateInfo(Base):
     settimana = Column(Integer, nullable=True)
     anno = Column(Integer, nullable=True)
     semaforo = Column(Integer, nullable=True)
-    log_key = Column(String, unique=True, index=True)  # serve per collegare i dettagli
+    log_key = Column(String, unique=True, index=True, nullable=True)  # serve per collegare i dettagli
     details = Column(JSON, nullable=True)
     bank = Column(String, index=True, nullable=True)  # nuova colonna
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class FlowExecutionDetail(Base):
