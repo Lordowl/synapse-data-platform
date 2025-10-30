@@ -360,14 +360,14 @@ def get_packages_ready(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Recupera i package pronti dalla tabella report_mapping filtrati per banca utente"""
-    from sqlalchemy import func
+    """Recupera i package pronti dalla tabella report_mapping filtrati per banca utente con stato da publication_logs"""
+    from sqlalchemy import func, and_
+    import json
 
     logger.info(f"test-packages-v2 endpoint called for user: {current_user.username}, bank: {current_user.bank}")
 
     try:
         # Filtra per banca dell'utente corrente (case-insensitive)
-        # NON filtrare per Type_reportisica - restituisci sia settimanali che mensili
         query = db.query(
             models.ReportMapping.package,
             models.ReportMapping.ws_precheck,
@@ -381,21 +381,80 @@ def get_packages_ready(
         results = query.all()
         logger.debug(f"Found {len(results)} packages for bank {current_user.bank}")
 
-        return [
-            {
-                "package": r[0],
+        # Per ogni package, cerca l'ultimo log in publication_logs
+        packages_with_status = []
+        for r in results:
+            if not r[0]:  # Skip se package è None
+                continue
+
+            package_name = r[0]
+
+            # Cerca tutti i log recenti per questa banca con publication_type='precheck'
+            all_logs = db.query(models.PublicationLog).filter(
+                and_(
+                    func.lower(models.PublicationLog.bank) == func.lower(current_user.bank),
+                    models.PublicationLog.publication_type == 'precheck'
+                )
+            ).order_by(models.PublicationLog.timestamp.desc()).limit(50).all()
+
+            pre_check_status = False
+            dettagli = "In attesa di elaborazione"
+            data_esecuzione = None
+            user = "N/D"
+
+            # Cerca il log che contiene questo package specifico
+            for log in all_logs:
+                try:
+                    packages_list = log.packages if isinstance(log.packages, list) else json.loads(log.packages)
+
+                    # Se questo log contiene il package che stiamo cercando
+                    if package_name in packages_list:
+                        data_esecuzione = log.timestamp
+                        user = "Sistema" if not log.user_id else f"User #{log.user_id}"
+
+                        # Prendi il messaggio dall'output o dall'error
+                        message = log.output if log.output else (log.error if log.error else "")
+
+                        # Determina lo stato in base al CONTENUTO del messaggio
+                        if "successo" in message.lower():
+                            pre_check_status = True  # Verde
+                            dettagli = message
+                        elif "timeout" in message.lower():
+                            pre_check_status = "timeout"  # Giallo/Arancione
+                            dettagli = message
+                        elif "errore" in message.lower() or "error" in message.lower():
+                            pre_check_status = "error"  # Rosso
+                            dettagli = message
+                        else:
+                            # Fallback sul campo status del log
+                            if log.status == 'success':
+                                pre_check_status = True
+                                dettagli = message if message else "Aggiornamento completato con successo"
+                            else:
+                                pre_check_status = False
+                                dettagli = message if message else "Errore durante l'aggiornamento"
+
+                        # Abbiamo trovato il log per questo package, usiamo il più recente
+                        break
+                except Exception as e:
+                    logger.warning(f"Error parsing publication log for {package_name}: {e}")
+                    continue
+
+            packages_with_status.append({
+                "package": package_name,
                 "ws_precheck": r[1],
                 "ws_produzione": r[2],
                 "bank": r[3],
-                "type_reportistica": r[4],  # Aggiungi Type_reportisica
-                "user": "N/D",
-                "data_esecuzione": None,
-                "pre_check": False,
-                "prod": False,
-                "log": "In attesa di elaborazione"
-            }
-            for r in results if r[0]
-        ]
+                "type_reportistica": r[4],
+                "user": user,
+                "data_esecuzione": data_esecuzione,
+                "pre_check": pre_check_status,
+                "prod": False,  # TODO: implementare logica per production
+                "dettagli": dettagli
+            })
+
+        return packages_with_status
+
     except Exception as e:
         logger.error(f"test-packages-v2 failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -591,51 +650,34 @@ async def publish_precheck(
         logger.info(f"Workspace: {workspace}")
         logger.info(f"Packages to publish: {pbi_packages}")
 
-        script_dir = os.path.join(os.path.dirname(__file__), "..", "scripts")
-        script_path = os.path.join(script_dir, "main.py")
-        logger.debug(f"script_path: {script_path} exists={os.path.exists(script_path)}")
-
-        venv_dir = os.path.join(os.path.dirname(__file__), "..", "venv")
-        python_exe = (
-            os.path.join(venv_dir, "Scripts", "python.exe")
-            if os.name == "nt"
-            else os.path.join(venv_dir, "bin", "python")
-        )
-        if not os.path.exists(python_exe):
-            python_exe = sys.executable
-        logger.debug(f"python_exe: {python_exe} exists={os.path.exists(python_exe)}")
-
-        # Use subprocess.Popen instead of asyncio.create_subprocess_exec for Windows compatibility
+        # Importa e chiama direttamente lo script invece di usare subprocess
+        # Questo permette di usare le dipendenze incluse nel bundle PyInstaller
         def run_script():
-            # Su Windows, apri una nuova finestra CMD per vedere l'esecuzione
-            if os.name == 'nt':
-                CREATE_NEW_CONSOLE = 0x00000010
-                process = subprocess.Popen(
-                    [
-                        python_exe,
-                        script_path,
-                        "--workspace", workspace,
-                        "--packages", ",".join(pbi_packages)
-                    ],
-                    creationflags=CREATE_NEW_CONSOLE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-            else:
-                process = subprocess.Popen(
-                    [
-                        python_exe,
-                        script_path,
-                        "--workspace", workspace,
-                        "--packages", ",".join(pbi_packages)
-                    ],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-            stdout, stderr = process.communicate()
-            return process.returncode, stdout, stderr
+            import io
+            import contextlib
+
+            # Cattura stdout/stderr
+            stdout_capture = io.StringIO()
+            stderr_capture = io.StringIO()
+
+            try:
+                with contextlib.redirect_stdout(stdout_capture), contextlib.redirect_stderr(stderr_capture):
+                    # Importa il modulo scripts.main
+                    from scripts import main as script_main
+
+                    # Chiama la funzione main direttamente
+                    status = script_main.main(workspace, pbi_packages)
+
+                    # Stampa il risultato come JSON per mantenere il formato originale
+                    import json
+                    print("\n[RESULT]")
+                    print(json.dumps(status, indent=2))
+
+                return 0, stdout_capture.getvalue(), stderr_capture.getvalue()
+            except Exception as e:
+                import traceback
+                stderr_capture.write(traceback.format_exc())
+                return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
 
         # Run in thread pool to avoid blocking
         loop = asyncio.get_event_loop()

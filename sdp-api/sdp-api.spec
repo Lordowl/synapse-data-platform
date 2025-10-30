@@ -5,7 +5,10 @@ block_cipher = None
 a = Analysis(
     ['main.py'],
     pathex=['.'],
-    binaries=[],
+    binaries=[
+        ('scripts/config_data', 'spks_dispatching/config_data'),
+        ('venv/Lib/site-packages/sharpynt/config_data', 'sharpynt/config_data'),
+    ],
     datas=[
         ('api/auth.py', 'api'),
         ('api/users.py', 'api'),

@@ -660,7 +660,7 @@ function Report() {
            tasksForSemaphore.every(task => task.disponibilita_server === true);
   }, [tasksForSemaphore]);
 
-  // Verifica se tutte le righe della seconda tabella hanno pre_check = true
+  // Verifica se tutte le righe della seconda tabella hanno pre_check = true (verde, non error/timeout)
   const allPreCheckGreen = useMemo(() => {
     return publicationData.length > 0 &&
            publicationData.every(item => item.pre_check === true);
@@ -989,10 +989,12 @@ function Report() {
                         <div style={{
                           width: '100%',
                           height: '8px',
-                          backgroundColor: item.pre_check === true
-                            ? '#22c55e'
-                            : 'transparent',
-                          border: item.pre_check !== true
+                          backgroundColor:
+                            item.pre_check === true ? '#22c55e' :  // Verde - successo
+                            item.pre_check === 'error' ? '#ef4444' :  // Rosso - errore
+                            item.pre_check === 'timeout' ? '#f59e0b' :  // Arancione - timeout
+                            'transparent',  // Grigio - in attesa
+                          border: (item.pre_check !== true && item.pre_check !== 'error' && item.pre_check !== 'timeout')
                             ? '1px solid #9ca3af'
                             : 'none',
                           borderRadius: '4px'

@@ -253,9 +253,7 @@ def init_repo_update_from_file(repo_update_data=None):
                 settimana=settimana,
                 anno=anno,
                 semaforo=semaforo,
-                bank=bank_name,
-                log_key=None,
-                details=None
+                bank=bank_name
             )
             db_session.add(new_record)
             logger.info(f"[INIT_REPO_UPDATE] Creato record per banca '{bank_name}': anno={anno}, settimana={settimana}")
@@ -353,12 +351,12 @@ class RepoUpdateInfo(db.Base):
     __tablename__ = "repo_update_info"
     __table_args__ = {'extend_existing': True}
     id = Column(Integer, primary_key=True)
-    settimana = Column(Integer, nullable=True)
-    anno = Column(Integer, nullable=True)
-    semaforo = Column(Integer, nullable=True)
-    log_key = Column(String, unique=True)
-    details = Column(JSON, nullable=True)
     bank = Column(String, nullable=True)
+    anno = Column(Integer, nullable=True)
+    settimana = Column(Integer, nullable=True)
+    semaforo = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 class FlowExecutionDetail(db.Base):
     __tablename__ = "flow_execution_detail"
@@ -392,6 +390,34 @@ class ReportMapping(db.Base):
     package = Column(String, primary_key=True)
     finality = Column(String, nullable=True)  # Finalità del report
 
+class PublicationLog(db.Base):
+    __tablename__ = "publication_logs"
+    __table_args__ = {'extend_existing': True}
+    id = Column(Integer, primary_key=True)
+    bank = Column(String, nullable=False)
+    workspace = Column(String, nullable=False)
+    packages = Column(JSON, nullable=False)
+    publication_type = Column(String, nullable=False)
+    status = Column(String, nullable=False)
+    output = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    timestamp = Column(DateTime, server_default=func.now())
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+class SyncRun(db.Base):
+    __tablename__ = "sync_runs"
+    __table_args__ = {'extend_existing': True}
+    id = Column(Integer, primary_key=True)
+    bank = Column(String, nullable=True)
+    start_time = Column(DateTime, server_default=func.now())
+    end_time = Column(DateTime, nullable=True)
+    status = Column(String, nullable=False)
+    files_processed = Column(Integer, default=0)
+    files_copied = Column(Integer, default=0)
+    files_skipped = Column(Integer, default=0)
+    files_failed = Column(Integer, default=0)
+    error_details = Column(Text, nullable=True)
+
 # Inject model classes into db.models
 db.models.Base = db.Base  # Important: db.models.Base must point to the same Base
 db.models.User = User
@@ -402,6 +428,8 @@ db.models.RepoUpdateInfo = RepoUpdateInfo
 db.models.FlowExecutionDetail = FlowExecutionDetail
 db.models.Bank = Bank
 db.models.ReportMapping = ReportMapping
+db.models.PublicationLog = PublicationLog
+db.models.SyncRun = SyncRun
 
 print(f"[RUNTIME HOOK] db.models has Bank: {hasattr(db.models, 'Bank')}")
 print(f"[RUNTIME HOOK] Models defined and injected")
@@ -943,20 +971,24 @@ class ReportisticaInDB(ReportisticaBase):
 
 # Define the missing RepoUpdateInfo schemas
 class RepoUpdateInfoBase(BaseModel):
-    settimana: Optional[int] = None
+    bank: Optional[str] = None
     anno: Optional[int] = None
+    settimana: Optional[int] = None
     semaforo: Optional[int] = None
 
 class RepoUpdateInfoCreate(RepoUpdateInfoBase):
     pass
 
 class RepoUpdateInfoUpdate(BaseModel):
-    settimana: Optional[int] = None
+    bank: Optional[str] = None
     anno: Optional[int] = None
+    settimana: Optional[int] = None
     semaforo: Optional[int] = None
 
 class RepoUpdateInfoInDB(RepoUpdateInfoBase):
     id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

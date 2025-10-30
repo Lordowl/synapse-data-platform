@@ -4,7 +4,7 @@ import time
 from fluentx.flow_executor import run_flow
 from fluentx.utility import get_general_config
 from openpyxl import load_workbook
-from utility import extract_information, check_and_move, get_download_path, get_destination_path, extract_error, get_resource_path, get_users_list, get_config_from_sharepoint, get_users_from_sharepoint, get_flow_from_sharepoint
+from .utility import extract_information, check_and_move, get_download_path, get_destination_path, extract_error, get_resource_path, get_users_list, get_config_from_sharepoint, get_users_from_sharepoint, get_flow_from_sharepoint
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait

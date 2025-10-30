@@ -58,9 +58,7 @@ def init_repo_update_from_file(repo_update_data: list = None):
                 settimana=settimana,
                 anno=anno,
                 semaforo=semaforo,
-                bank=bank_name,
-                log_key=None,
-                details=None
+                bank=bank_name
             )
             db.add(new_record)
             logger.info(f"[INIT_REPO_UPDATE] Creato record per banca '{bank_name}': anno={anno}, settimana={settimana}")

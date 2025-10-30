@@ -26,22 +26,16 @@ def get_repo_update_info(
             # Tabella non trovata: ritorna default in-memory
             return {
                 "id": 0,
-                "settimana": 1,
-                "anno": 2025,
-                "semaforo": 0,
                 "bank": current_user.bank,
-                "log_key": None,
-                "details": None,
+                "anno": 2025,
+                "settimana": 1,
+                "semaforo": 0,
                 "created_at": None,
                 "updated_at": None,
             }
 
         # Costruisci SELECT solo con colonne presenti
-        select_cols = ["id", "settimana", "anno", "semaforo", "bank"]
-        if "log_key" in col_names:
-            select_cols.append("log_key")
-        if "details" in col_names:
-            select_cols.append("details")
+        select_cols = ["id", "bank", "anno", "settimana", "semaforo"]
         if "created_at" in col_names:
             select_cols.append("created_at")
         if "updated_at" in col_names:
@@ -64,10 +58,6 @@ def get_repo_update_info(
         data = dict(row._mapping)
 
         # Normalizza campi opzionali mancanti
-        if "log_key" not in data:
-            data["log_key"] = None
-        if "details" not in data:
-            data["details"] = None
         if "created_at" not in data:
             data["created_at"] = None
         if "updated_at" not in data:
@@ -80,30 +70,13 @@ def get_repo_update_info(
         # Questo evita 500 e mantiene l'app funzionante.
         return {
             "id": 0,
-            "settimana": 1,
-            "anno": 2025,
-            "semaforo": 0,
             "bank": current_user.bank,
-            "log_key": None,
-            "details": None,
+            "anno": 2025,
+            "settimana": 1,
+            "semaforo": 0,
             "created_at": None,
             "updated_at": None,
-            "error": str(e),
         }
-    # Filtra per banca dell'utente corrente
-    repo_info = crud.get_repo_update_info_by_bank(db=db, bank=current_user.bank)
-
-    if not repo_info:
-        # Se non esiste, crea una riga di default per questa banca
-        default_data = schemas.RepoUpdateInfoCreate(
-            anno=2025,
-            settimana=1,
-            semaforo=0,
-            bank=current_user.bank
-        )
-        repo_info = crud.create_repo_update_info(db=db, repo_info=default_data)
-
-    return repo_info
 
 @router.put("/", response_model=schemas.RepoUpdateInfoInDB)
 def update_repo_update_info(
