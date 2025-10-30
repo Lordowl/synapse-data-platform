@@ -135,90 +135,68 @@ def is_sync_running(
         logger.error(f"Errore nel verificare sync status: {e}")
         return {"is_running": False}
 
+
 @router.post("/trigger-sync")
 def trigger_sync(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Avvia un processo di sync lanciando lo script dalla venv.
-    Lo script viene eseguito in background e lo stato viene tracciato in sync_runs.
-    """
-    try:
-        # Verifica che non ci sia già un sync in corso
-        sql = text("SELECT COUNT(*) FROM sync_runs WHERE status = 'running'")
-        running_count = db.execute(sql).scalar()
+      db: Session = Depends(get_db),
+      current_user: User = Depends(get_current_user)
+  ):
+      try:
+          # Controlla SOLO il record ID=1 (quello che usa reposync)
+          sql = text("SELECT status FROM sync_runs WHERE id = 1")
+          result = db.execute(sql).fetchone()
 
-        if running_count > 0:
-            return {
-                "success": False,
-                "message": "Un sync è già in corso",
-                "is_running": True
-            }
+          if result and result[0] == 'running':
+              return {
+                  "success": False,
+                  "message": "Un sync è già in corso",
+                  "is_running": True
+              }
 
-        # Ottieni il path della cartella base dal settings
-        from core.config import settings
-        base_folder = settings.SETTINGS_PATH
+          # Path venv
+          from core.config import config_manager
+          base_folder = config_manager.get_setting("SETTINGS_PATH")
+          if not base_folder:
+              raise HTTPException(status_code=500, detail="SETTINGS_PATH non configurato")
 
-        if not base_folder:
-            raise HTTPException(
-                status_code=500,
-                detail="SETTINGS_PATH non configurato"
-            )
+          venv_path = os.path.join(base_folder, "App", "Dashboard", "vreposync")
+          venv_python = os.path.join(venv_path, "Scripts", "python.exe")
+          sync_command = [venv_python, "-m", "reposync", "-c"]
 
-        # Path alla venv reposync (si trova accanto al database)
-        # Database: SETTINGS_PATH/App/Dashboard/sdp.db
-        # venv: SETTINGS_PATH/App/Dashboard/vreposync
-        venv_path = os.path.join(base_folder, "App", "Dashboard", "vreposync")
-        venv_python = os.path.join(venv_path, "Scripts", "python.exe")
+          if not os.path.exists(venv_python):
+              raise HTTPException(status_code=404, detail=f"Python venv non trovato: {venv_python}")
 
-        # Comando da eseguire: python -m reposync -c
-        sync_command = [venv_python, "-m", "reposync", "-c"]
+          # ❌ RIMUOVI QUESTA PARTE - NON creare il record!
+          # sql_insert = text("""
+          #     INSERT INTO sync_runs ...
+          # """)
+          # db.execute(sql_insert, {"bank": current_user.bank})
+          # db.commit()
 
-        # Verifica che il python della venv esista
-        if not os.path.exists(venv_python):
-            raise HTTPException(
-                status_code=404,
-                detail=f"Python venv non trovato: {venv_python}. Verifica che la venv 'vreposync' esista accanto al database."
-            )
+          # Lancia il comando (reposync creerà il record con ID=1)
+          work_dir = os.path.join(base_folder, "App", "Dashboard")
+          process = subprocess.Popen(
+              sync_command,
+              cwd=work_dir,
+              stdout=subprocess.PIPE,
+              stderr=subprocess.PIPE,
+              creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+          )
 
-        # Crea un nuovo record sync_run
-        sql_insert = text("""
-            INSERT INTO sync_runs (bank, start_time, status, files_processed, files_copied, files_skipped, files_failed)
-            VALUES (:bank, datetime('now'), 'running', 0, 0, 0, 0)
-        """)
-        db.execute(sql_insert, {"bank": current_user.bank})
-        db.commit()
+          logger.info(f"Sync avviato da {current_user.username}, PID: {process.pid}")
 
-        # Lancia il comando dalla venv in background
-        # Usa subprocess.Popen per non bloccare la risposta
-        import subprocess
+          return {
+              "success": True,
+              "message": "Sync avviato con successo",
+              "is_running": True,
+              "pid": process.pid
+          }
 
-        # Working directory: la cartella Dashboard dove si trova il db
-        work_dir = os.path.join(base_folder, "App", "Dashboard")
-
-        process = subprocess.Popen(
-            sync_command,
-            cwd=work_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
-        )
-
-        logger.info(f"Sync process avviato da {current_user.username} (bank: {current_user.bank}), PID: {process.pid}")
-
-        return {
-            "success": True,
-            "message": "Sync avviato con successo",
-            "is_running": True,
-            "pid": process.pid
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Errore nell'avvio del sync: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+      except HTTPException:
+          raise
+      except Exception as e:
+          logger.error(f"Errore sync: {e}", exc_info=True)
+          raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/publication-logs/latest")
 def get_latest_publication_logs(
@@ -233,67 +211,126 @@ def get_latest_publication_logs(
     from sqlalchemy import func
 
     try:
-        # Query per ottenere l'ultimo log per la banca dell'utente
+        # Se il modello non esiste nel runtime, fai fallback a SQL diretto
+        if not hasattr(models, "PublicationLog"):
+            logger.error("PublicationLog model missing; falling back to raw SQL")
+            # Verifica che la tabella esista
+            tbl = db.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='publication_logs'")).fetchone()
+            if not tbl:
+                logger.error("Table publication_logs not found")
+                return []
+
+            # Costruisci query semplice; filtra per bank e, se richiesto, per publication_type
+            base_sql = """
+                SELECT workspace, bank, publication_type, status, output, error, packages, timestamp
+                FROM publication_logs
+                WHERE LOWER(bank) = LOWER(:bank)
+            """
+            params = {"bank": current_user.bank}
+            if publication_type:
+                base_sql += " AND publication_type = :ptype"
+                params["ptype"] = publication_type
+            base_sql += " ORDER BY timestamp DESC LIMIT 200"
+
+            rows = db.execute(text(base_sql), params).fetchall()
+            if not rows:
+                return []
+
+            # Raggruppa per package (più recente per package)
+            latest_by_package = {}
+            for r in rows:
+                workspace, _, ptype, status, output, error, packages, ts = r
+                # packages può essere JSON string → normalizza
+                pkg_list = []
+                try:
+                    if isinstance(packages, str):
+                        pkg_list = json.loads(packages)
+                    elif isinstance(packages, (list, tuple)):
+                        pkg_list = list(packages)
+                except Exception:
+                    pkg_list = []
+
+                for package in pkg_list or []:
+                    # Se non presente, memorizza la riga più recente
+                    if package not in latest_by_package:
+                        latest_by_package[package] = {
+                            "workspace": workspace,
+                            "publication_type": ptype,
+                            "status": status,
+                            "output": output,
+                            "error": error,
+                            "timestamp": ts,
+                        }
+
+            result = []
+            for package, info in latest_by_package.items():
+                log_text = info["output"] if info["status"] == "success" else info["error"]
+                package_message = log_text
+
+                # Prova a estrarre il messaggio specifico per package se log è JSON
+                if log_text:
+                    try:
+                        log_dict = json.loads(log_text) if isinstance(log_text, str) else log_text
+                        if isinstance(log_dict, dict) and package in log_dict:
+                            package_message = log_dict[package]
+                    except Exception:
+                        package_message = log_text
+
+                result.append({
+                    "package": package,
+                    "workspace": info["workspace"],
+                    "user": "N/D",
+                    "data_esecuzione": info["timestamp"],
+                    "pre_check": info["publication_type"] == "precheck" and info["status"] == "success",
+                    "prod": info["publication_type"] == "production" and info["status"] == "success",
+                    "log": package_message,
+                    "status": info["status"]
+                })
+
+            return result
+
+        # Percorso normale con ORM se il modello esiste
         query = db.query(models.PublicationLog).filter(
             func.lower(models.PublicationLog.bank) == func.lower(current_user.bank)
         )
-
         if publication_type:
             query = query.filter(models.PublicationLog.publication_type == publication_type)
 
-        # Recupera tutti i log più recenti (uno per package)
-        # Raggruppa per package e prendi il più recente di ogni gruppo
-        from sqlalchemy import desc
-
-        # Query tutti i log della banca ordinati per timestamp
         logs = query.order_by(desc(models.PublicationLog.timestamp)).all()
-
         if not logs:
             return []
 
-        # Raggruppa per package (prendi il più recente per ogni package)
         latest_by_package = {}
         for log in logs:
             for package in log.packages:
                 if package not in latest_by_package:
                     latest_by_package[package] = log
 
-        # Crea la risposta
         result = []
         for package, log in latest_by_package.items():
-            # Estrai il messaggio specifico per questo package
             log_text = log.output if log.status == "success" else log.error
             package_message = log_text
-
-            # Se il log è un dizionario/JSON, estrai solo il messaggio per questo package
             if log_text:
                 try:
-                    import json
-                    # Prova a parsare come JSON
                     log_dict = json.loads(log_text) if isinstance(log_text, str) else log_text
-
                     if isinstance(log_dict, dict) and package in log_dict:
-                        # Estrai solo il messaggio per questo package
                         package_message = log_dict[package]
                 except (json.JSONDecodeError, TypeError, KeyError):
-                    # Se non è un JSON valido o non contiene il package, usa il log originale
                     package_message = log_text
 
             result.append({
                 "package": package,
                 "workspace": log.workspace,
-                "user": "N/D",  # Potresti join con users.username se vuoi
+                "user": "N/D",
                 "data_esecuzione": log.timestamp,
                 "pre_check": log.publication_type == "precheck" and log.status == "success",
                 "prod": log.publication_type == "production" and log.status == "success",
-                "log": package_message,  # Solo il messaggio specifico del package
+                "log": package_message,
                 "status": log.status
             })
-
         return result
-
     except Exception as e:
-        logger.error(f"get_latest_publication_logs failed: {e}", exc_info=True)
+        logger.error("get_latest_publication_logs failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/packages-ready-test")

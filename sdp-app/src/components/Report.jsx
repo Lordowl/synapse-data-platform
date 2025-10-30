@@ -787,6 +787,8 @@ function Report() {
                   setRepoUpdateInfo(prev => ({...prev, settimana: newSettimana}));
                   try {
                     await apiClient.put('/repo-update/', { settimana: newSettimana });
+                    // Ricarica i dati della reportistica con la nuova settimana
+                    await fetchData();
                   } catch (error) {
                     console.error('Errore aggiornamento settimana:', error);
                   }
@@ -811,6 +813,8 @@ function Report() {
                   setRepoUpdateInfo(prev => ({...prev, anno: newAnno}));
                   try {
                     await apiClient.put('/repo-update/', { anno: newAnno });
+                    // Ricarica i dati della reportistica con il nuovo anno
+                    await fetchData();
                   } catch (error) {
                     console.error('Errore aggiornamento anno:', error);
                   }

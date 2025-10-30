@@ -114,23 +114,19 @@ class ReportisticaInDB(ReportisticaBase):
 # --- Schemi per RepoUpdateInfo ---
 
 class RepoUpdateInfoBase(BaseModel):
-    settimana: Optional[int] = None
-    anno: Optional[int] = None
-    semaforo: Optional[int] = None
     bank: Optional[str] = None
-    log_key: Optional[str] = None
-    details: Optional[dict] = None
+    anno: Optional[int] = None
+    settimana: Optional[int] = None
+    semaforo: Optional[int] = None
 
 class RepoUpdateInfoCreate(RepoUpdateInfoBase):
     pass
 
 class RepoUpdateInfoUpdate(BaseModel):
-    settimana: Optional[int] = None
-    anno: Optional[int] = None
-    semaforo: Optional[int] = None
     bank: Optional[str] = None
-    log_key: Optional[str] = None
-    details: Optional[dict] = None
+    anno: Optional[int] = None
+    settimana: Optional[int] = None
+    semaforo: Optional[int] = None
 
 class RepoUpdateInfoInDB(RepoUpdateInfoBase):
     id: int

@@ -99,12 +99,10 @@ class RepoUpdateInfo(Base):
     __tablename__ = "repo_update_info"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    settimana = Column(Integer, nullable=True)
+    bank = Column(String, index=True, nullable=True)
     anno = Column(Integer, nullable=True)
+    settimana = Column(Integer, nullable=True)
     semaforo = Column(Integer, nullable=True)
-    log_key = Column(String, unique=True, index=True, nullable=True)  # serve per collegare i dettagli
-    details = Column(JSON, nullable=True)
-    bank = Column(String, index=True, nullable=True)  # nuova colonna
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
