@@ -118,6 +118,8 @@ class RepoUpdateInfoBase(BaseModel):
     anno: Optional[int] = None
     semaforo: Optional[int] = None
     bank: Optional[str] = None
+    log_key: Optional[str] = None
+    details: Optional[dict] = None
 
 class RepoUpdateInfoCreate(RepoUpdateInfoBase):
     pass
@@ -127,9 +129,13 @@ class RepoUpdateInfoUpdate(BaseModel):
     anno: Optional[int] = None
     semaforo: Optional[int] = None
     bank: Optional[str] = None
+    log_key: Optional[str] = None
+    details: Optional[dict] = None
 
 class RepoUpdateInfoInDB(RepoUpdateInfoBase):
     id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

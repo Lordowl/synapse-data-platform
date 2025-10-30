@@ -730,18 +730,34 @@ function Report() {
             {/* Pulsante Aggiorna */}
             <button
               onClick={async () => {
-                console.log("Refresh button clicked");
-                showToast("Aggiornamento dati in corso...", "info");
+                console.log("Refresh button clicked - triggering sync");
+                showToast("Avvio sincronizzazione...", "info");
                 try {
-                  await fetchSyncStatus();
-                  showToast("Dati aggiornati con successo", "success");
+                  const response = await apiClient.post("/reportistica/trigger-sync");
+                  console.log("Trigger sync response:", response.data);
+
+                  if (response.data.success) {
+                    showToast("Sincronizzazione avviata con successo", "success");
+                    // Aggiorna subito lo stato per disabilitare il pulsante
+                    setSyncRunning(true);
+                    // Aggiorna i dati dopo un breve delay
+                    setTimeout(() => {
+                      fetchData();
+                    }, 2000);
+                  } else {
+                    showToast(response.data.message || "Sync già in corso", "warning");
+                  }
                 } catch (error) {
-                  showToast("Errore durante l'aggiornamento", "error");
+                  console.error("Errore nell'avvio sync:", error);
+                  showToast(
+                    error.response?.data?.detail || "Errore nell'avvio della sincronizzazione",
+                    "error"
+                  );
                 }
               }}
               className="btn btn-outline"
               disabled={syncRunning || loadingActions.global !== null}
-              title={syncRunning ? "Sync in corso, aggiornamento disabilitato" : "Aggiorna dati"}
+              title={syncRunning ? "Sync in corso, pulsante disabilitato" : "Avvia sincronizzazione"}
               style={{
                 opacity: (syncRunning || loadingActions.global !== null) ? '0.5' : '1',
                 cursor: (syncRunning || loadingActions.global !== null) ? 'not-allowed' : 'pointer'

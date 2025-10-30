@@ -135,6 +135,91 @@ def is_sync_running(
         logger.error(f"Errore nel verificare sync status: {e}")
         return {"is_running": False}
 
+@router.post("/trigger-sync")
+def trigger_sync(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Avvia un processo di sync lanciando lo script dalla venv.
+    Lo script viene eseguito in background e lo stato viene tracciato in sync_runs.
+    """
+    try:
+        # Verifica che non ci sia già un sync in corso
+        sql = text("SELECT COUNT(*) FROM sync_runs WHERE status = 'running'")
+        running_count = db.execute(sql).scalar()
+
+        if running_count > 0:
+            return {
+                "success": False,
+                "message": "Un sync è già in corso",
+                "is_running": True
+            }
+
+        # Ottieni il path della cartella base dal settings
+        from core.config import settings
+        base_folder = settings.SETTINGS_PATH
+
+        if not base_folder:
+            raise HTTPException(
+                status_code=500,
+                detail="SETTINGS_PATH non configurato"
+            )
+
+        # Path alla venv reposync (si trova accanto al database)
+        # Database: SETTINGS_PATH/App/Dashboard/sdp.db
+        # venv: SETTINGS_PATH/App/Dashboard/vreposync
+        venv_path = os.path.join(base_folder, "App", "Dashboard", "vreposync")
+        venv_python = os.path.join(venv_path, "Scripts", "python.exe")
+
+        # Comando da eseguire: python -m reposync -c
+        sync_command = [venv_python, "-m", "reposync", "-c"]
+
+        # Verifica che il python della venv esista
+        if not os.path.exists(venv_python):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Python venv non trovato: {venv_python}. Verifica che la venv 'vreposync' esista accanto al database."
+            )
+
+        # Crea un nuovo record sync_run
+        sql_insert = text("""
+            INSERT INTO sync_runs (bank, start_time, status, files_processed, files_copied, files_skipped, files_failed)
+            VALUES (:bank, datetime('now'), 'running', 0, 0, 0, 0)
+        """)
+        db.execute(sql_insert, {"bank": current_user.bank})
+        db.commit()
+
+        # Lancia il comando dalla venv in background
+        # Usa subprocess.Popen per non bloccare la risposta
+        import subprocess
+
+        # Working directory: la cartella Dashboard dove si trova il db
+        work_dir = os.path.join(base_folder, "App", "Dashboard")
+
+        process = subprocess.Popen(
+            sync_command,
+            cwd=work_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+        )
+
+        logger.info(f"Sync process avviato da {current_user.username} (bank: {current_user.bank}), PID: {process.pid}")
+
+        return {
+            "success": True,
+            "message": "Sync avviato con successo",
+            "is_running": True,
+            "pid": process.pid
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Errore nell'avvio del sync: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/publication-logs/latest")
 def get_latest_publication_logs(
     publication_type: Optional[str] = Query(None, description="Filtra per tipo: precheck o production"),

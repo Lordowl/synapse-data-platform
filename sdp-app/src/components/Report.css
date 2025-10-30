@@ -57,8 +57,8 @@
     margin: 0 0 0 var(--space-2);
     min-width: 0;
   }
-  
-  
+
+
   /* Sezione Filtri Superiori */
   .report-filters-section {
     background: var(--primary-bg);
