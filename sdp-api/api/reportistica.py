@@ -125,15 +125,48 @@ def is_sync_running(
 ):
     """
     Verifica se c'è un sync in corso nella tabella sync_runs.
+    Un sync è attivo se la differenza tra il timestamp corrente e end_time
+    è minore di update_interval secondi.
     Restituisce {"is_running": true/false}
     """
     try:
-        sql = text("SELECT COUNT(*) FROM sync_runs WHERE status = 'running'")
-        count = db.execute(sql).scalar()
-        return {"is_running": count > 0}
+        from datetime import datetime, timedelta
+
+        # Prendi il record ID=1 (quello usato da reposync)
+        sql = text("SELECT end_time, update_interval FROM sync_runs WHERE id = 1")
+        result = db.execute(sql).fetchone()
+
+        if not result:
+            return {"is_running": False}
+
+        end_time_str, update_interval = result
+
+        if not end_time_str or not update_interval:
+            return {"is_running": False}
+
+        # Converti end_time in datetime
+        end_time = datetime.fromisoformat(end_time_str)
+        # Usa UTC per confrontare con timestamp salvati in UTC
+        now = datetime.utcnow()
+
+        # Calcola la differenza in secondi
+        time_diff = (now - end_time).total_seconds()
+
+        # update_interval è in MINUTI, convertiamo in secondi per il confronto
+        interval_seconds = update_interval * 60
+
+        # Se la differenza è minore di update_interval (in secondi), il sync è attivo
+        is_active = time_diff < interval_seconds
+
+        logger.debug(f"Sync status check: end_time={end_time}, now={now}, diff={time_diff}s, interval={update_interval}min ({interval_seconds}s), active={is_active}")
+
+        return {
+            "is_running": is_active,
+            "update_interval": update_interval
+        }
     except Exception as e:
         logger.error(f"Errore nel verificare sync status: {e}")
-        return {"is_running": False}
+        return {"is_running": False, "update_interval": 5}
 
 
 @router.post("/trigger-sync")
@@ -142,16 +175,32 @@ def trigger_sync(
       current_user: User = Depends(get_current_user)
   ):
       try:
+          from datetime import datetime
+
           # Controlla SOLO il record ID=1 (quello che usa reposync)
-          sql = text("SELECT status FROM sync_runs WHERE id = 1")
+          # Un sync è attivo se la differenza tra ora e end_time è minore di update_interval
+          sql = text("SELECT end_time, update_interval FROM sync_runs WHERE id = 1")
           result = db.execute(sql).fetchone()
 
-          if result and result[0] == 'running':
-              return {
-                  "success": False,
-                  "message": "Un sync è già in corso",
-                  "is_running": True
-              }
+          if result:
+              end_time_str, update_interval = result
+
+              if end_time_str and update_interval:
+                  end_time = datetime.fromisoformat(end_time_str)
+                  # Usa UTC per confrontare con timestamp salvati in UTC
+                  now = datetime.utcnow()
+                  time_diff = (now - end_time).total_seconds()
+
+                  # update_interval è in MINUTI, convertiamo in secondi
+                  interval_seconds = update_interval * 60
+
+                  # Se la differenza è minore di update_interval (in secondi), il sync è già attivo
+                  if time_diff < interval_seconds:
+                      return {
+                          "success": False,
+                          "message": "Un sync è già in corso",
+                          "is_running": True
+                      }
 
           # Path venv
           from core.config import config_manager
@@ -276,13 +325,32 @@ def get_latest_publication_logs(
                     except Exception:
                         package_message = log_text
 
+                # Determina lo stato in base al messaggio e allo status
+                pre_check_status = False
+                prod_status = False
+
+                if info["publication_type"] == "precheck":
+                    if info["status"] == "success" and package_message and "successo" in package_message.lower():
+                        pre_check_status = True
+                    elif package_message and "timeout" in package_message.lower():
+                        pre_check_status = "timeout"
+                    elif info["status"] == "error" or (package_message and ("errore" in package_message.lower() or "error" in package_message.lower())):
+                        pre_check_status = "error"
+                elif info["publication_type"] == "production":
+                    if info["status"] == "success" and package_message and "successo" in package_message.lower():
+                        prod_status = True
+                    elif package_message and "timeout" in package_message.lower():
+                        prod_status = "timeout"
+                    elif info["status"] == "error" or (package_message and ("errore" in package_message.lower() or "error" in package_message.lower())):
+                        prod_status = "error"
+
                 result.append({
                     "package": package,
                     "workspace": info["workspace"],
                     "user": "N/D",
                     "data_esecuzione": info["timestamp"],
-                    "pre_check": info["publication_type"] == "precheck" and info["status"] == "success",
-                    "prod": info["publication_type"] == "production" and info["status"] == "success",
+                    "pre_check": pre_check_status,
+                    "prod": prod_status,
                     "log": package_message,
                     "status": info["status"]
                 })
@@ -318,13 +386,32 @@ def get_latest_publication_logs(
                 except (json.JSONDecodeError, TypeError, KeyError):
                     package_message = log_text
 
+            # Determina lo stato in base al messaggio e allo status
+            pre_check_status = False
+            prod_status = False
+
+            if log.publication_type == "precheck":
+                if log.status == "success" and package_message and "successo" in package_message.lower():
+                    pre_check_status = True
+                elif package_message and "timeout" in package_message.lower():
+                    pre_check_status = "timeout"
+                elif log.status == "error" or (package_message and ("errore" in package_message.lower() or "error" in package_message.lower())):
+                    pre_check_status = "error"
+            elif log.publication_type == "production":
+                if log.status == "success" and package_message and "successo" in package_message.lower():
+                    prod_status = True
+                elif package_message and "timeout" in package_message.lower():
+                    prod_status = "timeout"
+                elif log.status == "error" or (package_message and ("errore" in package_message.lower() or "error" in package_message.lower())):
+                    prod_status = "error"
+
             result.append({
                 "package": package,
                 "workspace": log.workspace,
                 "user": "N/D",
                 "data_esecuzione": log.timestamp,
-                "pre_check": log.publication_type == "precheck" and log.status == "success",
-                "prod": log.publication_type == "production" and log.status == "success",
+                "pre_check": pre_check_status,
+                "prod": prod_status,
                 "log": package_message,
                 "status": log.status
             })

@@ -184,6 +184,7 @@ function Report() {
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
   const [repoUpdateInfo, setRepoUpdateInfo] = useState({ anno: 2025, settimana: 29, semaforo: 0 });
   const [syncRunning, setSyncRunning] = useState(false); // Stato per tracciare se c'è un sync in corso
+  const [syncInterval, setSyncInterval] = useState(5); // Intervallo di aggiornamento in secondi
 
   // Stato per tracciare le azioni in corso (es. "pubblica-pre-check", "pubblica-report")
   // Quando global !== null, tutti i controlli vengono disabilitati per prevenire azioni concorrenti
@@ -270,18 +271,21 @@ function Report() {
       const response = await apiClient.get("/reportistica/is-sync-running");
       console.log("Is sync running response:", response.data);
       setSyncRunning(response.data?.is_running || false);
+      setSyncInterval(response.data?.update_interval || 5);
       return; // Se funziona, usciamo dalla funzione
     } catch (innerError) {
       // Se l'errore è 422, ignoriamo e continuiamo con il fallback
       console.log("Errore previsto, utilizzo fallback:", innerError.response?.status);
-      
+
       // Per qualsiasi errore, impostiamo semplicemente is_running a false
       setSyncRunning(false);
+      setSyncInterval(5);
     }
   } catch (error) {
     // Questo catch esterno non dovrebbe mai essere raggiunto, ma per sicurezza
     console.error("Errore critico nel verificare sync status:", error);
     setSyncRunning(false);
+    setSyncInterval(5);
   }
 }, []);
 
@@ -714,18 +718,24 @@ function Report() {
               </div>
             </nav>
 
-            {/* Pulsante Indietro */}
-            <button
-              onClick={() => {
-                console.log("Navigating back to /home...");
-                navigate("/home", { replace: true });
-              }}
-              className="btn btn-outline report-header-back-button"
-              // Disabilitato quando c'è un'azione in corso (loadingActions.global !== null)
-              disabled={loadingActions.global !== null}
-            >
-              ← Indietro
-            </button>
+            {/* Indicatore Auto-aggiornamento */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              fontSize: '0.875rem',
+              color: '#666'
+            }}>
+              <span>Sincronizzazione attiva</span>
+              <span
+                className={`status-dot ${syncRunning ? 'active-success' : 'active-danger'}`}
+                title={syncRunning
+                  ? `Il sistema esegue automaticamente controlli e sincronizzazioni ogni ${syncInterval} ${syncInterval === 1 ? 'minuto' : 'minuti'} per mantenere i dati sempre aggiornati.`
+
+                  : `L’autoaggiornamento è disattivato. L’ultimo intervallo configurato era di ${syncInterval} ${syncInterval === 1 ? 'minuto' : 'minuti'}; i controlli e le sincronizzazioni devono essere avviati manualmente.`
+}
+              ></span>
+            </div>
 
             {/* Pulsante Aggiorna */}
             <button
@@ -757,18 +767,26 @@ function Report() {
               }}
               className="btn btn-outline"
               disabled={syncRunning || loadingActions.global !== null}
-              title={syncRunning ? "Sync in corso, pulsante disabilitato" : "Avvia sincronizzazione"}
+              title={syncRunning ? "Auto-aggiornamento in corso" : "Avvia sincronizzazione"}
               style={{
                 opacity: (syncRunning || loadingActions.global !== null) ? '0.5' : '1',
                 cursor: (syncRunning || loadingActions.global !== null) ? 'not-allowed' : 'pointer'
               }}
             >
-              <RefreshCw
-                size={16}
-                className={syncRunning ? "spin" : ""}
-                style={{ marginRight: '0.5rem' }}
-              />
               Aggiorna
+            </button>
+
+            {/* Pulsante Indietro */}
+            <button
+              onClick={() => {
+                console.log("Navigating back to /home...");
+                navigate("/home", { replace: true });
+              }}
+              className="btn btn-outline report-header-back-button"
+              // Disabilitato quando c'è un'azione in corso (loadingActions.global !== null)
+              disabled={loadingActions.global !== null}
+            >
+              ← Indietro
             </button>
           </div>
         </header>
@@ -1004,10 +1022,12 @@ function Report() {
                         <div style={{
                           width: '100%',
                           height: '8px',
-                          backgroundColor: item.prod === true
-                            ? '#22c55e'
-                            : 'transparent',
-                          border: item.prod !== true
+                          backgroundColor:
+                            item.prod === true ? '#22c55e' :  // Verde - successo
+                            item.prod === 'error' ? '#ef4444' :  // Rosso - errore
+                            item.prod === 'timeout' ? '#f59e0b' :  // Arancione - timeout
+                            'transparent',  // Grigio - in attesa
+                          border: (item.prod !== true && item.prod !== 'error' && item.prod !== 'timeout')
                             ? '1px solid #9ca3af'
                             : 'none',
                           borderRadius: '4px'
