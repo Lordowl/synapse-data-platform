@@ -9,6 +9,97 @@ import {
 import "./Report.css";
 import apiClient from "../api/apiClient";
 
+// --- Componente Tooltip Personalizzato ---
+function CustomTooltip({ children, content, position = 'bottom' }) {
+  const [isVisible, setIsVisible] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
+  const timeoutRef = useRef(null);
+
+  const handleMouseEnter = () => {
+    setIsVisible(true);
+    timeoutRef.current = setTimeout(() => {
+      setShowTooltip(true);
+    }, 500); // 0.5 secondi di delay
+  };
+
+  const handleMouseLeave = () => {
+    setIsVisible(false);
+    setShowTooltip(false);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <div
+      style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {children}
+      {showTooltip && (
+        <div
+          style={{
+            position: 'absolute',
+            zIndex: 1000,
+            backgroundColor: '#1f2937',
+            color: 'white',
+            padding: '0.5rem 0.75rem',
+            borderRadius: '6px',
+            fontSize: '0.875rem',
+            lineHeight: '1.25rem',
+            maxWidth: '400px',
+            minWidth: '250px',
+            whiteSpace: 'normal',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            ...(position === 'bottom' && {
+              top: 'calc(100% + 8px)',
+              left: '50%',
+              transform: 'translateX(-50%)'
+            }),
+            ...(position === 'top' && {
+              bottom: 'calc(100% + 8px)',
+              left: '50%',
+              transform: 'translateX(-50%)'
+            })
+          }}
+        >
+          {content}
+          <div
+            style={{
+              position: 'absolute',
+              width: 0,
+              height: 0,
+              borderLeft: '6px solid transparent',
+              borderRight: '6px solid transparent',
+              ...(position === 'bottom' && {
+                top: '-6px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                borderBottom: '6px solid #1f2937'
+              }),
+              ...(position === 'top' && {
+                bottom: '-6px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                borderTop: '6px solid #1f2937'
+              })
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Componente Modal per Dettagli ---
 function DetailsModal({ isOpen, onClose, title, content }) {
   // Chiudi modal con tasto ESC
@@ -185,6 +276,7 @@ function Report() {
   const [repoUpdateInfo, setRepoUpdateInfo] = useState({ anno: 2025, settimana: 29, semaforo: 0 });
   const [syncRunning, setSyncRunning] = useState(false); // Stato per tracciare se c'è un sync in corso
   const [syncInterval, setSyncInterval] = useState(5); // Intervallo di aggiornamento in secondi
+  const [publishStatus, setPublishStatus] = useState(null); // Stato per tracciare la pubblicazione in corso
 
   // Stato per tracciare le azioni in corso (es. "pubblica-pre-check", "pubblica-report")
   // Quando global !== null, tutti i controlli vengono disabilitati per prevenire azioni concorrenti
@@ -289,6 +381,17 @@ function Report() {
   }
 }, []);
 
+const fetchPublishStatus = useCallback(async () => {
+  try {
+    const response = await apiClient.get("/reportistica/publish-status");
+    console.log("Publish status response:", response.data);
+    setPublishStatus(response.data);
+  } catch (error) {
+    console.error("Errore nel recupero publish status:", error);
+    setPublishStatus(null);
+  }
+}, []);
+
   // Funzione per caricare i data dalla tabella report_data
   const fetchPackagesReady = useCallback(async () => {
     try {
@@ -385,6 +488,7 @@ function Report() {
         await fetchRepoUpdateInfo();
         await fetchPackagesReady();
         await fetchSyncStatus(); // Verifica se c'è un sync in corso
+        await fetchPublishStatus(); // Verifica lo stato della pubblicazione
 
       } catch (error) {
         console.error('Error fetching reportistica data:', error);
@@ -417,7 +521,7 @@ function Report() {
     return () => {
       clearInterval(interval);
     };
-  }, [showToast, fetchRepoUpdateInfo, fetchPackagesReady, fetchSyncStatus]);
+  }, [showToast, fetchRepoUpdateInfo, fetchPackagesReady, fetchSyncStatus, fetchPublishStatus]);
 
   // Funzione per cambiare periodicità
   const handlePeriodicityChange = (newPeriodicity) => {
@@ -726,55 +830,63 @@ function Report() {
               fontSize: '0.875rem',
               color: '#666'
             }}>
-              <span>Sincronizzazione attiva</span>
-              <span
-                className={`status-dot ${syncRunning ? 'active-success' : 'active-danger'}`}
-                title={syncRunning
+              <span>Sincronizzazione automatica</span>
+              <CustomTooltip
+                content={syncRunning
                   ? `Il sistema esegue automaticamente controlli e sincronizzazioni ogni ${syncInterval} ${syncInterval === 1 ? 'minuto' : 'minuti'} per mantenere i dati sempre aggiornati.`
-
-                  : `L’autoaggiornamento è disattivato. L’ultimo intervallo configurato era di ${syncInterval} ${syncInterval === 1 ? 'minuto' : 'minuti'}; i controlli e le sincronizzazioni devono essere avviati manualmente.`
-}
-              ></span>
+                  : `L'autoaggiornamento è disattivato. L'ultimo intervallo configurato era di ${syncInterval} ${syncInterval === 1 ? 'minuto' : 'minuti'}. I controlli e le sincronizzazioni devono essere avviati manualmente.`}
+                position="bottom"
+              >
+                <span
+                  className={`status-dot ${syncRunning ? 'active-success' : 'active-danger'}`}
+                ></span>
+              </CustomTooltip>
             </div>
 
             {/* Pulsante Aggiorna */}
-            <button
-              onClick={async () => {
-                console.log("Refresh button clicked - triggering sync");
-                showToast("Avvio sincronizzazione...", "info");
-                try {
-                  const response = await apiClient.post("/reportistica/trigger-sync");
-                  console.log("Trigger sync response:", response.data);
-
-                  if (response.data.success) {
-                    showToast("Sincronizzazione avviata con successo", "success");
-                    // Aggiorna subito lo stato per disabilitare il pulsante
-                    setSyncRunning(true);
-                    // Aggiorna i dati dopo un breve delay
-                    setTimeout(() => {
-                      fetchData();
-                    }, 2000);
-                  } else {
-                    showToast(response.data.message || "Sync già in corso", "warning");
-                  }
-                } catch (error) {
-                  console.error("Errore nell'avvio sync:", error);
-                  showToast(
-                    error.response?.data?.detail || "Errore nell'avvio della sincronizzazione",
-                    "error"
-                  );
-                }
-              }}
-              className="btn btn-outline"
-              disabled={syncRunning || loadingActions.global !== null}
-              title={syncRunning ? "Auto-aggiornamento in corso" : "Avvia sincronizzazione"}
-              style={{
-                opacity: (syncRunning || loadingActions.global !== null) ? '0.5' : '1',
-                cursor: (syncRunning || loadingActions.global !== null) ? 'not-allowed' : 'pointer'
-              }}
+            <CustomTooltip
+              content={syncRunning
+                ? "La sincronizzazione automatica è attiva. Il pulsante è disabilitato durante l'esecuzione."
+                : "Avvia manualmente la sincronizzazione dei dati. Questo aggiornerà tutti i report disponibili."}
+              position="bottom"
             >
-              Aggiorna
-            </button>
+              <button
+                onClick={async () => {
+                  console.log("Refresh button clicked - triggering sync");
+                  showToast("Avvio sincronizzazione...", "info");
+                  try {
+                    const response = await apiClient.post("/reportistica/trigger-sync");
+                    console.log("Trigger sync response:", response.data);
+
+                    if (response.data.success) {
+                      showToast("Sincronizzazione avviata con successo", "success");
+                      // Aggiorna subito lo stato per disabilitare il pulsante
+                      setSyncRunning(true);
+                      // Aggiorna i dati dopo un breve delay
+                      setTimeout(() => {
+                        fetchData();
+                      }, 2000);
+                    } else {
+                      showToast(response.data.message || "Sync già in corso", "warning");
+                    }
+                  } catch (error) {
+                    console.error("Errore nell'avvio sync:", error);
+                    showToast(
+                      error.response?.data?.detail || "Errore nell'avvio della sincronizzazione",
+                      "error"
+                    );
+                  }
+                }}
+                className="btn btn-outline"
+                disabled={syncRunning || loadingActions.global !== null}
+                style={{
+                  opacity: (syncRunning || loadingActions.global !== null) ? '0.5' : '1',
+                  cursor: (syncRunning || loadingActions.global !== null) ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Aggiorna
+              </button>
+            </CustomTooltip>
 
             {/* Pulsante Indietro */}
             <button
@@ -891,6 +1003,7 @@ function Report() {
                 ></span>
               </div>
             </div>
+
           </div>
         </section>
 
@@ -976,6 +1089,7 @@ function Report() {
         {/* Seconda tabella - data per la pubblicazione */}
         <section className="report-tasks-section" style={{ marginTop: '2rem' }}>
           <h3 style={{ marginBottom: '1rem' }}> Package per la Pubblicazione</h3>
+
 
           <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
             {/* Tabella compatta */}
@@ -1096,6 +1210,31 @@ function Report() {
               >
                 <Send className="btn-icon-md" /> Pubblica Report {periodicityConfig.label}
               </button>
+
+              {/* Stato Pubblicazione - Sotto i pulsanti */}
+              {publishStatus && publishStatus.is_running && publishStatus.data && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.5rem 0.75rem',
+                  backgroundColor: '#f3f4f6',
+                  borderRadius: '4px',
+                  border: '1px solid #d1d5db',
+                  fontSize: '0.75rem'
+                }}>
+                  <RefreshCw size={12} className="spin" style={{ color: '#6b7280' }} />
+                  <span style={{ color: '#374151', fontWeight: '500' }}>
+                    Pubblicazione in corso
+                    {publishStatus.data.phase && (
+                      <span style={{ color: '#6b7280', fontWeight: '400' }}>
+                        {' - '}
+                        {publishStatus.data.phase === 'precheck' ? 'Pre Check' : 'Prod'}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </section>

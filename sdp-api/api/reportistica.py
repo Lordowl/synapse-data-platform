@@ -169,6 +169,84 @@ def is_sync_running(
         return {"is_running": False, "update_interval": 5}
 
 
+@router.get("/publish-status")
+def get_publish_status(
+    db: Session = Depends(get_db)
+):
+    """
+    Recupera lo stato dell'operazione di publish dalla tabella sync_runs (ID=2).
+    Restituisce informazioni su publish in corso, contatori e tempi.
+    Endpoint pubblico per permettere il monitoraggio in tempo reale.
+    """
+    try:
+        from datetime import datetime
+
+        # Prendi il record ID=2 (quello per le operazioni di publish)
+        sql = text("""
+            SELECT start_time, end_time, update_interval,
+                   files_processed, files_copied, files_skipped, files_failed,
+                   error_details
+            FROM sync_runs
+            WHERE id = 2 AND operation_type = 'publish'
+        """)
+        result = db.execute(sql).fetchone()
+
+        if not result:
+            return {
+                "is_running": False,
+                "data": None
+            }
+
+        start_time_str, end_time_str, update_interval, files_processed, files_copied, files_skipped, files_failed, error_details = result
+
+        # Determina se il publish è in corso
+        is_running = end_time_str is None
+
+        # Se il publish è in corso, error_details contiene la fase (precheck/production)
+        # Altrimenti contiene eventuali errori
+        phase = None
+        actual_error = None
+        if is_running and error_details in ["precheck", "production"]:
+            phase = error_details
+        else:
+            actual_error = error_details
+
+        # Se end_time esiste, calcola durata
+        duration_seconds = None
+        if start_time_str:
+            start_time = datetime.fromisoformat(start_time_str)
+            if end_time_str:
+                end_time = datetime.fromisoformat(end_time_str)
+                duration_seconds = (end_time - start_time).total_seconds()
+            else:
+                # Ancora in corso, calcola tempo trascorso
+                now = datetime.utcnow()
+                duration_seconds = (now - start_time).total_seconds()
+
+        return {
+            "is_running": is_running,
+            "data": {
+                "start_time": start_time_str,
+                "end_time": end_time_str,
+                "duration_seconds": duration_seconds,
+                "update_interval": update_interval,
+                "files_processed": files_processed or 0,
+                "files_copied": files_copied or 0,
+                "files_skipped": files_skipped or 0,
+                "files_failed": files_failed or 0,
+                "phase": phase,
+                "error_details": actual_error,
+                "has_errors": (files_failed or 0) > 0 or actual_error is not None
+            }
+        }
+    except Exception as e:
+        logger.error(f"Errore nel recupero publish status: {e}")
+        return {
+            "is_running": False,
+            "data": None
+        }
+
+
 @router.post("/trigger-sync")
 def trigger_sync(
       db: Session = Depends(get_db),
@@ -706,10 +784,17 @@ async def publish_precheck(
 ) -> Dict[str, Any]:
     import traceback
     from sqlalchemy import func
+    from db import publish_tracker
 
     logger.info(f"publish_precheck called for user: {current_user.username}, bank: {current_user.bank}")
 
     try:
+        # Avvia il tracking della publish run
+        if not publish_tracker.start_publish_run(db, update_interval=5):
+            raise HTTPException(
+                status_code=409,
+                detail="Un'operazione di pubblicazione è già in corso. Attendere il completamento."
+            )
         # Prendi i dati dalla tabella report_mapping filtrati per banca dell'utente (case-insensitive)
         query = db.query(
             models.ReportMapping.ws_precheck,
@@ -810,11 +895,29 @@ async def publish_precheck(
 
         db.commit()
 
+        # Aggiorna i contatori della publish run
+        total_packages = len(pbi_packages)
+        success_count = sum(1 for pkg in pbi_packages if "successo" in packages_details.get(pkg, "").lower())
+        failed_count = total_packages - success_count
+
+        publish_tracker.update_publish_run(
+            db=db,
+            files_processed=total_packages,
+            files_copied=success_count,
+            files_skipped=0,
+            files_failed=failed_count
+        )
+
         if returncode != 0:
+            # Chiudi la publish run con errore
+            publish_tracker.end_publish_run(db=db, error_details=stderr[:500] if stderr else None)
             raise HTTPException(
                 status_code=500,
                 detail=f"Errore nell'esecuzione dello script: {stderr}"
             )
+
+        # Chiudi la publish run con successo
+        publish_tracker.end_publish_run(db=db, error_details=None)
 
         return {
             "status": "success",
@@ -825,10 +928,21 @@ async def publish_precheck(
             "packages_details": packages_details
         }
 
-    except HTTPException:
+    except HTTPException as http_exc:
+        # Chiudi la publish run con errore se è stata avviata
+        try:
+            publish_tracker.end_publish_run(db=db, error_details=str(http_exc.detail)[:500])
+        except:
+            pass
         raise
     except Exception as e:
         logger.error(f"Exception in publish_precheck: {e}", exc_info=True)
+
+        # Chiudi la publish run con errore
+        try:
+            publish_tracker.end_publish_run(db=db, error_details=str(e)[:500])
+        except:
+            pass
 
         # Salva anche gli errori nel database
         try:
