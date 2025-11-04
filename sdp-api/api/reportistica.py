@@ -64,7 +64,7 @@ def get_reportistica_items(
         logger.info("USANDO QUERY SQL DIRETTA - VERSION 16:00")
 
         sql = text("""
-            SELECT id, banca, tipo_reportistica, anno, settimana, nome_file, package,
+            SELECT id, banca, tipo_reportistica, anno, settimana, mese, nome_file, package,
                    finalita, disponibilita_server, ultima_modifica, dettagli,
                    created_at, updated_at
             FROM reportistica
@@ -100,14 +100,15 @@ def get_reportistica_items(
                 "tipo_reportistica": row[2],
                 "anno": row[3],
                 "settimana": row[4],
-                "nome_file": row[5],
-                "package": row[6],
-                "finalita": row[7],
-                "disponibilita_server": bool(row[8]) if row[8] is not None else None,
-                "ultima_modifica": row[9],
-                "dettagli": row[10],
-                "created_at": row[11],
-                "updated_at": row[12]
+                "mese": row[5],
+                "nome_file": row[6],
+                "package": row[7],
+                "finalita": row[8],
+                "disponibilita_server": bool(row[9]) if row[9] is not None else None,
+                "ultima_modifica": row[10],
+                "dettagli": row[11],
+                "created_at": row[12],
+                "updated_at": row[13]
             }
             for row in rows
         ]
@@ -349,7 +350,7 @@ def get_latest_publication_logs(
 
             # Costruisci query semplice; filtra per bank e, se richiesto, per publication_type
             base_sql = """
-                SELECT workspace, bank, publication_type, status, output, error, packages, timestamp
+                SELECT workspace, bank, publication_type, status, output, error, packages, timestamp, anno, settimana, mese
                 FROM publication_logs
                 WHERE LOWER(bank) = LOWER(:bank)
             """
@@ -366,7 +367,7 @@ def get_latest_publication_logs(
             # Raggruppa per package (più recente per package)
             latest_by_package = {}
             for r in rows:
-                workspace, _, ptype, status, output, error, packages, ts = r
+                workspace, _, ptype, status, output, error, packages, ts, anno, settimana, mese = r
                 # packages può essere JSON string → normalizza
                 pkg_list = []
                 try:
@@ -387,6 +388,9 @@ def get_latest_publication_logs(
                             "output": output,
                             "error": error,
                             "timestamp": ts,
+                            "anno": anno,
+                            "settimana": settimana,
+                            "mese": mese
                         }
 
             result = []
@@ -430,7 +434,10 @@ def get_latest_publication_logs(
                     "pre_check": pre_check_status,
                     "prod": prod_status,
                     "log": package_message,
-                    "status": info["status"]
+                    "status": info["status"],
+                    "anno": info["anno"],
+                    "settimana": info["settimana"],
+                    "mese": info["mese"]
                 })
 
             return result
@@ -522,6 +529,7 @@ def get_packages_ready_test():
 
 @router.get("/test-packages-v2")
 def get_packages_ready(
+    type_reportistica: Optional[str] = Query(None, description="Filtra per tipo: Settimanale o Mensile"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -529,7 +537,7 @@ def get_packages_ready(
     from sqlalchemy import func, and_
     import json
 
-    logger.info(f"test-packages-v2 endpoint called for user: {current_user.username}, bank: {current_user.bank}")
+    logger.info(f"test-packages-v2 endpoint called for user: {current_user.username}, bank: {current_user.bank}, type: {type_reportistica}")
 
     try:
         # Filtra per banca dell'utente corrente (case-insensitive)
@@ -542,6 +550,10 @@ def get_packages_ready(
         ).filter(
             func.lower(models.ReportMapping.bank) == func.lower(current_user.bank)
         )
+
+        # Filtra per tipo di reportistica se specificato
+        if type_reportistica:
+            query = query.filter(models.ReportMapping.Type_reportisica == type_reportistica)
 
         results = query.all()
         logger.debug(f"Found {len(results)} packages for bank {current_user.bank}")
@@ -789,6 +801,17 @@ async def publish_precheck(
     logger.info(f"publish_precheck called for user: {current_user.username}, bank: {current_user.bank}")
 
     try:
+        # Recupera anno, settimana e mese da repo_update_info per questo utente
+        repo_info_query = db.query(models.RepoUpdateInfo).filter(
+            func.lower(models.RepoUpdateInfo.bank) == func.lower(current_user.bank)
+        ).first()
+
+        anno = repo_info_query.anno if repo_info_query else 2025
+        settimana = repo_info_query.settimana if repo_info_query else None
+        mese = repo_info_query.mese if repo_info_query else None
+
+        logger.info(f"Publishing for period: anno={anno}, settimana={settimana}, mese={mese}")
+
         # Avvia il tracking della publish run
         if not publish_tracker.start_publish_run(db, update_interval=5):
             raise HTTPException(
@@ -889,7 +912,10 @@ async def publish_precheck(
                 status="success" if returncode == 0 and "successo" in package_detail.lower() else "error",
                 output=package_detail if returncode == 0 or "successo" in package_detail.lower() else None,
                 error=package_detail if returncode != 0 or "errore" in package_detail.lower() or "timeout" in package_detail.lower() else None,
-                user_id=current_user.id
+                user_id=current_user.id,
+                anno=anno,
+                settimana=settimana,
+                mese=mese
             )
             db.add(log_entry)
 
@@ -954,7 +980,10 @@ async def publish_precheck(
                 status="error",
                 output=None,
                 error=str(e),
-                user_id=current_user.id if current_user else None
+                user_id=current_user.id if current_user else None,
+                anno=anno if 'anno' in locals() else None,
+                settimana=settimana if 'settimana' in locals() else None,
+                mese=mese if 'mese' in locals() else None
             )
             db.add(log_entry)
             db.commit()

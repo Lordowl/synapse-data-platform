@@ -117,6 +117,7 @@ class RepoUpdateInfoBase(BaseModel):
     bank: Optional[str] = None
     anno: Optional[int] = None
     settimana: Optional[int] = None
+    mese: Optional[int] = None
     semaforo: Optional[int] = None
 
 class RepoUpdateInfoCreate(RepoUpdateInfoBase):
@@ -126,6 +127,7 @@ class RepoUpdateInfoUpdate(BaseModel):
     bank: Optional[str] = None
     anno: Optional[int] = None
     settimana: Optional[int] = None
+    mese: Optional[int] = None
     semaforo: Optional[int] = None
 
 class RepoUpdateInfoInDB(RepoUpdateInfoBase):

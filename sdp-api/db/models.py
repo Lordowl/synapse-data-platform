@@ -144,3 +144,6 @@ class PublicationLog(Base):
     error = Column(Text, nullable=True)  # Errore se presente
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    anno = Column(Integer, nullable=True)  # Anno di riferimento
+    settimana = Column(Integer, nullable=True)  # Settimana di riferimento (per reportistica settimanale)
+    mese = Column(Integer, nullable=True)  # Mese di riferimento (per reportistica mensile)

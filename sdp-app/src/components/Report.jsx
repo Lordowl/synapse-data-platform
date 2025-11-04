@@ -273,7 +273,7 @@ function Report() {
   const [packagesReady, setPackagesReady] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
-  const [repoUpdateInfo, setRepoUpdateInfo] = useState({ anno: 2025, settimana: 29, semaforo: 0 });
+  const [repoUpdateInfo, setRepoUpdateInfo] = useState({ anno: 2025, settimana: 29, mese: 1, semaforo: 0 });
   const [syncRunning, setSyncRunning] = useState(false); // Stato per tracciare se c'è un sync in corso
   const [syncInterval, setSyncInterval] = useState(5); // Intervallo di aggiornamento in secondi
   const [publishStatus, setPublishStatus] = useState(null); // Stato per tracciare la pubblicazione in corso
@@ -347,8 +347,10 @@ function Report() {
   const fetchRepoUpdateInfo = useCallback(async () => {
     try {
       const response = await apiClient.get("/repo-update/");
+      console.log("fetchRepoUpdateInfo response:", response.data);
       if (response.data) {
         setRepoUpdateInfo(response.data);
+        console.log("repoUpdateInfo aggiornato con:", response.data);
       }
     } catch (error) {
       console.error("Errore nella fetch repo update info:", error);
@@ -395,8 +397,10 @@ const fetchPublishStatus = useCallback(async () => {
   // Funzione per caricare i data dalla tabella report_data
   const fetchPackagesReady = useCallback(async () => {
     try {
-      // Carica i package disponibili
-      const packagesResponse = await apiClient.get("/reportistica/test-packages-v2");
+      // Carica i package disponibili filtrati per periodicità
+      const periodicity = searchParams.get('type') || 'settimanale';
+      const typeParam = periodicity === 'settimanale' ? 'Settimanale' : 'Mensile';
+      const packagesResponse = await apiClient.get(`/reportistica/test-packages-v2?type_reportistica=${typeParam}`);
       const availablePackages = packagesResponse.data || [];
       console.log('Available packages:', availablePackages);
 
@@ -410,30 +414,55 @@ const fetchPublishStatus = useCallback(async () => {
         console.warn("Nessun log di pubblicazione trovato (normale se prima esecuzione):", logError);
       }
 
-      // Merge dei dati: usa i log se disponibili, altrimenti i default
+      // Merge dei dati con logica separata per colori e settimana di pubblicazione
       const mergedData = availablePackages.map(pkg => {
         // Cerca se esiste un log per questo package
         const logEntry = publicationLogs.find(log => log.package === pkg.package);
 
         if (logEntry) {
-          // L'API restituisce già il messaggio specifico del package nel campo log
+          const periodicity = searchParams.get('type') || 'settimanale';
+
+          // Verifica se il log corrisponde al periodo corrente (per i colori)
+          let isCurrentPeriod = false;
+          if (periodicity === 'settimanale') {
+            isCurrentPeriod = logEntry.anno === repoUpdateInfo.anno &&
+                             logEntry.settimana === repoUpdateInfo.settimana;
+          } else {
+            isCurrentPeriod = logEntry.anno === repoUpdateInfo.anno &&
+                             logEntry.mese === repoUpdateInfo.mese;
+          }
+
+          console.log(`Package ${pkg.package}: log(${logEntry.anno}/${logEntry.settimana || 'N/A'}/${logEntry.mese || 'N/A'}) vs current(${repoUpdateInfo.anno}/${repoUpdateInfo.settimana}/${repoUpdateInfo.mese}) => ${isCurrentPeriod}`);
+
           return {
             package: pkg.package,
             ws_precheck: pkg.ws_precheck,
             ws_produzione: pkg.ws_produzione,
             bank: pkg.bank,
-            type_reportistica: pkg.type_reportistica, // Aggiungi il tipo di reportistica
+            type_reportistica: pkg.type_reportistica,
             user: logEntry.user || "N/D",
             data_esecuzione: logEntry.data_esecuzione,
-            pre_check: logEntry.pre_check,
-            prod: logEntry.prod,
-            dettagli: logEntry.log || "In attesa di elaborazione"
+            // Colori: mostrati solo se corrisponde al periodo corrente
+            pre_check: isCurrentPeriod ? logEntry.pre_check : false,
+            prod: isCurrentPeriod ? logEntry.prod : false,
+            dettagli: isCurrentPeriod ? (logEntry.log || "In attesa di elaborazione") : null,
+            // Periodo: sempre quello dell'ultima pubblicazione andata a buon fine
+            anno_pubblicazione: logEntry.anno,
+            settimana_pubblicazione: logEntry.settimana,
+            mese_pubblicazione: logEntry.mese
           };
         } else {
-          // Usa i default se non c'è log
+          // Usa i default se non c'è ancora nessun log
           return {
             ...pkg,
-            dettagli: null // Nessun dettaglio disponibile
+            pre_check: false,
+            prod: false,
+            user: "N/D",
+            data_esecuzione: null,
+            dettagli: null,
+            anno_pubblicazione: null,
+            settimana_pubblicazione: null,
+            mese_pubblicazione: null
           };
         }
       });
@@ -443,7 +472,7 @@ const fetchPublishStatus = useCallback(async () => {
       console.error("Errore nel caricamento packages ready:", error);
       setPackagesReady([]);
     }
-  }, []);
+  }, [searchParams]);
 
   // Ref per tenere traccia se è il primo caricamento
   const isInitialLoad = useRef(true);
@@ -480,6 +509,7 @@ const fetchPublishStatus = useCallback(async () => {
           dettagli: item.dettagli || null,
           anno: item.anno,
           settimana: item.settimana,
+          mese: item.mese,
           disponibilita_server: item.disponibilita_server
         }));
 
@@ -526,6 +556,8 @@ const fetchPublishStatus = useCallback(async () => {
   // Funzione per cambiare periodicità
   const handlePeriodicityChange = (newPeriodicity) => {
     setSearchParams({ type: newPeriodicity });
+    // Ricarica i package quando cambia la periodicità
+    fetchPackagesReady();
   };
 
   const handleFilterChange = (filterName, value) => {
@@ -681,17 +713,25 @@ const fetchPublishStatus = useCallback(async () => {
               ...task,
               disponibilita_server: null,
               dettagli: null,
-              // Avanza settimana +1
-              settimana: task.settimana !== null ? task.settimana + 1 : task.settimana
+              // Avanza settimana o mese in base alla periodicità
+              settimana: currentPeriodicity === 'settimanale' && task.settimana !== null ? task.settimana + 1 : task.settimana,
+              mese: currentPeriodicity === 'mensile' && task.mese !== null ? task.mese + 1 : task.mese
             })));
 
-            // Aggiorna repo update info con settimana +1
-            setRepoUpdateInfo(prev => ({
-              ...prev,
-              settimana: prev.settimana + 1
-            }));
-
-            showToast(`✅ Sistema avanzato alla settimana ${repoUpdateInfo.settimana + 1}`, "success");
+            // Aggiorna repo update info con settimana o mese +1
+            if (currentPeriodicity === 'settimanale') {
+              setRepoUpdateInfo(prev => ({
+                ...prev,
+                settimana: prev.settimana + 1
+              }));
+              showToast(`✅ Sistema avanzato alla settimana ${repoUpdateInfo.settimana + 1}`, "success");
+            } else {
+              setRepoUpdateInfo(prev => ({
+                ...prev,
+                mese: prev.mese + 1
+              }));
+              showToast(`✅ Sistema avanzato al mese ${repoUpdateInfo.mese + 1}`, "success");
+            }
           }, 2000);
 
         } catch (error) {
@@ -905,31 +945,68 @@ const fetchPublishStatus = useCallback(async () => {
 
         <section className="report-filters-section">
           <div className="ingest-filters-bar">
-            <div className="filter-group">
-              <label className="form-label" htmlFor="settimana-select">Settimana</label>
-              <select
-                id="settimana-select"
-                className="form-select form-select-sm"
-                style={{ height: '1.75rem', minHeight: '1.75rem', maxHeight: '1.75rem', padding: '0.2rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2', margin: '0', boxSizing: 'border-box' }}
-                value={repoUpdateInfo.settimana || ''}
-                onChange={async (e) => {
-                  const newSettimana = parseInt(e.target.value);
-                  setRepoUpdateInfo(prev => ({...prev, settimana: newSettimana}));
-                  try {
-                    await apiClient.put('/repo-update/', { settimana: newSettimana });
-                    // Ricarica i dati della reportistica con la nuova settimana
-                    await fetchData();
-                  } catch (error) {
-                    console.error('Errore aggiornamento settimana:', error);
-                  }
-                }}
-                disabled={loadingActions.global !== null}
-              >
-                {Array.from({length: 52}, (_, i) => (
-                  <option key={i + 1} value={i + 1}>Settimana {i + 1}</option>
-                ))}
-              </select>
-            </div>
+            {currentPeriodicity === 'settimanale' ? (
+              <div className="filter-group">
+                <label className="form-label" htmlFor="settimana-select">Settimana</label>
+                <select
+                  id="settimana-select"
+                  className="form-select form-select-sm"
+                  style={{ height: '1.75rem', minHeight: '1.75rem', maxHeight: '1.75rem', padding: '0.2rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2', margin: '0', boxSizing: 'border-box' }}
+                  value={repoUpdateInfo.settimana || ''}
+                  onChange={async (e) => {
+                    const newSettimana = parseInt(e.target.value);
+                    try {
+                      const response = await apiClient.put('/repo-update/', { settimana: newSettimana });
+                      // Aggiorna lo stato con la risposta del backend
+                      if (response.data) {
+                        setRepoUpdateInfo(response.data);
+                      }
+                      // Ricarica i dati della reportistica con la nuova settimana
+                      await fetchData();
+                    } catch (error) {
+                      console.error('Errore aggiornamento settimana:', error);
+                    }
+                  }}
+                  disabled={loadingActions.global !== null}
+                >
+                  {Array.from({length: 52}, (_, i) => (
+                    <option key={i + 1} value={i + 1}>Settimana {i + 1}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="filter-group">
+                <label className="form-label" htmlFor="mese-select">Mese</label>
+                <select
+                  id="mese-select"
+                  className="form-select form-select-sm"
+                  style={{ height: '1.75rem', minHeight: '1.75rem', maxHeight: '1.75rem', padding: '0.2rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2', margin: '0', boxSizing: 'border-box' }}
+                  value={(() => {
+                    console.log("Dropdown mese - repoUpdateInfo.mese:", repoUpdateInfo.mese);
+                    return repoUpdateInfo.mese || '';
+                  })()}
+                  onChange={async (e) => {
+                    const newMese = parseInt(e.target.value);
+                    try {
+                      const response = await apiClient.put('/repo-update/', { mese: newMese });
+                      // Aggiorna lo stato con la risposta del backend
+                      if (response.data) {
+                        setRepoUpdateInfo(response.data);
+                      }
+                      // Ricarica i dati della reportistica con il nuovo mese
+                      await fetchData();
+                    } catch (error) {
+                      console.error('Errore aggiornamento mese:', error);
+                    }
+                  }}
+                  disabled={loadingActions.global !== null}
+                >
+                  {Array.from({length: 12}, (_, i) => (
+                    <option key={i + 1} value={i + 1}>Mese {i + 1}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="filter-group">
               <label className="form-label" htmlFor="anno-select">Anno</label>
@@ -1016,7 +1093,7 @@ const fetchPublishStatus = useCallback(async () => {
                   <th>Package</th>
                   <th>Nome File</th>
                   <th>Anno</th>
-                  <th>Settimana</th>
+                  <th>{currentPeriodicity === 'settimanale' ? 'Settimana' : 'Mese'}</th>
                   <th>Data Modifica</th>
                   <th>Disponibilità File</th>
                   <th>Dettagli</th>
@@ -1043,7 +1120,7 @@ const fetchPublishStatus = useCallback(async () => {
                       <td><strong>{task.package || 'N/D'}</strong></td>
                       <td>{task.nome_file || 'N/D'}</td>
                       <td>{task.anno || 'N/D'}</td>
-                      <td>{task.settimana || 'N/D'}</td>
+                      <td>{currentPeriodicity === 'settimanale' ? (task.settimana || 'N/D') : (task.mese || 'N/D')}</td>
                       <td>{formatDateTime(task.data_esecuzione)}</td>
                       <td style={{ textAlign: 'center' }}>
                         <div style={{
@@ -1098,8 +1175,8 @@ const fetchPublishStatus = useCallback(async () => {
                 <thead>
                   <tr>
                     <th style={{ width: '180px' }}>Package</th>
-                    <th style={{ width: '100px' }}>User</th>
                     <th style={{ width: '140px' }}>Data Esecuzione</th>
+                    <th style={{ width: '100px' }}>Ultima Pubblicazione</th>
                     <th style={{ width: '80px', textAlign: 'center' }}>Pre Check</th>
                     <th style={{ width: '80px', textAlign: 'center' }}>Prod</th>
                     <th style={{ width: '200px' }}>Dettagli</th>
@@ -1115,8 +1192,14 @@ const fetchPublishStatus = useCallback(async () => {
                   ) : publicationData.map(item => (
                     <tr key={item.id}>
                       <td><strong>{item.package}</strong></td>
-                      <td>{item.user}</td>
                       <td>{formatDateTime(item.data_esecuzione)}</td>
+                      <td>
+                        {item.settimana_pubblicazione ? (
+                          currentPeriodicity === 'settimanale'
+                            ? `Settimana ${item.settimana_pubblicazione}`
+                            : `Mese ${item.mese_pubblicazione || 'N/D'}`
+                        ) : 'N/D'}
+                      </td>
                       <td style={{ textAlign: 'center' }}>
                         <div style={{
                           width: '100%',

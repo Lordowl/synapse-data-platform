@@ -7,7 +7,7 @@ from db.models import User
 
 router = APIRouter()
 
-@router.get("/", response_model=schemas.RepoUpdateInfoInDB)
+@router.get("/")  # Rimosso temporaneamente response_model per debug
 def get_repo_update_info(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -29,6 +29,7 @@ def get_repo_update_info(
                 "bank": current_user.bank,
                 "anno": 2025,
                 "settimana": 1,
+                "mese": 1,
                 "semaforo": 0,
                 "created_at": None,
                 "updated_at": None,
@@ -36,12 +37,20 @@ def get_repo_update_info(
 
         # Costruisci SELECT solo con colonne presenti
         select_cols = ["id", "bank", "anno", "settimana", "semaforo"]
+        if "mese" in col_names:
+            select_cols.append("mese")
         if "created_at" in col_names:
             select_cols.append("created_at")
         if "updated_at" in col_names:
             select_cols.append("updated_at")
 
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Colonne disponibili: {col_names}")
+        logger.info(f"Colonne selezionate: {select_cols}")
+
         sel_sql = f"SELECT {', '.join(select_cols)} FROM repo_update_info WHERE bank = :bank LIMIT 1"
+        logger.info(f"Query SQL: {sel_sql}")
         row = db.execute(text(sel_sql), {"bank": current_user.bank}).fetchone()
 
         if not row:
@@ -56,13 +65,17 @@ def get_repo_update_info(
             row = db.execute(text(sel_sql), {"bank": current_user.bank}).fetchone()
 
         data = dict(row._mapping)
+        logger.info(f"Dati mappati dal DB: {data}")
 
         # Normalizza campi opzionali mancanti
+        if "mese" not in data:
+            data["mese"] = 1
         if "created_at" not in data:
             data["created_at"] = None
         if "updated_at" not in data:
             data["updated_at"] = None
 
+        logger.info(f"Dati finali dopo normalizzazione: {data}")
         return data
 
     except Exception as e:
@@ -73,6 +86,7 @@ def get_repo_update_info(
             "bank": current_user.bank,
             "anno": 2025,
             "settimana": 1,
+            "mese": 1,
             "semaforo": 0,
             "created_at": None,
             "updated_at": None,
