@@ -4,10 +4,16 @@ from .database import Base
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        # Rendi univoca la coppia (username, bank) invece di solo username
+        Index('idx_username_bank', 'username', 'bank', unique=True),
+        # Rendi univoca la coppia (email, bank) invece di solo email
+        Index('idx_email_bank', 'email', 'bank', unique=True),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True, nullable=False)
-    email = Column(String, unique=True, index=True)
+    username = Column(String, index=True, nullable=False)  # Rimosso unique=True
+    email = Column(String, index=True)  # Rimosso unique=True
     hashed_password = Column(String, nullable=False)
     role = Column(String, default="user")
     is_active = Column(Boolean, default=True)

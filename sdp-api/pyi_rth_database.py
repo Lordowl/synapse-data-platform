@@ -292,15 +292,20 @@ sys.modules['db.models'] = db.models
 
 # Define model classes directly since imports fail in frozen environment
 print("[RUNTIME HOOK] Defining model classes...")
-from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Boolean, ForeignKey, func
+from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Boolean, ForeignKey, func, Index
 
 # Define all model classes manually
 class User(db.Base):
     __tablename__ = "users"
-    __table_args__ = {'extend_existing': True}
+    __table_args__ = (
+        # Composite unique indexes to allow same username/email across different banks
+        Index('idx_username_bank', 'username', 'bank', unique=True),
+        Index('idx_email_bank', 'email', 'bank', unique=True),
+        {'extend_existing': True}
+    )
     id = Column(Integer, primary_key=True)
-    username = Column(String, unique=True, nullable=False)
-    email = Column(String, unique=True, nullable=True)
+    username = Column(String, nullable=False)  # Removed unique=True
+    email = Column(String, nullable=True)  # Removed unique=True
     hashed_password = Column(String, nullable=False)
     role = Column(String, default="user")
     is_active = Column(Boolean, default=True)

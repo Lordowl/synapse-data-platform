@@ -819,11 +819,22 @@ const fetchPublishStatus = useCallback(async () => {
   }, [packagesReady, currentPeriodicity]);
 
   // Verifica se tutte le righe della prima tabella sono verdi (disponibilita_server = true)
-  // Usa tasksForSemaphore (filtrati solo per periodicità)
+  // E che appartengano al periodo corrente
   const allFirstTableGreen = useMemo(() => {
-    return tasksForSemaphore.length > 0 &&
-           tasksForSemaphore.every(task => task.disponibilita_server === true);
-  }, [tasksForSemaphore]);
+    if (tasksForSemaphore.length === 0) return false;
+
+    // Verifica che ogni task sia verde E appartenga al periodo corrente
+    return tasksForSemaphore.every(task => {
+      const isGreen = task.disponibilita_server === true;
+
+      // Verifica che appartenga al periodo corrente
+      const isCurrentPeriod = currentPeriodicity === 'settimanale'
+        ? (task.anno === repoUpdateInfo.anno && task.settimana === repoUpdateInfo.settimana)
+        : (task.anno === repoUpdateInfo.anno && task.mese === repoUpdateInfo.mese);
+
+      return isGreen && isCurrentPeriod;
+    });
+  }, [tasksForSemaphore, repoUpdateInfo, currentPeriodicity]);
 
   // Verifica se tutte le righe della seconda tabella hanno pre_check = true (verde, non error/timeout)
   const allPreCheckGreen = useMemo(() => {

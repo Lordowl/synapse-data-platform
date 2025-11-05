@@ -590,9 +590,9 @@ function CreateUserModal({
               id="bank"
               name="bank"
               value={newUser.bank}
-              onChange={handleChange}
-              disabled={isCreating}
+              disabled={true}
               placeholder="Banca dell'utente"
+              readOnly
             />
           </div>
 
