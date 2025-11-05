@@ -124,6 +124,7 @@ class RepoUpdateInfoCreate(RepoUpdateInfoBase):
     pass
 
 class RepoUpdateInfoUpdate(BaseModel):
+    """VERSIONE AGGIORNATA CON MESE - BUILD 12:35"""
     bank: Optional[str] = None
     anno: Optional[int] = None
     settimana: Optional[int] = None

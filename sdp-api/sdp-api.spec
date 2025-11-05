@@ -2,35 +2,21 @@
 
 block_cipher = None
 
+import os
+import sys
+
+# Forza l'uso del path corrente
+current_dir = os.getcwd()
+
 a = Analysis(
     ['main.py'],
-    pathex=['.'],
+    pathex=[current_dir],
+    hookspath=[current_dir],
     binaries=[
         ('scripts/config_data', 'spks_dispatching/config_data'),
         ('venv/Lib/site-packages/sharpynt/config_data', 'sharpynt/config_data'),
     ],
     datas=[
-        ('api/auth.py', 'api'),
-        ('api/users.py', 'api'),
-        ('api/audit.py', 'api'),
-        ('api/flows.py', 'api'),
-        ('api/tasks.py', 'api'),
-        ('api/reportistica.py', 'api'),
-        ('api/repo_update.py', 'api'),
-        ('api/settings_path.py', 'api'),
-        ('api/banks.py', 'api'),
-        ('db/database.py', 'db'),
-        ('db/models.py', 'db'),
-        ('db/schemas.py', 'db'),
-        ('db/crud.py', 'db'),
-        ('db/init_banks.py', 'db'),
-        ('core/config.py', 'core'),
-        ('core/config_setup.py', 'core'),
-        ('core/security.py', 'core'),
-        ('core/auditing.py', 'core'),
-        ('scripts/generate_flows_from_excel.py', 'scripts'),
-        ('scripts/main.py', 'scripts'),
-        ('scripts/utility.py', 'scripts'),
         ('config/repo_update_default.json', 'config'),
         ('config/banks_default.json', 'config'),
     ],
@@ -81,7 +67,6 @@ a = Analysis(
         'db',
         'db.database',
         'db.models',
-        'db.schemas',
         'db.crud',
         'db.init_banks',
         'api',

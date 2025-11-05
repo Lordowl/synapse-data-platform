@@ -67,8 +67,8 @@ def get_repo_update_info(
         data = dict(row._mapping)
         logger.info(f"Dati mappati dal DB: {data}")
 
-        # Normalizza campi opzionali mancanti
-        if "mese" not in data:
+        # Normalizza campi opzionali mancanti o None
+        if "mese" not in data or data.get("mese") is None:
             data["mese"] = 1
         if "created_at" not in data:
             data["created_at"] = None
@@ -101,8 +101,19 @@ def update_repo_update_info(
     """
     Aggiorna le informazioni di update del repository per la banca dell'utente.
     """
-    return crud.update_repo_update_info_by_bank(
+    import logging
+    logger = logging.getLogger(__name__)
+
+    logger.info(f"PUT /repo-update/ - Bank: {current_user.bank}")
+    logger.info(f"🔴 PUT /repo-update/ - SCHEMA VERSION: {schemas.RepoUpdateInfoUpdate.__doc__}")
+    logger.info(f"🔴 PUT /repo-update/ - SCHEMA FIELDS: {list(schemas.RepoUpdateInfoUpdate.model_fields.keys())}")
+    logger.info(f"PUT /repo-update/ - Dati ricevuti: {repo_info_data.model_dump()}")
+
+    result = crud.update_repo_update_info_by_bank(
         db=db,
         bank=current_user.bank,
         repo_info_data=repo_info_data
     )
+
+    logger.info(f"PUT /repo-update/ - Risultato: {result}")
+    return result

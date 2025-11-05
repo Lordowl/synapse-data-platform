@@ -354,6 +354,7 @@ class RepoUpdateInfo(db.Base):
     bank = Column(String, nullable=True)
     anno = Column(Integer, nullable=True)
     settimana = Column(Integer, nullable=True)
+    mese = Column(Integer, nullable=True)
     semaforo = Column(Integer, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -974,6 +975,7 @@ class RepoUpdateInfoBase(BaseModel):
     bank: Optional[str] = None
     anno: Optional[int] = None
     settimana: Optional[int] = None
+    mese: Optional[int] = None
     semaforo: Optional[int] = None
 
 class RepoUpdateInfoCreate(RepoUpdateInfoBase):
@@ -983,6 +985,7 @@ class RepoUpdateInfoUpdate(BaseModel):
     bank: Optional[str] = None
     anno: Optional[int] = None
     settimana: Optional[int] = None
+    mese: Optional[int] = None
     semaforo: Optional[int] = None
 
 class RepoUpdateInfoInDB(RepoUpdateInfoBase):

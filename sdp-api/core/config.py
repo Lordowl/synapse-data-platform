@@ -105,10 +105,21 @@ def get_database_path_from_config() -> str:
     Legge il settings_path dal file banks_default.json o config.json
     e restituisce il percorso del database in settings_path/App/Dashboard/sdp.db
     """
+    import sys
+
     # Prova prima config.json (runtime), poi banks_default.json (default)
     config_dir = Path.home() / ".sdp-api"
     config_json = config_dir / "config.json"
-    banks_default = Path(__file__).parent.parent / "config" / "banks_default.json"
+
+    # Gestisci PyInstaller: quando buildato, i file sono in sys._MEIPASS
+    if getattr(sys, 'frozen', False):
+        # Eseguito come exe PyInstaller
+        base_path = Path(sys._MEIPASS)
+    else:
+        # Eseguito come script Python normale
+        base_path = Path(__file__).parent.parent
+
+    banks_default = base_path / "config" / "banks_default.json"
 
     settings_path = None
 

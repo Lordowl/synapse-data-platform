@@ -290,7 +290,14 @@ def update_repo_update_info(db: Session, repo_info_data: schemas.RepoUpdateInfoU
 
 def update_repo_update_info_by_bank(db: Session, bank: str, repo_info_data: schemas.RepoUpdateInfoUpdate):
     """Aggiorna le informazioni di repo_update per una specifica banca."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    logger.info(f"CRUD update_repo_update_info_by_bank - Bank: {bank}")
+    logger.info(f"CRUD update_repo_update_info_by_bank - Dati da aggiornare: {repo_info_data.model_dump(exclude_unset=True)}")
+
     existing_repo_info = get_repo_update_info_by_bank(db, bank)
+    logger.info(f"CRUD update_repo_update_info_by_bank - Record esistente: {existing_repo_info}")
 
     if not existing_repo_info:
         # Se non esiste, crea una nuova riga per questa banca
@@ -298,18 +305,37 @@ def update_repo_update_info_by_bank(db: Session, bank: str, repo_info_data: sche
             **repo_info_data.model_dump(exclude_unset=True),
             bank=bank
         )
+        logger.info(f"CRUD update_repo_update_info_by_bank - Creazione nuovo record: {create_data.model_dump()}")
         return create_repo_update_info(db, create_data)
 
     # Aggiorna i dati esistenti
     update_data = repo_info_data.model_dump(exclude_unset=True)
+    logger.info(f"CRUD update_repo_update_info_by_bank - Dati da scrivere nel DB: {update_data}")
+
     if update_data:
         db.query(models.RepoUpdateInfo).filter(models.RepoUpdateInfo.bank == bank).update(
             values=update_data,
             synchronize_session=False
         )
         db.commit()
+        logger.info(f"CRUD update_repo_update_info_by_bank - Commit eseguito")
 
-    return get_repo_update_info_by_bank(db, bank)
+    updated_record = get_repo_update_info_by_bank(db, bank)
+    logger.info(f"CRUD update_repo_update_info_by_bank - Record aggiornato finale: {updated_record}")
+
+    # Log del record come dict per vedere tutti i campi
+    if updated_record:
+        record_dict = {
+            'id': updated_record.id,
+            'bank': updated_record.bank,
+            'anno': updated_record.anno,
+            'settimana': updated_record.settimana,
+            'mese': updated_record.mese,
+            'semaforo': updated_record.semaforo
+        }
+        logger.info(f"🟢 CRUD - Record che sto per ritornare: {record_dict}")
+
+    return updated_record
 
 # ------------------ AUDIT LOG ------------------
 def create_audit_log(db: Session, user_id: int | None, action: str, details: dict | None = None, bank: str | None = None):

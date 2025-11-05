@@ -22,6 +22,7 @@ db/database.py
 db/init_banks.py
 db/init_repo_update.py
 db/models.py
+db/publish_tracker.py
 db/schemas.py
 scripts/__init__.py
 scripts/generate_flows_from_excel.py

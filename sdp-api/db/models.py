@@ -102,6 +102,7 @@ class RepoUpdateInfo(Base):
     bank = Column(String, index=True, nullable=True)
     anno = Column(Integer, nullable=True)
     settimana = Column(Integer, nullable=True)
+    mese = Column(Integer, nullable=True)
     semaforo = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

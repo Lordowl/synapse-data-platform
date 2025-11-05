@@ -698,8 +698,8 @@ const fetchPublishStatus = useCallback(async () => {
 
           showToast(`Report pubblicato in Produzione con successo! (${response.data.packages.length} package aggiornati)`, "success");
 
-          // Dopo 2 secondi, resetta tutto e avanza alla settimana successiva
-          setTimeout(() => {
+          // Dopo 2 secondi, resetta tutto e avanza alla settimana/mese successivo
+          setTimeout(async () => {
             // Reset pre_check e prod per i data
             setPackagesReady(prev => prev.map(pkg => ({
               ...pkg,
@@ -719,18 +719,35 @@ const fetchPublishStatus = useCallback(async () => {
             })));
 
             // Aggiorna repo update info con settimana o mese +1
-            if (currentPeriodicity === 'settimanale') {
-              setRepoUpdateInfo(prev => ({
-                ...prev,
-                settimana: prev.settimana + 1
-              }));
-              showToast(`✅ Sistema avanzato alla settimana ${repoUpdateInfo.settimana + 1}`, "success");
-            } else {
-              setRepoUpdateInfo(prev => ({
-                ...prev,
-                mese: prev.mese + 1
-              }));
-              showToast(`✅ Sistema avanzato al mese ${repoUpdateInfo.mese + 1}`, "success");
+            try {
+              if (currentPeriodicity === 'settimanale') {
+                const newSettimana = repoUpdateInfo.settimana + 1;
+                const response = await apiClient.put('/repo-update/', { settimana: newSettimana });
+
+                // Aggiorna lo stato con la risposta del backend
+                if (response.data) {
+                  setRepoUpdateInfo(response.data);
+                }
+                showToast(`✅ Sistema avanzato alla settimana ${newSettimana}`, "success");
+
+                // Ricarica i pacchetti per aggiornare la UI
+                await fetchPackagesReady();
+              } else {
+                const newMese = repoUpdateInfo.mese + 1;
+                const response = await apiClient.put('/repo-update/', { mese: newMese });
+
+                // Aggiorna lo stato con la risposta del backend
+                if (response.data) {
+                  setRepoUpdateInfo(response.data);
+                }
+                showToast(`✅ Sistema avanzato al mese ${newMese}`, "success");
+
+                // Ricarica i pacchetti per aggiornare la UI
+                await fetchPackagesReady();
+              }
+            } catch (error) {
+              console.error('Errore aggiornamento periodo dopo pubblicazione:', error);
+              showToast(`⚠️ Pubblicazione riuscita ma errore nell'avanzamento del periodo`, "warning");
             }
           }, 2000);
 
@@ -902,10 +919,8 @@ const fetchPublishStatus = useCallback(async () => {
                       showToast("Sincronizzazione avviata con successo", "success");
                       // Aggiorna subito lo stato per disabilitare il pulsante
                       setSyncRunning(true);
-                      // Aggiorna i dati dopo un breve delay
-                      setTimeout(() => {
-                        fetchData();
-                      }, 2000);
+                      // Il polling automatico aggiornerà i dati ogni 3 secondi
+                      // Nessuna azione aggiuntiva necessaria
                     } else {
                       showToast(response.data.message || "Sync già in corso", "warning");
                     }
@@ -961,8 +976,8 @@ const fetchPublishStatus = useCallback(async () => {
                       if (response.data) {
                         setRepoUpdateInfo(response.data);
                       }
-                      // Ricarica i dati della reportistica con la nuova settimana
-                      await fetchData();
+                      // Ricarica i pacchetti per aggiornare la UI
+                      await fetchPackagesReady();
                     } catch (error) {
                       console.error('Errore aggiornamento settimana:', error);
                     }
@@ -981,20 +996,22 @@ const fetchPublishStatus = useCallback(async () => {
                   id="mese-select"
                   className="form-select form-select-sm"
                   style={{ height: '1.75rem', minHeight: '1.75rem', maxHeight: '1.75rem', padding: '0.2rem 0.5rem', fontSize: '0.8rem', lineHeight: '1.2', margin: '0', boxSizing: 'border-box' }}
-                  value={(() => {
-                    console.log("Dropdown mese - repoUpdateInfo.mese:", repoUpdateInfo.mese);
-                    return repoUpdateInfo.mese || '';
-                  })()}
+                  value={repoUpdateInfo.mese || ''}
                   onChange={async (e) => {
                     const newMese = parseInt(e.target.value);
+                    console.log('🔵 onChange mese - newMese:', newMese);
+                    console.log('🔵 onChange mese - payload che sto per inviare:', { mese: newMese });
                     try {
-                      const response = await apiClient.put('/repo-update/', { mese: newMese });
+                      const payload = { mese: newMese };
+                      console.log('🔵 onChange mese - payload prima della chiamata:', payload);
+                      const response = await apiClient.put('/repo-update/', payload);
+                      console.log('🔵 onChange mese - response.data ricevuta:', response.data);
                       // Aggiorna lo stato con la risposta del backend
                       if (response.data) {
                         setRepoUpdateInfo(response.data);
                       }
-                      // Ricarica i dati della reportistica con il nuovo mese
-                      await fetchData();
+                      // Ricarica i pacchetti per aggiornare la UI
+                      await fetchPackagesReady();
                     } catch (error) {
                       console.error('Errore aggiornamento mese:', error);
                     }
@@ -1020,8 +1037,8 @@ const fetchPublishStatus = useCallback(async () => {
                   setRepoUpdateInfo(prev => ({...prev, anno: newAnno}));
                   try {
                     await apiClient.put('/repo-update/', { anno: newAnno });
-                    // Ricarica i dati della reportistica con il nuovo anno
-                    await fetchData();
+                    // Ricarica i pacchetti per aggiornare la UI
+                    await fetchPackagesReady();
                   } catch (error) {
                     console.error('Errore aggiornamento anno:', error);
                   }
