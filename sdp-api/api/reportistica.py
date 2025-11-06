@@ -326,6 +326,185 @@ def trigger_sync(
           logger.error(f"Errore sync: {e}", exc_info=True)
           raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.post("/publish-data-factory")
+async def publish_data_factory(
+    year_month_values: Optional[List[str]] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Trigger Azure Data Factory pipeline execution for monthly reports.
+
+    Args:
+        year_month_values: Optional list of YYMM values (e.g., ["2511", "2510"]).
+                          If not provided, uses current mese from repo_update_info.
+        db: Database session
+        current_user: Authenticated user
+
+    Returns:
+        Dict with status, workspace, year_months processed, and results
+    """
+    try:
+        logger.info(f"Starting Data Factory publish for user: {current_user.username}, bank: {current_user.bank}")
+
+        # 1. Get anno and mese from repo_update_info
+        repo_info = db.query(RepoUpdateInfo).filter(
+            func.lower(RepoUpdateInfo.bank) == func.lower(current_user.bank)
+        ).first()
+
+        anno = repo_info.anno if repo_info else 2025
+        mese = repo_info.mese if repo_info else None
+
+        # If year_month_values not provided, use current mese
+        if not year_month_values:
+            if not mese:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Nessun mese disponibile in repo_update_info e nessun valore fornito"
+                )
+            year_month_values = [f"{str(anno)[-2:]}{mese:02d}"]
+
+        logger.info(f"Processing year_month values: {year_month_values}")
+
+        # 2. Start publish tracking
+        if not publish_tracker.start_publish_run(db, update_interval=5, phase="data_factory"):
+            raise HTTPException(
+                status_code=409,
+                detail="Un'operazione di pubblicazione è già in corso. Attendere il completamento."
+            )
+
+        # 3. Query workspace from report_mapping
+        result = db.query(ReportMapping.ws_precheck).filter(
+            ReportMapping.Type_reportisica == "Mensile",
+            func.lower(ReportMapping.bank) == func.lower(current_user.bank)
+        ).first()
+
+        workspace = result[0] if result else "MAIN_BNF_DEV"
+        logger.info(f"Using Azure Data Factory workspace: {workspace}")
+
+        # 4. Execute script
+        def run_script():
+            import io
+            import contextlib
+
+            stdout_capture = io.StringIO()
+            stderr_capture = io.StringIO()
+
+            try:
+                with contextlib.redirect_stdout(stdout_capture), \
+                     contextlib.redirect_stderr(stderr_capture):
+
+                    from scripts import data_factory
+                    status = data_factory.main(year_month_values, workspace)
+
+                    # Print result as JSON for parsing
+                    print("\n[RESULT]")
+                    print(json.dumps(status, indent=2))
+
+                return 0, stdout_capture.getvalue(), stderr_capture.getvalue()
+
+            except Exception as e:
+                stderr_capture.write(f"Exception in data_factory script: {str(e)}\n")
+                stderr_capture.write(traceback.format_exc())
+                return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
+
+        # Run in executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        returncode, stdout, stderr = await loop.run_in_executor(None, run_script)
+
+        logger.info(f"Script execution completed with return code: {returncode}")
+
+        # 5. Parse results from stdout
+        result_match = re.search(r'\[RESULT\]\s*(\{.*\})', stdout, re.DOTALL)
+        result_dict = json.loads(result_match.group(1)) if result_match else {}
+
+        logger.info(f"Parsed results: {result_dict}")
+
+        # 6. Save logs to database for each year_month
+        success_count = 0
+        failed_count = 0
+
+        for year_month in year_month_values:
+            status_value = result_dict.get(year_month, "Unknown")
+
+            # Determine if succeeded or failed
+            is_success = status_value == "Succeeded"
+
+            if is_success:
+                success_count += 1
+            else:
+                failed_count += 1
+
+            # Parse mese from year_month (last 2 digits)
+            try:
+                mese_value = int(year_month[-2:])
+            except (ValueError, IndexError):
+                mese_value = mese
+
+            log_entry = PublicationLog(
+                bank=current_user.bank,
+                workspace=workspace,
+                packages=[year_month],  # Store year_month as package
+                publication_type="data_factory",
+                status="success" if is_success else "error",
+                output=json.dumps(status_value, indent=2) if is_success else None,
+                error=json.dumps(status_value, indent=2) if not is_success else None,
+                user_id=current_user.id,
+                anno=anno,
+                settimana=None,  # Not applicable for monthly
+                mese=mese_value
+            )
+            db.add(log_entry)
+
+        db.commit()
+        logger.info(f"Saved {len(year_month_values)} publication logs to database")
+
+        # 7. Update publish tracking with counters
+        publish_tracker.update_publish_run(
+            db=db,
+            files_processed=len(year_month_values),
+            files_copied=success_count,
+            files_failed=failed_count
+        )
+
+        # 8. End publish tracking
+        if returncode != 0:
+            error_msg = stderr[:500] if stderr else "Script execution failed"
+            publish_tracker.end_publish_run(db=db, error_details=error_msg)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Errore durante l'esecuzione dello script Data Factory: {error_msg}"
+            )
+
+        publish_tracker.end_publish_run(db=db, error_details=None)
+
+        return {
+            "status": "success",
+            "workspace": workspace,
+            "year_months": year_month_values,
+            "results": result_dict,
+            "summary": {
+                "total": len(year_month_values),
+                "succeeded": success_count,
+                "failed": failed_count
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in publish_data_factory: {e}", exc_info=True)
+
+        # Try to end publish tracking
+        try:
+            publish_tracker.end_publish_run(db=db, error_details=str(e)[:500])
+        except Exception as tracker_error:
+            logger.error(f"Failed to end publish tracking: {tracker_error}")
+
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/publication-logs/latest")
 def get_latest_publication_logs(
     publication_type: Optional[str] = Query(None, description="Filtra per tipo: precheck o production"),
@@ -566,28 +745,52 @@ def get_packages_ready(
 
             package_name = r[0]
 
-            # Cerca tutti i log recenti per questa banca con publication_type='precheck'
-            all_logs = db.query(models.PublicationLog).filter(
+            # Cerca tutti i log recenti per questa banca - PRECHECK
+            precheck_logs = db.query(models.PublicationLog).filter(
                 and_(
                     func.lower(models.PublicationLog.bank) == func.lower(current_user.bank),
                     models.PublicationLog.publication_type == 'precheck'
                 )
             ).order_by(models.PublicationLog.timestamp.desc()).limit(50).all()
 
-            pre_check_status = False
-            dettagli = "In attesa di elaborazione"
-            data_esecuzione = None
-            user = "N/D"
+            # Cerca tutti i log recenti per questa banca - PRODUCTION
+            production_logs = db.query(models.PublicationLog).filter(
+                and_(
+                    func.lower(models.PublicationLog.bank) == func.lower(current_user.bank),
+                    models.PublicationLog.publication_type == 'production'
+                )
+            ).order_by(models.PublicationLog.timestamp.desc()).limit(50).all()
 
-            # Cerca il log che contiene questo package specifico
-            for log in all_logs:
+            # Variabili per precheck
+            pre_check_status = False
+            dettagli_precheck = "In attesa di elaborazione"
+            data_esecuzione_precheck = None
+            user_precheck = "N/D"
+            anno_precheck = None
+            settimana_precheck = None
+            mese_precheck = None
+
+            # Variabili per production
+            prod_status = False
+            dettagli_prod = "In attesa di elaborazione"
+            data_esecuzione_prod = None
+            user_prod = "N/D"
+            anno_prod = None
+            settimana_prod = None
+            mese_prod = None
+
+            # Cerca il log di PRECHECK che contiene questo package specifico
+            for log in precheck_logs:
                 try:
                     packages_list = log.packages if isinstance(log.packages, list) else json.loads(log.packages)
 
                     # Se questo log contiene il package che stiamo cercando
                     if package_name in packages_list:
-                        data_esecuzione = log.timestamp
-                        user = "Sistema" if not log.user_id else f"User #{log.user_id}"
+                        data_esecuzione_precheck = log.timestamp
+                        user_precheck = "Sistema" if not log.user_id else f"User #{log.user_id}"
+                        anno_precheck = log.anno
+                        settimana_precheck = log.settimana
+                        mese_precheck = log.mese
 
                         # Prendi il messaggio dall'output o dall'error
                         message = log.output if log.output else (log.error if log.error else "")
@@ -595,26 +798,67 @@ def get_packages_ready(
                         # Determina lo stato in base al CONTENUTO del messaggio
                         if "successo" in message.lower():
                             pre_check_status = True  # Verde
-                            dettagli = message
+                            dettagli_precheck = message
                         elif "timeout" in message.lower():
                             pre_check_status = "timeout"  # Giallo/Arancione
-                            dettagli = message
+                            dettagli_precheck = message
                         elif "errore" in message.lower() or "error" in message.lower():
                             pre_check_status = "error"  # Rosso
-                            dettagli = message
+                            dettagli_precheck = message
                         else:
                             # Fallback sul campo status del log
                             if log.status == 'success':
                                 pre_check_status = True
-                                dettagli = message if message else "Aggiornamento completato con successo"
+                                dettagli_precheck = message if message else "Aggiornamento completato con successo"
                             else:
                                 pre_check_status = False
-                                dettagli = message if message else "Errore durante l'aggiornamento"
+                                dettagli_precheck = message if message else "Errore durante l'aggiornamento"
 
                         # Abbiamo trovato il log per questo package, usiamo il più recente
                         break
                 except Exception as e:
-                    logger.warning(f"Error parsing publication log for {package_name}: {e}")
+                    logger.warning(f"Error parsing precheck log for {package_name}: {e}")
+                    continue
+
+            # Cerca il log di PRODUCTION che contiene questo package specifico
+            for log in production_logs:
+                try:
+                    packages_list = log.packages if isinstance(log.packages, list) else json.loads(log.packages)
+
+                    # Se questo log contiene il package che stiamo cercando
+                    if package_name in packages_list:
+                        data_esecuzione_prod = log.timestamp
+                        user_prod = "Sistema" if not log.user_id else f"User #{log.user_id}"
+                        anno_prod = log.anno
+                        settimana_prod = log.settimana
+                        mese_prod = log.mese
+
+                        # Prendi il messaggio dall'output o dall'error
+                        message = log.output if log.output else (log.error if log.error else "")
+
+                        # Determina lo stato in base al CONTENUTO del messaggio
+                        if "successo" in message.lower():
+                            prod_status = True  # Verde
+                            dettagli_prod = message
+                        elif "timeout" in message.lower():
+                            prod_status = "timeout"  # Giallo/Arancione
+                            dettagli_prod = message
+                        elif "errore" in message.lower() or "error" in message.lower():
+                            prod_status = "error"  # Rosso
+                            dettagli_prod = message
+                        else:
+                            # Fallback sul campo status del log
+                            if log.status == 'success':
+                                prod_status = True
+                                dettagli_prod = message if message else "Pubblicazione in produzione completata con successo"
+                            else:
+                                prod_status = False
+                                dettagli_prod = message if message else "Errore durante la pubblicazione in produzione"
+
+                        # Abbiamo trovato il log per questo package, usiamo il più recente
+                        break
+                except Exception as e:
+                    logger.warning(f"Error parsing production log for {package_name}: {e}")
                     continue
 
             packages_with_status.append({
@@ -623,11 +867,20 @@ def get_packages_ready(
                 "ws_produzione": r[2],
                 "bank": r[3],
                 "type_reportistica": r[4],
-                "user": user,
-                "data_esecuzione": data_esecuzione,
+                "user": user_precheck,
+                "data_esecuzione": data_esecuzione_precheck,
                 "pre_check": pre_check_status,
-                "prod": False,  # TODO: implementare logica per production
-                "dettagli": dettagli
+                "prod": prod_status,
+                "dettagli": dettagli_precheck,
+                "user_prod": user_prod,
+                "data_esecuzione_prod": data_esecuzione_prod,
+                "dettagli_prod": dettagli_prod,
+                "anno_precheck": anno_precheck,
+                "settimana_precheck": settimana_precheck,
+                "mese_precheck": mese_precheck,
+                "anno_prod": anno_prod,
+                "settimana_prod": settimana_prod,
+                "mese_prod": mese_prod
             })
 
         return packages_with_status
@@ -791,6 +1044,7 @@ def toggle_disponibilita_server(
 
 @router.post("/publish-precheck")
 async def publish_precheck(
+    periodicity: str = Query(..., description="Periodicità: 'settimanale' o 'mensile'"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
@@ -798,32 +1052,37 @@ async def publish_precheck(
     from sqlalchemy import func
     from db import publish_tracker
 
-    logger.info(f"publish_precheck called for user: {current_user.username}, bank: {current_user.bank}")
+    logger.info(f"publish_precheck called for user: {current_user.username}, bank: {current_user.bank}, periodicity: {periodicity}")
 
     try:
+        # Normalizza periodicità
+        is_mensile = periodicity.lower() == "mensile"
+        periodicity_db = "Mensile" if is_mensile else "Settimanale"
+
         # Recupera anno, settimana e mese da repo_update_info per questo utente
         repo_info_query = db.query(models.RepoUpdateInfo).filter(
             func.lower(models.RepoUpdateInfo.bank) == func.lower(current_user.bank)
         ).first()
 
         anno = repo_info_query.anno if repo_info_query else 2025
-        settimana = repo_info_query.settimana if repo_info_query else None
-        mese = repo_info_query.mese if repo_info_query else None
+        settimana = repo_info_query.settimana if repo_info_query and not is_mensile else None
+        mese = repo_info_query.mese if repo_info_query and is_mensile else None
 
-        logger.info(f"Publishing for period: anno={anno}, settimana={settimana}, mese={mese}")
+        logger.info(f"Publishing for period: anno={anno}, settimana={settimana}, mese={mese}, periodicity_db={periodicity_db}")
 
         # Avvia il tracking della publish run
-        if not publish_tracker.start_publish_run(db, update_interval=5):
+        if not publish_tracker.start_publish_run(db, update_interval=5, phase="precheck"):
             raise HTTPException(
                 status_code=409,
                 detail="Un'operazione di pubblicazione è già in corso. Attendere il completamento."
             )
-        # Prendi i dati dalla tabella report_mapping filtrati per banca dell'utente (case-insensitive)
+
+        # Prendi i dati dalla tabella report_mapping filtrati per banca e periodicità
         query = db.query(
             models.ReportMapping.ws_precheck,
             models.ReportMapping.package
         ).filter(
-            models.ReportMapping.Type_reportisica == "Settimanale",
+            models.ReportMapping.Type_reportisica == periodicity_db,
             func.lower(models.ReportMapping.bank) == func.lower(current_user.bank)
         )
 
@@ -857,14 +1116,25 @@ async def publish_precheck(
 
             try:
                 with contextlib.redirect_stdout(stdout_capture), contextlib.redirect_stderr(stderr_capture):
-                    # Importa il modulo scripts.main
-                    from scripts import main as script_main
+                    import json
 
-                    # Chiama la funzione main direttamente
-                    status = script_main.main(workspace, pbi_packages)
+                    if is_mensile:
+                        # MENSILE: Usa data_factory
+                        from scripts import data_factory
+
+                        # Prepara year_month_values (es. ["2511"])
+                        year_month_values = [f"{str(anno)[-2:]}{mese:02d}"]
+                        logger.info(f"Calling data_factory.main with year_month_values={year_month_values}, workspace={workspace}")
+
+                        status = data_factory.main(year_month_values, workspace)
+                    else:
+                        # SETTIMANALE: Usa scripts.main
+                        from scripts import main as script_main
+
+                        logger.info(f"Calling scripts.main.main with workspace={workspace}, packages={pbi_packages}")
+                        status = script_main.main(workspace, pbi_packages)
 
                     # Stampa il risultato come JSON per mantenere il formato originale
-                    import json
                     print("\n[RESULT]")
                     print(json.dumps(status, indent=2))
 
@@ -900,31 +1170,60 @@ async def publish_precheck(
         except Exception as e:
             logger.warning(f"Error parsing packages details: {e}")
 
-        # Salva un log per ogni package con il suo dettaglio specifico
-        for package_name in pbi_packages:
-            package_detail = packages_details.get(package_name, stdout if returncode == 0 else stderr)
+        # Salva log in base alla periodicità
+        if is_mensile:
+            # MENSILE: Salva per year_month (data_factory)
+            year_month = f"{str(anno)[-2:]}{mese:02d}"
+            status_value = packages_details.get(year_month, "Unknown")
+            is_success = status_value == "Succeeded"
 
             log_entry = models.PublicationLog(
                 bank=current_user.bank,
                 workspace=workspace,
-                packages=[package_name],  # Un package per volta
+                packages=[year_month],  # Usa year_month come package
                 publication_type="precheck",
-                status="success" if returncode == 0 and "successo" in package_detail.lower() else "error",
-                output=package_detail if returncode == 0 or "successo" in package_detail.lower() else None,
-                error=package_detail if returncode != 0 or "errore" in package_detail.lower() or "timeout" in package_detail.lower() else None,
+                status="success" if is_success else "error",
+                output=json.dumps(status_value, indent=2) if is_success else None,
+                error=json.dumps(status_value, indent=2) if not is_success else None,
                 user_id=current_user.id,
                 anno=anno,
-                settimana=settimana,
+                settimana=None,
                 mese=mese
             )
             db.add(log_entry)
+        else:
+            # SETTIMANALE: Salva per ogni package (scripts.main)
+            for package_name in pbi_packages:
+                package_detail = packages_details.get(package_name, stdout if returncode == 0 else stderr)
+
+                log_entry = models.PublicationLog(
+                    bank=current_user.bank,
+                    workspace=workspace,
+                    packages=[package_name],  # Un package per volta
+                    publication_type="precheck",
+                    status="success" if returncode == 0 and "successo" in str(package_detail).lower() else "error",
+                    output=package_detail if returncode == 0 or "successo" in str(package_detail).lower() else None,
+                    error=package_detail if returncode != 0 or "errore" in str(package_detail).lower() or "timeout" in str(package_detail).lower() else None,
+                    user_id=current_user.id,
+                    anno=anno,
+                    settimana=settimana,
+                    mese=None
+                )
+                db.add(log_entry)
 
         db.commit()
 
         # Aggiorna i contatori della publish run
-        total_packages = len(pbi_packages)
-        success_count = sum(1 for pkg in pbi_packages if "successo" in packages_details.get(pkg, "").lower())
-        failed_count = total_packages - success_count
+        if is_mensile:
+            total_packages = 1
+            year_month = f"{str(anno)[-2:]}{mese:02d}"
+            status_value = packages_details.get(year_month, "Unknown")
+            success_count = 1 if status_value == "Succeeded" else 0
+            failed_count = 0 if status_value == "Succeeded" else 1
+        else:
+            total_packages = len(pbi_packages)
+            success_count = sum(1 for pkg in pbi_packages if "successo" in str(packages_details.get(pkg, "")).lower())
+            failed_count = total_packages - success_count
 
         publish_tracker.update_publish_run(
             db=db,
@@ -977,6 +1276,257 @@ async def publish_precheck(
                 workspace=workspace if 'workspace' in locals() else "unknown",
                 packages=pbi_packages if 'pbi_packages' in locals() else [],
                 publication_type="precheck",
+                status="error",
+                output=None,
+                error=str(e),
+                user_id=current_user.id if current_user else None,
+                anno=anno if 'anno' in locals() else None,
+                settimana=settimana if 'settimana' in locals() else None,
+                mese=mese if 'mese' in locals() else None
+            )
+            db.add(log_entry)
+            db.commit()
+        except Exception as db_error:
+            logger.error(f"Failed to save error log to database: {db_error}")
+
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/publish-production")
+async def publish_production(
+    periodicity: str = Query(..., description="Periodicità: 'settimanale' o 'mensile'"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    import traceback
+    from sqlalchemy import func
+    from db import publish_tracker
+
+    logger.info(f"publish_production called for user: {current_user.username}, bank: {current_user.bank}, periodicity: {periodicity}")
+
+    try:
+        # Normalizza periodicità
+        is_mensile = periodicity.lower() == "mensile"
+        periodicity_db = "Mensile" if is_mensile else "Settimanale"
+
+        # Recupera anno, settimana e mese da repo_update_info per questo utente
+        repo_info_query = db.query(models.RepoUpdateInfo).filter(
+            func.lower(models.RepoUpdateInfo.bank) == func.lower(current_user.bank)
+        ).first()
+
+        anno = repo_info_query.anno if repo_info_query else 2025
+        settimana = repo_info_query.settimana if repo_info_query and not is_mensile else None
+        mese = repo_info_query.mese if repo_info_query and is_mensile else None
+
+        logger.info(f"Publishing to production for period: anno={anno}, settimana={settimana}, mese={mese}, periodicity_db={periodicity_db}")
+
+        # Avvia il tracking della publish run con fase "production"
+        if not publish_tracker.start_publish_run(db, update_interval=5, phase="production"):
+            raise HTTPException(
+                status_code=409,
+                detail="Un'operazione di pubblicazione è già in corso. Attendere il completamento."
+            )
+        # Prendi i dati dalla tabella report_mapping filtrati per banca e periodicità
+        # Usa ws_production invece di ws_precheck
+        query = db.query(
+            models.ReportMapping.ws_production,
+            models.ReportMapping.package
+        ).filter(
+            models.ReportMapping.Type_reportisica == periodicity_db,
+            func.lower(models.ReportMapping.bank) == func.lower(current_user.bank)
+        )
+
+        results = query.all()
+        logger.debug(f"Found {len(results)} records from report_mapping")
+
+        if not results:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Nessun package trovato per la banca {current_user.bank}"
+            )
+
+        # Estrai workspace (dovrebbe essere lo stesso per tutti i package della stessa banca)
+        workspace = results[0][0]
+
+        # Estrai lista dei package
+        pbi_packages = [row[1] for row in results if row[1]]
+
+        logger.info(f"Production Workspace: {workspace}")
+        logger.info(f"Packages to publish: {pbi_packages}")
+
+        # Importa e chiama direttamente lo script invece di usare subprocess
+        # Questo permette di usare le dipendenze incluse nel bundle PyInstaller
+        def run_script():
+            import io
+            import contextlib
+
+            # Cattura stdout/stderr
+            stdout_capture = io.StringIO()
+            stderr_capture = io.StringIO()
+
+            try:
+                with contextlib.redirect_stdout(stdout_capture), contextlib.redirect_stderr(stderr_capture):
+                    import json
+
+                    if is_mensile:
+                        # MENSILE: Usa data_factory
+                        from scripts import data_factory
+
+                        # Prepara year_month_values (es. ["2511"])
+                        year_month_values = [f"{str(anno)[-2:]}{mese:02d}"]
+                        logger.info(f"Calling data_factory.main (PRODUCTION) with year_month_values={year_month_values}, workspace={workspace}")
+
+                        status = data_factory.main(year_month_values, workspace)
+                    else:
+                        # SETTIMANALE: Usa scripts.main
+                        from scripts import main as script_main
+
+                        logger.info(f"Calling scripts.main.main (PRODUCTION) with workspace={workspace}, packages={pbi_packages}")
+                        status = script_main.main(workspace, pbi_packages)
+
+                    # Stampa il risultato come JSON per mantenere il formato originale
+                    print("\n[RESULT]")
+                    print(json.dumps(status, indent=2))
+
+                return 0, stdout_capture.getvalue(), stderr_capture.getvalue()
+            except Exception as e:
+                import traceback
+                stderr_capture.write(traceback.format_exc())
+                return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
+
+        # Run in thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        returncode, stdout, stderr = await loop.run_in_executor(None, run_script)
+
+        logger.info(f"Script completed with return code: {returncode}")
+        logger.debug(f"Script stdout: {stdout}")
+        if stderr:
+            logger.warning(f"Script stderr: {stderr}")
+
+        # Parse dello stdout per estrarre il JSON dei risultati
+        import json
+        import re
+
+        packages_details = {}
+        try:
+            # Cerca il JSON nel formato [RESULT]\n{...}
+            match = re.search(r'\[RESULT\]\s*(\{.*\})', stdout, re.DOTALL)
+            if match:
+                json_str = match.group(1)
+                packages_details = json.loads(json_str)
+                logger.debug(f"Parsed packages details: {packages_details}")
+            else:
+                logger.debug("No [RESULT] JSON found in output")
+        except Exception as e:
+            logger.warning(f"Error parsing packages details: {e}")
+
+        # Salva log in base alla periodicità
+        # IMPORTANTE: publication_type = "production"
+        if is_mensile:
+            # MENSILE: Salva per year_month (data_factory)
+            year_month = f"{str(anno)[-2:]}{mese:02d}"
+            status_value = packages_details.get(year_month, "Unknown")
+            is_success = status_value == "Succeeded"
+
+            log_entry = models.PublicationLog(
+                bank=current_user.bank,
+                workspace=workspace,
+                packages=[year_month],  # Usa year_month come package
+                publication_type="production",
+                status="success" if is_success else "error",
+                output=json.dumps(status_value, indent=2) if is_success else None,
+                error=json.dumps(status_value, indent=2) if not is_success else None,
+                user_id=current_user.id,
+                anno=anno,
+                settimana=None,
+                mese=mese
+            )
+            db.add(log_entry)
+        else:
+            # SETTIMANALE: Salva per ogni package (scripts.main)
+            for package_name in pbi_packages:
+                package_detail = packages_details.get(package_name, stdout if returncode == 0 else stderr)
+
+                log_entry = models.PublicationLog(
+                    bank=current_user.bank,
+                    workspace=workspace,
+                    packages=[package_name],  # Un package per volta
+                    publication_type="production",
+                    status="success" if returncode == 0 and "successo" in str(package_detail).lower() else "error",
+                    output=package_detail if returncode == 0 or "successo" in str(package_detail).lower() else None,
+                    error=package_detail if returncode != 0 or "errore" in str(package_detail).lower() or "timeout" in str(package_detail).lower() else None,
+                    user_id=current_user.id,
+                    anno=anno,
+                    settimana=settimana,
+                    mese=None
+                )
+                db.add(log_entry)
+
+        db.commit()
+
+        # Aggiorna i contatori della publish run
+        if is_mensile:
+            total_packages = 1
+            year_month = f"{str(anno)[-2:]}{mese:02d}"
+            status_value = packages_details.get(year_month, "Unknown")
+            success_count = 1 if status_value == "Succeeded" else 0
+            failed_count = 0 if status_value == "Succeeded" else 1
+        else:
+            total_packages = len(pbi_packages)
+            success_count = sum(1 for pkg in pbi_packages if "successo" in str(packages_details.get(pkg, "")).lower())
+            failed_count = total_packages - success_count
+
+        publish_tracker.update_publish_run(
+            db=db,
+            files_processed=total_packages,
+            files_copied=success_count,
+            files_skipped=0,
+            files_failed=failed_count
+        )
+
+        if returncode != 0:
+            # Chiudi la publish run con errore
+            publish_tracker.end_publish_run(db=db, error_details=stderr[:500] if stderr else None)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Errore nell'esecuzione dello script: {stderr}"
+            )
+
+        # Chiudi la publish run con successo
+        publish_tracker.end_publish_run(db=db, error_details=None)
+
+        return {
+            "status": "success",
+            "message": "Pubblicazione in produzione completata con successo",
+            "workspace": workspace,
+            "packages": pbi_packages,
+            "output": stdout,
+            "packages_details": packages_details
+        }
+
+    except HTTPException as http_exc:
+        # Chiudi la publish run con errore se è stata avviata
+        try:
+            publish_tracker.end_publish_run(db=db, error_details=str(http_exc.detail)[:500])
+        except:
+            pass
+        raise
+    except Exception as e:
+        logger.error(f"Exception in publish_production: {e}", exc_info=True)
+
+        # Chiudi la publish run con errore
+        try:
+            publish_tracker.end_publish_run(db=db, error_details=str(e)[:500])
+        except:
+            pass
+
+        # Salva anche gli errori nel database
+        try:
+            log_entry = models.PublicationLog(
+                bank=current_user.bank if current_user else "unknown",
+                workspace=workspace if 'workspace' in locals() else "unknown",
+                packages=pbi_packages if 'pbi_packages' in locals() else [],
+                publication_type="production",
                 status="error",
                 output=None,
                 error=str(e),

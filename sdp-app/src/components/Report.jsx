@@ -398,76 +398,15 @@ const fetchPublishStatus = useCallback(async () => {
   const fetchPackagesReady = useCallback(async () => {
     try {
       // Carica i package disponibili filtrati per periodicità
+      // L'endpoint /test-packages-v2 già restituisce tutti i dati completi (pre_check, prod, settimana, mese, ecc.)
       const periodicity = searchParams.get('type') || 'settimanale';
       const typeParam = periodicity === 'settimanale' ? 'Settimanale' : 'Mensile';
       const packagesResponse = await apiClient.get(`/reportistica/test-packages-v2?type_reportistica=${typeParam}`);
       const availablePackages = packagesResponse.data || [];
-      console.log('Available packages:', availablePackages);
+      console.log('Available packages from /test-packages-v2:', availablePackages);
 
-      // Carica gli ultimi log di pubblicazione
-      let publicationLogs = [];
-      try {
-        const logsResponse = await apiClient.get("/reportistica/publication-logs/latest");
-        publicationLogs = logsResponse.data || [];
-        console.log('Latest publication logs:', publicationLogs);
-      } catch (logError) {
-        console.warn("Nessun log di pubblicazione trovato (normale se prima esecuzione):", logError);
-      }
-
-      // Merge dei dati con logica separata per colori e settimana di pubblicazione
-      const mergedData = availablePackages.map(pkg => {
-        // Cerca se esiste un log per questo package
-        const logEntry = publicationLogs.find(log => log.package === pkg.package);
-
-        if (logEntry) {
-          const periodicity = searchParams.get('type') || 'settimanale';
-
-          // Verifica se il log corrisponde al periodo corrente (per i colori)
-          let isCurrentPeriod = false;
-          if (periodicity === 'settimanale') {
-            isCurrentPeriod = logEntry.anno === repoUpdateInfo.anno &&
-                             logEntry.settimana === repoUpdateInfo.settimana;
-          } else {
-            isCurrentPeriod = logEntry.anno === repoUpdateInfo.anno &&
-                             logEntry.mese === repoUpdateInfo.mese;
-          }
-
-          console.log(`Package ${pkg.package}: log(${logEntry.anno}/${logEntry.settimana || 'N/A'}/${logEntry.mese || 'N/A'}) vs current(${repoUpdateInfo.anno}/${repoUpdateInfo.settimana}/${repoUpdateInfo.mese}) => ${isCurrentPeriod}`);
-
-          return {
-            package: pkg.package,
-            ws_precheck: pkg.ws_precheck,
-            ws_produzione: pkg.ws_produzione,
-            bank: pkg.bank,
-            type_reportistica: pkg.type_reportistica,
-            user: logEntry.user || "N/D",
-            data_esecuzione: logEntry.data_esecuzione,
-            // Colori: mostrati solo se corrisponde al periodo corrente
-            pre_check: isCurrentPeriod ? logEntry.pre_check : false,
-            prod: isCurrentPeriod ? logEntry.prod : false,
-            dettagli: isCurrentPeriod ? (logEntry.log || "In attesa di elaborazione") : null,
-            // Periodo: sempre quello dell'ultima pubblicazione andata a buon fine
-            anno_pubblicazione: logEntry.anno,
-            settimana_pubblicazione: logEntry.settimana,
-            mese_pubblicazione: logEntry.mese
-          };
-        } else {
-          // Usa i default se non c'è ancora nessun log
-          return {
-            ...pkg,
-            pre_check: false,
-            prod: false,
-            user: "N/D",
-            data_esecuzione: null,
-            dettagli: null,
-            anno_pubblicazione: null,
-            settimana_pubblicazione: null,
-            mese_pubblicazione: null
-          };
-        }
-      });
-
-      setPackagesReady(mergedData);
+      // Usa direttamente i dati da /test-packages-v2 (già completi!)
+      setPackagesReady(availablePackages);
     } catch (error) {
       console.error("Errore nel caricamento packages ready:", error);
       setPackagesReady([]);
@@ -668,7 +607,7 @@ const fetchPublishStatus = useCallback(async () => {
         try {
           // Chiama l'endpoint API per eseguire lo script Power BI
           // I package vengono letti dalla tabella report_data del DB filtrati per banca
-          const response = await apiClient.post('/reportistica/publish-precheck');
+          const response = await apiClient.post(`/reportistica/publish-precheck?periodicity=${currentPeriodicity}`);
 
           console.log('Risultati pubblicazione:', response.data);
           console.log(`Aggiornati ${response.data.packages.length} package:`, response.data.packages);
@@ -687,8 +626,8 @@ const fetchPublishStatus = useCallback(async () => {
         showToast(`Avvio pubblicazione Report in Produzione...`, "info");
 
         try {
-          // Chiama lo stesso endpoint API di pre-check
-          const response = await apiClient.post('/reportistica/publish-precheck');
+          // Chiama l'endpoint API per production
+          const response = await apiClient.post(`/reportistica/publish-production?periodicity=${currentPeriodicity}`);
 
           console.log('Risultati pubblicazione produzione:', response.data);
           console.log(`Aggiornati ${response.data.packages.length} package:`, response.data.packages);
@@ -805,8 +744,9 @@ const fetchPublishStatus = useCallback(async () => {
 
     console.log(`Package filtrati per ${currentPeriodicity}:`, filteredPackages.length);
     console.log('Package:', filteredPackages.map(p => `${p.package} (${p.type_reportistica})`).join(', '));
+    console.log('filteredPackages DETTAGLI:', filteredPackages);
 
-    return filteredPackages.map((pkg, index) => ({
+    const mapped = filteredPackages.map((pkg, index) => ({
       id: `pub-${index}`,
       package: pkg.package,
       user: pkg.user,
@@ -814,8 +754,20 @@ const fetchPublishStatus = useCallback(async () => {
       pre_check: pkg.pre_check,
       prod: pkg.prod,
       dettagli: pkg.dettagli,
+      user_prod: pkg.user_prod,
+      data_esecuzione_prod: pkg.data_esecuzione_prod,
+      dettagli_prod: pkg.dettagli_prod,
+      anno_precheck: pkg.anno_precheck,
+      settimana_precheck: pkg.settimana_precheck,
+      mese_precheck: pkg.mese_precheck,
+      anno_prod: pkg.anno_prod,
+      settimana_prod: pkg.settimana_prod,
+      mese_prod: pkg.mese_prod,
       bank: pkg.bank // Aggiungi anche la banca se serve
     }));
+
+    console.log('publicationData MAPPED:', mapped);
+    return mapped;
   }, [packagesReady, currentPeriodicity]);
 
   // Verifica se tutte le righe della prima tabella sono verdi (disponibilita_server = true)
@@ -1202,32 +1154,26 @@ const fetchPublishStatus = useCallback(async () => {
               <table className="report-table" style={{ backgroundColor: 'white' }}>
                 <thead>
                   <tr>
-                    <th style={{ width: '180px' }}>Package</th>
-                    <th style={{ width: '140px' }}>Data Esecuzione</th>
-                    <th style={{ width: '100px' }}>Ultima Pubblicazione</th>
-                    <th style={{ width: '80px', textAlign: 'center' }}>Pre Check</th>
-                    <th style={{ width: '80px', textAlign: 'center' }}>Prod</th>
+                    <th style={{ width: '120px' }}>Package</th>
+                    <th style={{ width: '60px', textAlign: 'center' }}>Pre-Check</th>
+                    <th style={{ width: '80px' }}>{currentPeriodicity === 'settimanale' ? 'Settimana' : 'Mese'}</th>
+                    <th style={{ width: '110px' }}>Data Pre-Check</th>
+                    <th style={{ width: '60px', textAlign: 'center' }}>Prod</th>
+                    <th style={{ width: '80px' }}>{currentPeriodicity === 'settimanale' ? 'Settimana' : 'Mese'}</th>
+                    <th style={{ width: '110px' }}>Data Prod</th>
                     <th style={{ width: '200px' }}>Dettagli</th>
                   </tr>
                 </thead>
                 <tbody>
                   {publicationData.length === 0 ? (
                     <tr>
-                      <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
                         Nessun package pronto per la pubblicazione.
                       </td>
                     </tr>
                   ) : publicationData.map(item => (
                     <tr key={item.id}>
                       <td><strong>{item.package}</strong></td>
-                      <td>{formatDateTime(item.data_esecuzione)}</td>
-                      <td>
-                        {item.settimana_pubblicazione ? (
-                          currentPeriodicity === 'settimanale'
-                            ? `Settimana ${item.settimana_pubblicazione}`
-                            : `Mese ${item.mese_pubblicazione || 'N/D'}`
-                        ) : 'N/D'}
-                      </td>
                       <td style={{ textAlign: 'center' }}>
                         <div style={{
                           width: '100%',
@@ -1242,6 +1188,14 @@ const fetchPublishStatus = useCallback(async () => {
                             : 'none',
                           borderRadius: '4px'
                         }}></div>
+                      </td>
+                      <td style={{ fontSize: '11px', textAlign: 'center' }}>
+                        {currentPeriodicity === 'settimanale'
+                          ? (item.settimana_precheck ? `Sett. ${item.settimana_precheck}` : 'N/D')
+                          : (item.mese_precheck ? `Mese ${item.mese_precheck}` : 'N/D')}
+                      </td>
+                      <td style={{ fontSize: '11px' }}>
+                        {item.data_esecuzione ? formatDateTime(item.data_esecuzione) : 'N/D'}
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <div style={{
@@ -1258,23 +1212,37 @@ const fetchPublishStatus = useCallback(async () => {
                           borderRadius: '4px'
                         }}></div>
                       </td>
+                      <td style={{ fontSize: '11px', textAlign: 'center' }}>
+                        {currentPeriodicity === 'settimanale'
+                          ? (item.settimana_prod ? `Sett. ${item.settimana_prod}` : 'N/D')
+                          : (item.mese_prod ? `Mese ${item.mese_prod}` : 'N/D')}
+                      </td>
+                      <td style={{ fontSize: '11px' }}>
+                        {item.data_esecuzione_prod ? formatDateTime(item.data_esecuzione_prod) : 'N/D'}
+                      </td>
                       <td className="text-xs" style={{
-                        maxWidth: '300px',
+                        maxWidth: '200px',
                         whiteSpace: 'pre-wrap',
-                        fontSize: '11px',
-                        cursor: item.dettagli && item.dettagli.length > 100 ? 'pointer' : 'default'
+                        fontSize: '10px',
+                        cursor: (item.dettagli && item.dettagli.length > 80) || (item.dettagli_prod && item.dettagli_prod.length > 80) ? 'pointer' : 'default'
                       }}
-                      title={item.dettagli || 'N/D'}
+                      title={(item.dettagli_prod || item.dettagli) || 'N/D'}
                       onClick={() => {
-                        if (item.dettagli && item.dettagli.length > 100) {
-                          showDetailsModal(`Dettagli Pubblicazione - ${item.package}`, item.dettagli);
+                        const detailText = item.dettagli_prod || item.dettagli || '';
+                        if (detailText && detailText.length > 80) {
+                          showDetailsModal(`Dettagli Pubblicazione - ${item.package}`,
+                            `Pre-Check:\n${item.dettagli || 'N/D'}\n\nProduction:\n${item.dettagli_prod || 'N/D'}`);
                         }
                       }}>
-                        {item.dettagli ?
-                          (item.dettagli.length > 100
-                            ? item.dettagli.substring(0, 100) + '... (clicca per vedere tutto)'
-                            : item.dettagli)
-                          : 'In attesa di elaborazione'}
+                        {item.dettagli_prod ?
+                          (item.dettagli_prod.length > 80
+                            ? item.dettagli_prod.substring(0, 80) + '... (clicca)'
+                            : item.dettagli_prod)
+                          : (item.dettagli ?
+                            (item.dettagli.length > 80
+                              ? item.dettagli.substring(0, 80) + '... (clicca)'
+                              : item.dettagli)
+                            : 'In attesa di elaborazione')}
                       </td>
                     </tr>
                   ))}
@@ -1306,6 +1274,7 @@ const fetchPublishStatus = useCallback(async () => {
               >
                 <CheckCircle className="btn-icon-md" /> Pubblica Report {periodicityConfig.label} in Pre-Check
               </button>
+
               <button
                 className="btn btn-outline"
                 onClick={() => handleGlobalAction('pubblica-report')}

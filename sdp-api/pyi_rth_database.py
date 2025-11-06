@@ -409,6 +409,9 @@ class PublicationLog(db.Base):
     error = Column(Text, nullable=True)
     timestamp = Column(DateTime, server_default=func.now())
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    anno = Column(Integer, nullable=True)
+    settimana = Column(Integer, nullable=True)
+    mese = Column(Integer, nullable=True)
 
 class SyncRun(db.Base):
     __tablename__ = "sync_runs"

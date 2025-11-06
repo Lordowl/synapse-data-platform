@@ -317,4 +317,31 @@ def get_config_from_sharepoint():
 def get_flow_from_sharepoint():
     "Restituisce il workbook e il _FLOW_NAME di FluentX dal file disponibile su sharepoint."
     pass
-    
+
+
+def extract_html_table(actions):
+    """
+    Estrae una tabella HTML dalla pagina corrente e la converte in un DataFrame pandas.
+
+    Args:
+        actions: FluentX actions object che contiene il driver selenium
+
+    Returns:
+        pandas.DataFrame: La tabella estratta
+    """
+    import pandas as pd
+    from selenium.webdriver.common.by import By
+
+    driver = actions.driver
+
+    # XPath per trovare la tabella Azure Data Factory
+    xpath_tabella = "//table[contains(@id, 'pn_id_189-table')]"
+
+    try:
+        table_element = driver.find_element(By.XPATH, xpath_tabella)
+        table_html = table_element.get_attribute('outerHTML')
+        tabella_dati = pd.read_html(table_html)[0]
+        return tabella_dati
+    except Exception as e:
+        print(f"Errore nell'estrazione della tabella HTML: {e}")
+        return pd.DataFrame()
