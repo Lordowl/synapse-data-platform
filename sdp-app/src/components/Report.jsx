@@ -754,9 +754,11 @@ const fetchPublishStatus = useCallback(async () => {
       pre_check: pkg.pre_check,
       prod: pkg.prod,
       dettagli: pkg.dettagli,
+      error_precheck: pkg.error_precheck,
       user_prod: pkg.user_prod,
       data_esecuzione_prod: pkg.data_esecuzione_prod,
       dettagli_prod: pkg.dettagli_prod,
+      error_prod: pkg.error_prod,
       anno_precheck: pkg.anno_precheck,
       settimana_precheck: pkg.settimana_precheck,
       mese_precheck: pkg.mese_precheck,
@@ -1150,8 +1152,8 @@ const fetchPublishStatus = useCallback(async () => {
 
           <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
             {/* Tabella compatta */}
-            <div className="report-table-wrapper" style={{ flex: '1' }}>
-              <table className="report-table" style={{ backgroundColor: 'white' }}>
+            <div className="report-table-wrapper" style={{ flex: '1', minWidth: '820px' }}>
+              <table className="report-table" style={{ backgroundColor: 'white', width: '100%', tableLayout: 'fixed' }}>
                 <thead>
                   <tr>
                     <th style={{ width: '120px' }}>Package</th>
@@ -1173,11 +1175,11 @@ const fetchPublishStatus = useCallback(async () => {
                     </tr>
                   ) : publicationData.map(item => (
                     <tr key={item.id}>
-                      <td><strong>{item.package}</strong></td>
+                      <td style={{ fontSize: '15px' }}><strong>{item.package}</strong></td>
                       <td style={{ textAlign: 'center' }}>
                         <div style={{
                           width: '100%',
-                          height: '8px',
+                          height: '10px',
                           backgroundColor:
                             item.pre_check === true ? '#22c55e' :  // Verde - successo
                             item.pre_check === 'error' ? '#ef4444' :  // Rosso - errore
@@ -1189,18 +1191,18 @@ const fetchPublishStatus = useCallback(async () => {
                           borderRadius: '4px'
                         }}></div>
                       </td>
-                      <td style={{ fontSize: '11px', textAlign: 'center' }}>
+                      <td style={{ fontSize: '15px', textAlign: 'center' }}>
                         {currentPeriodicity === 'settimanale'
                           ? (item.settimana_precheck ? `Sett. ${item.settimana_precheck}` : 'N/D')
                           : (item.mese_precheck ? `Mese ${item.mese_precheck}` : 'N/D')}
                       </td>
-                      <td style={{ fontSize: '11px' }}>
+                      <td style={{ fontSize: '15px' }}>
                         {item.data_esecuzione ? formatDateTime(item.data_esecuzione) : 'N/D'}
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <div style={{
                           width: '100%',
-                          height: '8px',
+                          height: '10px',
                           backgroundColor:
                             item.prod === true ? '#22c55e' :  // Verde - successo
                             item.prod === 'error' ? '#ef4444' :  // Rosso - errore
@@ -1212,37 +1214,69 @@ const fetchPublishStatus = useCallback(async () => {
                           borderRadius: '4px'
                         }}></div>
                       </td>
-                      <td style={{ fontSize: '11px', textAlign: 'center' }}>
+                      <td style={{ fontSize: '15px', textAlign: 'center' }}>
                         {currentPeriodicity === 'settimanale'
                           ? (item.settimana_prod ? `Sett. ${item.settimana_prod}` : 'N/D')
                           : (item.mese_prod ? `Mese ${item.mese_prod}` : 'N/D')}
                       </td>
-                      <td style={{ fontSize: '11px' }}>
+                      <td style={{ fontSize: '15px' }}>
                         {item.data_esecuzione_prod ? formatDateTime(item.data_esecuzione_prod) : 'N/D'}
                       </td>
                       <td className="text-xs" style={{
                         maxWidth: '200px',
                         whiteSpace: 'pre-wrap',
-                        fontSize: '10px',
-                        cursor: (item.dettagli && item.dettagli.length > 80) || (item.dettagli_prod && item.dettagli_prod.length > 80) ? 'pointer' : 'default'
+                        fontSize: '14px',
+                        cursor: (item.dettagli && item.dettagli.length > 80) || (item.dettagli_prod && item.dettagli_prod.length > 80) || item.error_precheck || item.error_prod ? 'pointer' : 'default'
                       }}
                       title={(item.dettagli_prod || item.dettagli) || 'N/D'}
                       onClick={() => {
                         const detailText = item.dettagli_prod || item.dettagli || '';
-                        if (detailText && detailText.length > 80) {
-                          showDetailsModal(`Dettagli Pubblicazione - ${item.package}`,
-                            `Pre-Check:\n${item.dettagli || 'N/D'}\n\nProduction:\n${item.dettagli_prod || 'N/D'}`);
+                        const hasError = item.error_precheck || item.error_prod;
+
+                        if (detailText.length > 80 || hasError) {
+                          // Costruisci il contenuto del popup
+                          let content = `Pre-Check:\n${item.dettagli || 'N/D'}\n`;
+
+                          // Aggiungi errore pre-check se presente
+                          if (item.error_precheck) {
+                            try {
+                              const errorObj = JSON.parse(item.error_precheck);
+                              content += `\nErrore Pre-Check:\n${JSON.stringify(errorObj, null, 2)}\n`;
+                            } catch {
+                              content += `\nErrore Pre-Check:\n${item.error_precheck}\n`;
+                            }
+                          }
+
+                          content += `\nProduction:\n${item.dettagli_prod || 'N/D'}\n`;
+
+                          // Aggiungi errore production se presente
+                          if (item.error_prod) {
+                            try {
+                              const errorObj = JSON.parse(item.error_prod);
+                              content += `\nErrore Production:\n${JSON.stringify(errorObj, null, 2)}\n`;
+                            } catch {
+                              content += `\nErrore Production:\n${item.error_prod}\n`;
+                            }
+                          }
+
+                          showDetailsModal(`Dettagli Pubblicazione - ${item.package}`, content);
                         }
                       }}>
-                        {item.dettagli_prod ?
-                          (item.dettagli_prod.length > 80
-                            ? item.dettagli_prod.substring(0, 80) + '... (clicca)'
-                            : item.dettagli_prod)
-                          : (item.dettagli ?
-                            (item.dettagli.length > 80
-                              ? item.dettagli.substring(0, 80) + '... (clicca)'
-                              : item.dettagli)
-                            : 'In attesa di elaborazione')}
+                        {item.error_precheck || item.error_prod ? (
+                          <span style={{ color: '#ef4444', fontWeight: 'bold' }}>
+                            {item.dettagli_prod || item.dettagli || 'Errore'} ... (clicca per errore)
+                          </span>
+                        ) : (
+                          item.dettagli_prod ?
+                            (item.dettagli_prod.length > 80
+                              ? item.dettagli_prod.substring(0, 80) + '... (clicca)'
+                              : item.dettagli_prod)
+                            : (item.dettagli ?
+                              (item.dettagli.length > 80
+                                ? item.dettagli.substring(0, 80) + '... (clicca)'
+                                : item.dettagli)
+                              : 'In attesa di elaborazione')
+                        )}
                       </td>
                     </tr>
                   ))}

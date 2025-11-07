@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<style>
+body {
+  background: #e0e5ec;
+  height: 100vh;
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.status-ball {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #e0e5ec;
+  cursor: pointer;
+  transition: .25s ease;
+  box-shadow: 6px 6px 12px #b8bec8,
+              -6px -6px 12px #ffffff;
+}
+
+/* Stato attivo: incavo */
+.status-ball.active {
+  box-shadow: inset 6px 6px 12px #b8bec8,
+              inset -6px -6px 12px #ffffff;
+}
+
+/* Colori */
+.status-ball.success {
+  background: #2ecc71; /* verde */
+}
+
+.status-ball.error {
+  background: #e74c3c; /* rosso */
+}
+</style>
+</head>
+<body>
+
+<div id="dot" class="status-ball"></div>
+
+<script>
+const dot = document.getElementById("dot");
+const states = ["", "success", "error"];
+let i = 0;
+
+dot.addEventListener("click", () => {
+  i = (i + 1) % states.length;
+
+  dot.className = "status-ball"; // reset
+
+  if (states[i]) {
+    dot.classList.add(states[i], "active");
+  }
+});
+</script>
+
+</body>
+</html>

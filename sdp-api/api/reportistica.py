@@ -398,6 +398,13 @@ async def publish_data_factory(
                     from scripts import data_factory
                     status = data_factory.main(year_month_values, workspace)
 
+                    # Controlla se c'è un errore nel risultato di data_factory
+                    if isinstance(status, dict) and "error" in status:
+                        stderr_capture.write(f"Data factory error: {status['error']}\n")
+                        print("\n[RESULT]")
+                        print(json.dumps(status, indent=2))
+                        return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
+
                     # Print result as JSON for parsing
                     print("\n[RESULT]")
                     print(json.dumps(status, indent=2))
@@ -719,6 +726,17 @@ def get_packages_ready(
     logger.info(f"test-packages-v2 endpoint called for user: {current_user.username}, bank: {current_user.bank}, type: {type_reportistica}")
 
     try:
+        # Recupera il periodo corrente da repo_update_info per confrontarlo con le pubblicazioni
+        repo_info_query = db.query(models.RepoUpdateInfo).filter(
+            func.lower(models.RepoUpdateInfo.bank) == func.lower(current_user.bank)
+        ).first()
+
+        current_anno = repo_info_query.anno if repo_info_query else None
+        current_settimana = repo_info_query.settimana if repo_info_query else None
+        current_mese = repo_info_query.mese if repo_info_query else None
+
+        logger.info(f"Current period from repo_update_info: anno={current_anno}, settimana={current_settimana}, mese={current_mese}")
+
         # Filtra per banca dell'utente corrente (case-insensitive)
         query = db.query(
             models.ReportMapping.package,
@@ -764,6 +782,7 @@ def get_packages_ready(
             # Variabili per precheck
             pre_check_status = False
             dettagli_precheck = "In attesa di elaborazione"
+            error_precheck = None
             data_esecuzione_precheck = None
             user_precheck = "N/D"
             anno_precheck = None
@@ -773,6 +792,7 @@ def get_packages_ready(
             # Variabili per production
             prod_status = False
             dettagli_prod = "In attesa di elaborazione"
+            error_prod = None
             data_esecuzione_prod = None
             user_prod = "N/D"
             anno_prod = None
@@ -794,6 +814,9 @@ def get_packages_ready(
 
                         # Prendi il messaggio dall'output o dall'error
                         message = log.output if log.output else (log.error if log.error else "")
+
+                        # Salva il campo error separatamente se presente
+                        error_precheck = log.error if log.error else None
 
                         # Determina lo stato in base al CONTENUTO del messaggio
                         if "successo" in message.lower():
@@ -836,6 +859,9 @@ def get_packages_ready(
                         # Prendi il messaggio dall'output o dall'error
                         message = log.output if log.output else (log.error if log.error else "")
 
+                        # Salva il campo error separatamente se presente
+                        error_prod = log.error if log.error else None
+
                         # Determina lo stato in base al CONTENUTO del messaggio
                         if "successo" in message.lower():
                             prod_status = True  # Verde
@@ -861,6 +887,41 @@ def get_packages_ready(
                     logger.warning(f"Error parsing production log for {package_name}: {e}")
                     continue
 
+            # RESET LOGIC: Confronta il periodo della pubblicazione con quello corrente
+            # Se non corrispondono, resetta i semafori ma mantieni i dati storici
+            is_settimanale = type_reportistica == "Settimanale"
+            is_mensile = type_reportistica == "Mensile"
+
+            # Controlla se la pubblicazione PRE-CHECK è del periodo corrente
+            if pre_check_status and pre_check_status != False:
+                if is_settimanale:
+                    # Per settimanale: confronta anno + settimana
+                    if (anno_precheck != current_anno or settimana_precheck != current_settimana):
+                        logger.info(f"Resetting precheck status for {package_name}: published in {anno_precheck}-W{settimana_precheck}, current is {current_anno}-W{current_settimana}")
+                        pre_check_status = False
+                        dettagli_precheck = "Pubblicazione di un periodo precedente"
+                elif is_mensile:
+                    # Per mensile: confronta anno + mese
+                    if (anno_precheck != current_anno or mese_precheck != current_mese):
+                        logger.info(f"Resetting precheck status for {package_name}: published in {anno_precheck}-M{mese_precheck}, current is {current_anno}-M{current_mese}")
+                        pre_check_status = False
+                        dettagli_precheck = "Pubblicazione di un periodo precedente"
+
+            # Controlla se la pubblicazione PRODUCTION è del periodo corrente
+            if prod_status and prod_status != False:
+                if is_settimanale:
+                    # Per settimanale: confronta anno + settimana
+                    if (anno_prod != current_anno or settimana_prod != current_settimana):
+                        logger.info(f"Resetting production status for {package_name}: published in {anno_prod}-W{settimana_prod}, current is {current_anno}-W{current_settimana}")
+                        prod_status = False
+                        dettagli_prod = "Pubblicazione di un periodo precedente"
+                elif is_mensile:
+                    # Per mensile: confronta anno + mese
+                    if (anno_prod != current_anno or mese_prod != current_mese):
+                        logger.info(f"Resetting production status for {package_name}: published in {anno_prod}-M{mese_prod}, current is {current_anno}-M{current_mese}")
+                        prod_status = False
+                        dettagli_prod = "Pubblicazione di un periodo precedente"
+
             packages_with_status.append({
                 "package": package_name,
                 "ws_precheck": r[1],
@@ -872,9 +933,11 @@ def get_packages_ready(
                 "pre_check": pre_check_status,
                 "prod": prod_status,
                 "dettagli": dettagli_precheck,
+                "error_precheck": error_precheck,
                 "user_prod": user_prod,
                 "data_esecuzione_prod": data_esecuzione_prod,
                 "dettagli_prod": dettagli_prod,
+                "error_prod": error_prod,
                 "anno_precheck": anno_precheck,
                 "settimana_precheck": settimana_precheck,
                 "mese_precheck": mese_precheck,
@@ -1127,6 +1190,13 @@ async def publish_precheck(
                         logger.info(f"Calling data_factory.main with year_month_values={year_month_values}, workspace={workspace}")
 
                         status = data_factory.main(year_month_values, workspace)
+
+                        # Controlla se c'è un errore nel risultato di data_factory
+                        if isinstance(status, dict) and "error" in status:
+                            stderr_capture.write(f"Data factory error: {status['error']}\n")
+                            print("\n[RESULT]")
+                            print(json.dumps(status, indent=2))
+                            return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
                     else:
                         # SETTIMANALE: Usa scripts.main
                         from scripts import main as script_main
@@ -1180,7 +1250,7 @@ async def publish_precheck(
             log_entry = models.PublicationLog(
                 bank=current_user.bank,
                 workspace=workspace,
-                packages=[year_month],  # Usa year_month come package
+                packages=pbi_packages,  # Salva i nomi reali dei package mensili
                 publication_type="precheck",
                 status="success" if is_success else "error",
                 output=json.dumps(status_value, indent=2) if is_success else None,
@@ -1377,6 +1447,13 @@ async def publish_production(
                         logger.info(f"Calling data_factory.main (PRODUCTION) with year_month_values={year_month_values}, workspace={workspace}")
 
                         status = data_factory.main(year_month_values, workspace)
+
+                        # Controlla se c'è un errore nel risultato di data_factory
+                        if isinstance(status, dict) and "error" in status:
+                            stderr_capture.write(f"Data factory error: {status['error']}\n")
+                            print("\n[RESULT]")
+                            print(json.dumps(status, indent=2))
+                            return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
                     else:
                         # SETTIMANALE: Usa scripts.main
                         from scripts import main as script_main
@@ -1431,7 +1508,7 @@ async def publish_production(
             log_entry = models.PublicationLog(
                 bank=current_user.bank,
                 workspace=workspace,
-                packages=[year_month],  # Usa year_month come package
+                packages=pbi_packages,  # Salva i nomi reali dei package mensili
                 publication_type="production",
                 status="success" if is_success else "error",
                 output=json.dumps(status_value, indent=2) if is_success else None,

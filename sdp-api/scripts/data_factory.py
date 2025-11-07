@@ -281,7 +281,10 @@ def main(year_month_values: list, workspace: str) -> dict:
     print(log)
     for l in log["Login"]["Login"].values():
         if l["status"] == "error":  # al momento non accade mai, probabilmente perché tutte le task hanno "CONTINUE" in caso di errore - DA VERIFICARE
-            sys.exit(f"ERROR: non sono riuscito a fare il login: {l['message']}")
+            error_msg = l.get('message', 'Errore sconosciuto')
+            error_result = {"error": f"ERROR: non sono riuscito a fare il login: {error_msg}"}
+            print(f"Returning error: {error_result}")
+            return error_result
     
     # Main
     workbook["Raggiungi Main"]["F7"].value = f'{workspace}'    # da modificare
