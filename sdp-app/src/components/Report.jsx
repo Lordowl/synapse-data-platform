@@ -1122,20 +1122,23 @@ const fetchPublishStatus = useCallback(async () => {
                       <td className="text-xs" style={{
                         maxWidth: '300px',
                         whiteSpace: 'pre-wrap',
-                        fontSize: '11px',
-                        cursor: task.dettagli && task.dettagli.length > 100 ? 'pointer' : 'default'
+                        fontSize: '14px',
+                        cursor: task.dettagli ? 'pointer' : 'default'
                       }}
-                      title={task.dettagli || 'N/D'}
+                      title="Clicca per vedere i dettagli completi"
                       onClick={() => {
-                        if (task.dettagli && task.dettagli.length > 100) {
+                        if (task.dettagli) {
                           showDetailsModal(`Dettagli - ${task.nome_file}`, task.dettagli);
                         }
                       }}>
-                        {task.dettagli ?
-                          (task.dettagli.length > 100
-                            ? task.dettagli.substring(0, 100) + '... (clicca per vedere tutto)'
-                            : task.dettagli)
-                          : 'N/D'}
+                        {/* Mostra messaggio breve - dettagli completi nel popup */}
+                        {task.disponibilita_server === true ? (
+                          <span>File disponibile ✓</span>
+                        ) : task.disponibilita_server === false ? (
+                          <span>File non disponibile</span>
+                        ) : (
+                          <span>Non verificato</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -1226,15 +1229,12 @@ const fetchPublishStatus = useCallback(async () => {
                         maxWidth: '200px',
                         whiteSpace: 'pre-wrap',
                         fontSize: '14px',
-                        cursor: (item.dettagli && item.dettagli.length > 80) || (item.dettagli_prod && item.dettagli_prod.length > 80) || item.error_precheck || item.error_prod ? 'pointer' : 'default'
+                        cursor: item.dettagli || item.dettagli_prod || item.error_precheck || item.error_prod ? 'pointer' : 'default'
                       }}
-                      title={(item.dettagli_prod || item.dettagli) || 'N/D'}
+                      title="Clicca per vedere i dettagli completi"
                       onClick={() => {
-                        const detailText = item.dettagli_prod || item.dettagli || '';
-                        const hasError = item.error_precheck || item.error_prod;
-
-                        if (detailText.length > 80 || hasError) {
-                          // Costruisci il contenuto del popup
+                        // Costruisci il contenuto del popup con i dettagli completi
+                        if (item.dettagli || item.dettagli_prod || item.error_precheck || item.error_prod) {
                           let content = `Pre-Check:\n${item.dettagli || 'N/D'}\n`;
 
                           // Aggiungi errore pre-check se presente
@@ -1262,20 +1262,19 @@ const fetchPublishStatus = useCallback(async () => {
                           showDetailsModal(`Dettagli Pubblicazione - ${item.package}`, content);
                         }
                       }}>
-                        {item.error_precheck || item.error_prod ? (
-                          <span style={{ color: '#ef4444', fontWeight: 'bold' }}>
-                            {item.dettagli_prod || item.dettagli || 'Errore'} ... (clicca per errore)
-                          </span>
+                        {/* Mostra messaggio breve - dettagli completi nel popup */}
+                        {item.prod === true ? (
+                          <span style={{ color: '#22c55e' }}>Pubblicato ✓</span>
+                        ) : item.prod === 'error' ? (
+                          <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Errore pubblicazione</span>
+                        ) : item.pre_check === true ? (
+                          <span style={{ color: '#22c55e' }}>Pre-check completato ✓</span>
+                        ) : item.pre_check === 'error' ? (
+                          <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Errore pre-check</span>
+                        ) : item.pre_check === 'timeout' ? (
+                          <span style={{ color: '#f59e0b' }}>Timeout</span>
                         ) : (
-                          item.dettagli_prod ?
-                            (item.dettagli_prod.length > 80
-                              ? item.dettagli_prod.substring(0, 80) + '... (clicca)'
-                              : item.dettagli_prod)
-                            : (item.dettagli ?
-                              (item.dettagli.length > 80
-                                ? item.dettagli.substring(0, 80) + '... (clicca)'
-                                : item.dettagli)
-                              : 'In attesa di elaborazione')
+                          <span style={{ color: '#666' }}>In attesa</span>
                         )}
                       </td>
                     </tr>
@@ -1312,11 +1311,15 @@ const fetchPublishStatus = useCallback(async () => {
               <button
                 className="btn btn-outline"
                 onClick={() => handleGlobalAction('pubblica-report')}
-                disabled={!allPreCheckGreen || loadingActions.global !== null}
-                title={!allPreCheckGreen ? "Tutte le righe devono avere Pre-Check verde" : `Pubblica Report ${periodicityConfig.label}`}
+                disabled={!allFirstTableGreen || !allPreCheckGreen || loadingActions.global !== null}
+                title={
+                  !allFirstTableGreen ? "Tutte le righe della prima tabella devono avere disponibilità file verde" :
+                  !allPreCheckGreen ? "Tutte le righe devono avere Pre-Check verde" :
+                  `Pubblica Report ${periodicityConfig.label}`
+                }
                 style={{
-                  opacity: (!allPreCheckGreen || loadingActions.global !== null) ? '0.4' : '1',
-                  cursor: (!allPreCheckGreen || loadingActions.global !== null) ? 'not-allowed' : 'pointer',
+                  opacity: (!allFirstTableGreen || !allPreCheckGreen || loadingActions.global !== null) ? '0.4' : '1',
+                  cursor: (!allFirstTableGreen || !allPreCheckGreen || loadingActions.global !== null) ? 'not-allowed' : 'pointer',
                   padding: '0.75rem 1rem',
                   whiteSpace: 'nowrap',
                   width: '100%'

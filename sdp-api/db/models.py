@@ -99,6 +99,7 @@ class ReportMapping(Base):
     ws_production = Column(String, nullable=True)
     package = Column(String, primary_key=True)
     finality = Column(String, nullable=True)  # Finalità del report
+    datafactory = Column(String, nullable=True)  # Workspace Azure Data Factory (solo per mensili)
 
 
 class RepoUpdateInfo(Base):

@@ -1143,7 +1143,8 @@ async def publish_precheck(
         # Prendi i dati dalla tabella report_mapping filtrati per banca e periodicità
         query = db.query(
             models.ReportMapping.ws_precheck,
-            models.ReportMapping.package
+            models.ReportMapping.package,
+            models.ReportMapping.datafactory
         ).filter(
             models.ReportMapping.Type_reportisica == periodicity_db,
             func.lower(models.ReportMapping.bank) == func.lower(current_user.bank)
@@ -1158,13 +1159,17 @@ async def publish_precheck(
                 detail=f"Nessun package trovato per la banca {current_user.bank}"
             )
 
-        # Estrai workspace (dovrebbe essere lo stesso per tutti i package della stessa banca)
-        workspace = results[0][0]
+        # Estrai workspace Power BI (per settimanale o fase 2 mensile)
+        workspace_powerbi = results[0][0]
+
+        # Estrai workspace Data Factory (solo per mensile)
+        workspace_datafactory = results[0][2] if len(results[0]) > 2 else None
 
         # Estrai lista dei package
         pbi_packages = [row[1] for row in results if row[1]]
 
-        logger.info(f"Workspace: {workspace}")
+        logger.info(f"Workspace Power BI: {workspace_powerbi}")
+        logger.info(f"Workspace Data Factory: {workspace_datafactory}")
         logger.info(f"Packages to publish: {pbi_packages}")
 
         # Importa e chiama direttamente lo script invece di usare subprocess
@@ -1182,35 +1187,102 @@ async def publish_precheck(
                     import json
 
                     if is_mensile:
-                        # MENSILE: Usa data_factory
-                        from scripts import data_factory
+                        # ==========================================
+                        # MENSILE: FLUSSO A 2 FASI
+                        # ==========================================
 
-                        # Prepara year_month_values (es. ["2511"])
-                        year_month_values = [f"{str(anno)[-2:]}{mese:02d}"]
-                        logger.info(f"Calling data_factory.main with year_month_values={year_month_values}, workspace={workspace}")
+                        # FASE 1: Azure Data Factory
+                        if workspace_datafactory:
+                            logger.info("="*80)
+                            logger.info("FASE 1: Esecuzione Azure Data Factory")
+                            logger.info("="*80)
 
-                        status = data_factory.main(year_month_values, workspace)
+                            from scripts import data_factory
 
-                        # Controlla se c'è un errore nel risultato di data_factory
-                        if isinstance(status, dict) and "error" in status:
-                            stderr_capture.write(f"Data factory error: {status['error']}\n")
+                            # Prepara year_month_values (es. ["2511"])
+                            year_month_values = [f"{str(anno)[-2:]}{mese:02d}"]
+                            logger.info(f"Calling data_factory.main with year_month={year_month_values}, workspace_datafactory={workspace_datafactory}")
+
+                            try:
+                                df_status = data_factory.main(year_month_values, workspace_datafactory)
+                                logger.info(f"Data Factory result: {df_status}")
+
+                                # Controlla se c'è un errore nel risultato di data_factory
+                                if isinstance(df_status, dict) and "error" in df_status:
+                                    error_msg = f"FASE 1 FALLITA - Data Factory error: {df_status['error']}"
+                                    logger.error(error_msg)
+                                    stderr_capture.write(error_msg + "\n")
+                                    print("\n[RESULT]")
+                                    print(json.dumps(df_status, indent=2))
+                                    return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
+
+                                # Verifica se Data Factory ha avuto successo
+                                year_month = year_month_values[0]
+                                if isinstance(df_status, dict):
+                                    df_result = df_status.get(year_month, "Unknown")
+                                    if df_result != "Succeeded":
+                                        error_msg = f"FASE 1 FALLITA - Data Factory non ha completato con successo: {df_result}"
+                                        logger.error(error_msg)
+                                        stderr_capture.write(error_msg + "\n")
+                                        print("\n[RESULT]")
+                                        print(json.dumps(df_status, indent=2))
+                                        return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
+
+                                logger.info("FASE 1 COMPLETATA CON SUCCESSO!")
+
+                            except Exception as e:
+                                error_msg = f"FASE 1 FALLITA - Eccezione in data_factory.main: {str(e)}"
+                                logger.error(error_msg)
+                                import traceback
+                                stderr_capture.write(error_msg + "\n" + traceback.format_exc())
+                                return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
+
+                        # FASE 2: Power BI (solo se FASE 1 ha avuto successo)
+                        logger.info("="*80)
+                        logger.info("FASE 2: Pubblicazione Power BI")
+                        logger.info("="*80)
+
+                        from scripts import main as script_main
+                        logger.info(f"Calling scripts.main.main with workspace_powerbi={workspace_powerbi}, packages={pbi_packages}")
+
+                        try:
+                            pbi_status = script_main.main(workspace_powerbi, pbi_packages)
+                            logger.info(f"Power BI result: {pbi_status}")
+
+                            # Combina i risultati di entrambe le fasi
+                            combined_status = {
+                                "phase_1_datafactory": df_status if workspace_datafactory else "Skipped",
+                                "phase_2_powerbi": pbi_status
+                            }
+
                             print("\n[RESULT]")
-                            print(json.dumps(status, indent=2))
+                            print(json.dumps(combined_status, indent=2))
+                            logger.info("FASE 2 COMPLETATA!")
+
+                        except Exception as e:
+                            error_msg = f"FASE 2 FALLITA - Eccezione in scripts.main: {str(e)}"
+                            logger.error(error_msg)
+                            import traceback
+                            stderr_capture.write(error_msg + "\n" + traceback.format_exc())
                             return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
+
                     else:
-                        # SETTIMANALE: Usa scripts.main
+                        # ==========================================
+                        # SETTIMANALE: SOLO POWER BI
+                        # ==========================================
                         from scripts import main as script_main
 
-                        logger.info(f"Calling scripts.main.main with workspace={workspace}, packages={pbi_packages}")
-                        status = script_main.main(workspace, pbi_packages)
+                        logger.info(f"Calling scripts.main.main with workspace_powerbi={workspace_powerbi}, packages={pbi_packages}")
+                        status = script_main.main(workspace_powerbi, pbi_packages)
 
-                    # Stampa il risultato come JSON per mantenere il formato originale
-                    print("\n[RESULT]")
-                    print(json.dumps(status, indent=2))
+                        print("\n[RESULT]")
+                        print(json.dumps(status, indent=2))
 
                 return 0, stdout_capture.getvalue(), stderr_capture.getvalue()
             except Exception as e:
                 import traceback
+                error_msg = f"ERRORE GENERALE: {str(e)}"
+                logger.error(error_msg)
                 stderr_capture.write(traceback.format_exc())
                 return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
 
@@ -1242,33 +1314,59 @@ async def publish_precheck(
 
         # Salva log in base alla periodicità
         if is_mensile:
-            # MENSILE: Salva per year_month (data_factory)
-            year_month = f"{str(anno)[-2:]}{mese:02d}"
-            status_value = packages_details.get(year_month, "Unknown")
-            is_success = status_value == "Succeeded"
+            # MENSILE: Salva log per entrambe le fasi
+            logger.info("Salvando log per pubblicazione mensile (2 fasi)")
 
+            # Estrai risultati delle 2 fasi
+            phase_1_result = packages_details.get("phase_1_datafactory", {})
+            phase_2_result = packages_details.get("phase_2_powerbi", {})
+
+            year_month = f"{str(anno)[-2:]}{mese:02d}"
+
+            # Determina lo status generale: successo solo se entrambe le fasi hanno successo
+            phase_1_success = False
+            phase_2_success = False
+
+            if isinstance(phase_1_result, dict) and phase_1_result != "Skipped":
+                df_status_value = phase_1_result.get(year_month, "Unknown")
+                phase_1_success = df_status_value == "Succeeded"
+                logger.info(f"FASE 1 Data Factory status: {df_status_value}")
+
+            if isinstance(phase_2_result, dict):
+                # Power BI ritorna un dizionario con i package come chiavi
+                phase_2_success = all("successo" in str(v).lower() for v in phase_2_result.values())
+                logger.info(f"FASE 2 Power BI success: {phase_2_success}")
+
+            overall_success = phase_1_success and phase_2_success
+            logger.info(f"Overall success: {overall_success}")
+
+            # Salva un UNICO log con i risultati combinati
             log_entry = models.PublicationLog(
                 bank=current_user.bank,
-                workspace=workspace,
+                workspace=workspace_datafactory if workspace_datafactory else workspace_powerbi,
                 packages=pbi_packages,  # Salva i nomi reali dei package mensili
                 publication_type="precheck",
-                status="success" if is_success else "error",
-                output=json.dumps(status_value, indent=2) if is_success else None,
-                error=json.dumps(status_value, indent=2) if not is_success else None,
+                status="success" if overall_success else "error",
+                output=json.dumps(packages_details, indent=2) if overall_success else None,
+                error=json.dumps(packages_details, indent=2) if not overall_success else None,
                 user_id=current_user.id,
                 anno=anno,
                 settimana=None,
                 mese=mese
             )
             db.add(log_entry)
+            logger.info(f"Log salvato per mensile: status={'success' if overall_success else 'error'}")
+
         else:
             # SETTIMANALE: Salva per ogni package (scripts.main)
+            logger.info("Salvando log per pubblicazione settimanale")
+
             for package_name in pbi_packages:
                 package_detail = packages_details.get(package_name, stdout if returncode == 0 else stderr)
 
                 log_entry = models.PublicationLog(
                     bank=current_user.bank,
-                    workspace=workspace,
+                    workspace=workspace_powerbi,
                     packages=[package_name],  # Un package per volta
                     publication_type="precheck",
                     status="success" if returncode == 0 and "successo" in str(package_detail).lower() else "error",
@@ -1400,7 +1498,8 @@ async def publish_production(
         # Usa ws_production invece di ws_precheck
         query = db.query(
             models.ReportMapping.ws_production,
-            models.ReportMapping.package
+            models.ReportMapping.package,
+            models.ReportMapping.datafactory
         ).filter(
             models.ReportMapping.Type_reportisica == periodicity_db,
             func.lower(models.ReportMapping.bank) == func.lower(current_user.bank)
@@ -1415,13 +1514,17 @@ async def publish_production(
                 detail=f"Nessun package trovato per la banca {current_user.bank}"
             )
 
-        # Estrai workspace (dovrebbe essere lo stesso per tutti i package della stessa banca)
-        workspace = results[0][0]
+        # Estrai workspace Power BI (per settimanale o fase 2 mensile)
+        workspace_powerbi = results[0][0]
+
+        # Estrai workspace Data Factory (solo per mensile)
+        workspace_datafactory = results[0][2] if len(results[0]) > 2 else None
 
         # Estrai lista dei package
         pbi_packages = [row[1] for row in results if row[1]]
 
-        logger.info(f"Production Workspace: {workspace}")
+        logger.info(f"Production Workspace Power BI: {workspace_powerbi}")
+        logger.info(f"Production Workspace Data Factory: {workspace_datafactory}")
         logger.info(f"Packages to publish: {pbi_packages}")
 
         # Importa e chiama direttamente lo script invece di usare subprocess
@@ -1439,35 +1542,102 @@ async def publish_production(
                     import json
 
                     if is_mensile:
-                        # MENSILE: Usa data_factory
-                        from scripts import data_factory
+                        # ==========================================
+                        # MENSILE PRODUCTION: FLUSSO A 2 FASI
+                        # ==========================================
 
-                        # Prepara year_month_values (es. ["2511"])
-                        year_month_values = [f"{str(anno)[-2:]}{mese:02d}"]
-                        logger.info(f"Calling data_factory.main (PRODUCTION) with year_month_values={year_month_values}, workspace={workspace}")
+                        # FASE 1: Azure Data Factory
+                        if workspace_datafactory:
+                            logger.info("="*80)
+                            logger.info("PRODUCTION FASE 1: Esecuzione Azure Data Factory")
+                            logger.info("="*80)
 
-                        status = data_factory.main(year_month_values, workspace)
+                            from scripts import data_factory
 
-                        # Controlla se c'è un errore nel risultato di data_factory
-                        if isinstance(status, dict) and "error" in status:
-                            stderr_capture.write(f"Data factory error: {status['error']}\n")
+                            # Prepara year_month_values (es. ["2511"])
+                            year_month_values = [f"{str(anno)[-2:]}{mese:02d}"]
+                            logger.info(f"Calling data_factory.main (PRODUCTION) with year_month={year_month_values}, workspace_datafactory={workspace_datafactory}")
+
+                            try:
+                                df_status = data_factory.main(year_month_values, workspace_datafactory)
+                                logger.info(f"Data Factory result (PRODUCTION): {df_status}")
+
+                                # Controlla se c'è un errore nel risultato di data_factory
+                                if isinstance(df_status, dict) and "error" in df_status:
+                                    error_msg = f"PRODUCTION FASE 1 FALLITA - Data Factory error: {df_status['error']}"
+                                    logger.error(error_msg)
+                                    stderr_capture.write(error_msg + "\n")
+                                    print("\n[RESULT]")
+                                    print(json.dumps(df_status, indent=2))
+                                    return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
+
+                                # Verifica se Data Factory ha avuto successo
+                                year_month = year_month_values[0]
+                                if isinstance(df_status, dict):
+                                    df_result = df_status.get(year_month, "Unknown")
+                                    if df_result != "Succeeded":
+                                        error_msg = f"PRODUCTION FASE 1 FALLITA - Data Factory non ha completato con successo: {df_result}"
+                                        logger.error(error_msg)
+                                        stderr_capture.write(error_msg + "\n")
+                                        print("\n[RESULT]")
+                                        print(json.dumps(df_status, indent=2))
+                                        return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
+
+                                logger.info("PRODUCTION FASE 1 COMPLETATA CON SUCCESSO!")
+
+                            except Exception as e:
+                                error_msg = f"PRODUCTION FASE 1 FALLITA - Eccezione in data_factory.main: {str(e)}"
+                                logger.error(error_msg)
+                                import traceback
+                                stderr_capture.write(error_msg + "\n" + traceback.format_exc())
+                                return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
+
+                        # FASE 2: Power BI (solo se FASE 1 ha avuto successo)
+                        logger.info("="*80)
+                        logger.info("PRODUCTION FASE 2: Pubblicazione Power BI")
+                        logger.info("="*80)
+
+                        from scripts import main as script_main
+                        logger.info(f"Calling scripts.main.main (PRODUCTION) with workspace_powerbi={workspace_powerbi}, packages={pbi_packages}")
+
+                        try:
+                            pbi_status = script_main.main(workspace_powerbi, pbi_packages)
+                            logger.info(f"Power BI result (PRODUCTION): {pbi_status}")
+
+                            # Combina i risultati di entrambe le fasi
+                            combined_status = {
+                                "phase_1_datafactory": df_status if workspace_datafactory else "Skipped",
+                                "phase_2_powerbi": pbi_status
+                            }
+
                             print("\n[RESULT]")
-                            print(json.dumps(status, indent=2))
+                            print(json.dumps(combined_status, indent=2))
+                            logger.info("PRODUCTION FASE 2 COMPLETATA!")
+
+                        except Exception as e:
+                            error_msg = f"PRODUCTION FASE 2 FALLITA - Eccezione in scripts.main: {str(e)}"
+                            logger.error(error_msg)
+                            import traceback
+                            stderr_capture.write(error_msg + "\n" + traceback.format_exc())
                             return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
+
                     else:
-                        # SETTIMANALE: Usa scripts.main
+                        # ==========================================
+                        # SETTIMANALE PRODUCTION: SOLO POWER BI
+                        # ==========================================
                         from scripts import main as script_main
 
-                        logger.info(f"Calling scripts.main.main (PRODUCTION) with workspace={workspace}, packages={pbi_packages}")
-                        status = script_main.main(workspace, pbi_packages)
+                        logger.info(f"Calling scripts.main.main (PRODUCTION) with workspace_powerbi={workspace_powerbi}, packages={pbi_packages}")
+                        status = script_main.main(workspace_powerbi, pbi_packages)
 
-                    # Stampa il risultato come JSON per mantenere il formato originale
-                    print("\n[RESULT]")
-                    print(json.dumps(status, indent=2))
+                        print("\n[RESULT]")
+                        print(json.dumps(status, indent=2))
 
                 return 0, stdout_capture.getvalue(), stderr_capture.getvalue()
             except Exception as e:
                 import traceback
+                error_msg = f"PRODUCTION ERRORE GENERALE: {str(e)}"
+                logger.error(error_msg)
                 stderr_capture.write(traceback.format_exc())
                 return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
 
@@ -1500,33 +1670,59 @@ async def publish_production(
         # Salva log in base alla periodicità
         # IMPORTANTE: publication_type = "production"
         if is_mensile:
-            # MENSILE: Salva per year_month (data_factory)
-            year_month = f"{str(anno)[-2:]}{mese:02d}"
-            status_value = packages_details.get(year_month, "Unknown")
-            is_success = status_value == "Succeeded"
+            # MENSILE PRODUCTION: Salva log per entrambe le fasi
+            logger.info("Salvando log per pubblicazione mensile PRODUCTION (2 fasi)")
 
+            # Estrai risultati delle 2 fasi
+            phase_1_result = packages_details.get("phase_1_datafactory", {})
+            phase_2_result = packages_details.get("phase_2_powerbi", {})
+
+            year_month = f"{str(anno)[-2:]}{mese:02d}"
+
+            # Determina lo status generale: successo solo se entrambe le fasi hanno successo
+            phase_1_success = False
+            phase_2_success = False
+
+            if isinstance(phase_1_result, dict) and phase_1_result != "Skipped":
+                df_status_value = phase_1_result.get(year_month, "Unknown")
+                phase_1_success = df_status_value == "Succeeded"
+                logger.info(f"PRODUCTION FASE 1 Data Factory status: {df_status_value}")
+
+            if isinstance(phase_2_result, dict):
+                # Power BI ritorna un dizionario con i package come chiavi
+                phase_2_success = all("successo" in str(v).lower() for v in phase_2_result.values())
+                logger.info(f"PRODUCTION FASE 2 Power BI success: {phase_2_success}")
+
+            overall_success = phase_1_success and phase_2_success
+            logger.info(f"PRODUCTION Overall success: {overall_success}")
+
+            # Salva un UNICO log con i risultati combinati
             log_entry = models.PublicationLog(
                 bank=current_user.bank,
-                workspace=workspace,
+                workspace=workspace_datafactory if workspace_datafactory else workspace_powerbi,
                 packages=pbi_packages,  # Salva i nomi reali dei package mensili
                 publication_type="production",
-                status="success" if is_success else "error",
-                output=json.dumps(status_value, indent=2) if is_success else None,
-                error=json.dumps(status_value, indent=2) if not is_success else None,
+                status="success" if overall_success else "error",
+                output=json.dumps(packages_details, indent=2) if overall_success else None,
+                error=json.dumps(packages_details, indent=2) if not overall_success else None,
                 user_id=current_user.id,
                 anno=anno,
                 settimana=None,
                 mese=mese
             )
             db.add(log_entry)
+            logger.info(f"Log salvato per mensile PRODUCTION: status={'success' if overall_success else 'error'}")
+
         else:
-            # SETTIMANALE: Salva per ogni package (scripts.main)
+            # SETTIMANALE PRODUCTION: Salva per ogni package (scripts.main)
+            logger.info("Salvando log per pubblicazione settimanale PRODUCTION")
+
             for package_name in pbi_packages:
                 package_detail = packages_details.get(package_name, stdout if returncode == 0 else stderr)
 
                 log_entry = models.PublicationLog(
                     bank=current_user.bank,
-                    workspace=workspace,
+                    workspace=workspace_powerbi,
                     packages=[package_name],  # Un package per volta
                     publication_type="production",
                     status="success" if returncode == 0 and "successo" in str(package_detail).lower() else "error",
