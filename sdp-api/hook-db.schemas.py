@@ -9,7 +9,7 @@ import sys
 
 # Ottieni il path assoluto di schemas.py
 schemas_path = os.path.join(os.getcwd(), 'db', 'schemas.py')
-print(f"🔧 HOOK: Forzando uso di {schemas_path}")
+print(f"[HOOK] Forzando uso di {schemas_path}")
 
 # Aggiungi come data
 datas.append((schemas_path, 'db'))

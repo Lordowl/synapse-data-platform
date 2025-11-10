@@ -118,6 +118,7 @@ a = Analysis(
         'lxml',
         'msal',
         'PyJWT',
+        'psutil',
     ],
     hooksconfig={},
     runtime_hooks=['pyi_rth_database.py', 'pyi_rth_api_modules.py'],

@@ -298,14 +298,14 @@ from sqlalchemy import Column, Integer, String, DateTime, Text, JSON, Boolean, F
 class User(db.Base):
     __tablename__ = "users"
     __table_args__ = (
-        # Composite unique indexes to allow same username/email across different banks
+        # Username and email unique per bank (not globally)
         Index('idx_username_bank', 'username', 'bank', unique=True),
         Index('idx_email_bank', 'email', 'bank', unique=True),
         {'extend_existing': True}
     )
     id = Column(Integer, primary_key=True)
-    username = Column(String, nullable=False)  # Removed unique=True
-    email = Column(String, nullable=True)  # Removed unique=True
+    username = Column(String, nullable=False)
+    email = Column(String, nullable=True)
     hashed_password = Column(String, nullable=False)
     role = Column(String, default="user")
     is_active = Column(Boolean, default=True)
@@ -418,10 +418,10 @@ class SyncRun(db.Base):
     __tablename__ = "sync_runs"
     __table_args__ = {'extend_existing': True}
     id = Column(Integer, primary_key=True)
-    bank = Column(String, nullable=True)
-    start_time = Column(DateTime, server_default=func.now())
+    operation_type = Column(String, nullable=True)  # Changed from 'status' to 'operation_type'
+    start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime, nullable=True)
-    status = Column(String, nullable=False)
+    update_interval = Column(Integer, nullable=True)
     files_processed = Column(Integer, default=0)
     files_copied = Column(Integer, default=0)
     files_skipped = Column(Integer, default=0)

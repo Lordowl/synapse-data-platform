@@ -248,6 +248,112 @@ def get_publish_status(
         }
 
 
+@router.get("/sync-debug")
+def sync_debug(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Endpoint di debug per verificare lo stato del sync"""
+    import psutil
+    from sqlalchemy import text
+
+    try:
+        # Leggi info dal database (gestito da reposync)
+        sql = text("SELECT operation_type, start_time, end_time, update_interval FROM sync_runs WHERE id = 1")
+        result = db.execute(sql).fetchone()
+
+        if not result:
+            return {"error": "Nessun record sync_runs trovato"}
+
+        operation_type, start_time, end_time, update_interval = result
+
+        # Leggi PID dal file
+        from core.config import config_manager
+        base_folder = config_manager.get_setting("SETTINGS_PATH")
+        pid_file = os.path.join(base_folder, "App", "Dashboard", "sync_logs", "current_sync.pid")
+
+        pid = None
+        stdout_log = None
+        stderr_log = None
+        user = None
+        sync_start_time = None
+
+        if os.path.exists(pid_file):
+            with open(pid_file, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("PID:"):
+                        pid = int(line.split(":")[1])
+                    elif line.startswith("User:"):
+                        user = line.split(":")[1]
+                    elif line.startswith("Stdout:"):
+                        stdout_log = line.split(":", 1)[1]
+                    elif line.startswith("Stderr:"):
+                        stderr_log = line.split(":", 1)[1]
+                    elif line.startswith("StartTime:"):
+                        sync_start_time = line.split(":", 1)[1]
+
+        # Verifica se il processo è ancora attivo
+        process_alive = False
+        process_info = None
+
+        if pid:
+            try:
+                proc = psutil.Process(pid)
+                process_alive = proc.is_running()
+                process_info = {
+                    "pid": pid,
+                    "name": proc.name(),
+                    "status": proc.status(),
+                    "cpu_percent": proc.cpu_percent(interval=0.1),
+                    "memory_mb": proc.memory_info().rss / 1024 / 1024,
+                    "create_time": datetime.fromtimestamp(proc.create_time()).isoformat()
+                }
+            except psutil.NoSuchProcess:
+                process_alive = False
+                process_info = {"error": f"Processo PID {pid} non trovato (terminato)"}
+
+        # Leggi ultimi 50 righe dei log se esistono
+        stdout_tail = None
+        stderr_tail = None
+
+        if stdout_log and os.path.exists(stdout_log):
+            with open(stdout_log, "r", encoding="utf-8", errors="ignore") as f:
+                lines = f.readlines()
+                stdout_tail = "".join(lines[-50:])
+
+        if stderr_log and os.path.exists(stderr_log):
+            with open(stderr_log, "r", encoding="utf-8", errors="ignore") as f:
+                lines = f.readlines()
+                stderr_tail = "".join(lines[-50:])
+
+        return {
+            "database": {
+                "operation_type": operation_type,
+                "start_time": start_time,
+                "end_time": end_time,
+                "update_interval": update_interval
+            },
+            "sync_process": {
+                "launched_by": user,
+                "started_at": sync_start_time,
+                "pid": pid,
+                "is_alive": process_alive,
+                "details": process_info
+            },
+            "logs": {
+                "stdout_path": stdout_log,
+                "stderr_path": stderr_log,
+                "stdout_tail": stdout_tail,
+                "stderr_tail": stderr_tail
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Errore in sync-debug: {e}", exc_info=True)
+        return {"error": str(e)}
+
+
 @router.post("/trigger-sync")
 def trigger_sync(
       db: Session = Depends(get_db),
@@ -287,12 +393,56 @@ def trigger_sync(
           if not base_folder:
               raise HTTPException(status_code=500, detail="SETTINGS_PATH non configurato")
 
-          venv_path = os.path.join(base_folder, "App", "Dashboard", "vreposync")
-          venv_python = os.path.join(venv_path, "Scripts", "python.exe")
-          sync_command = [venv_python, "-m", "reposync", "-c"]
+          # Cerca reposync.exe in path centralizzato o standard
+          logger.info(f"sys.frozen = {getattr(sys, 'frozen', False)}")
+          logger.info(f"sys.executable = {sys.executable}")
 
-          if not os.path.exists(venv_python):
-              raise HTTPException(status_code=404, detail=f"Python venv non trovato: {venv_python}")
+          # 1. Prova a leggere il path da configurazione (opzionale)
+          reposync_exe = config_manager.get_setting("REPOSYNC_PATH")
+
+          if reposync_exe and os.path.exists(reposync_exe):
+              logger.info(f"✓ Usando reposync.exe da configurazione: {reposync_exe}")
+          else:
+              # 2. Cerca in posizioni standard
+              possible_locations = []
+
+              if getattr(sys, 'frozen', False):
+                  # Produzione (exe compilato)
+                  exe_dir = os.path.dirname(sys.executable)
+                  possible_locations = [
+                      os.path.join(base_folder, "App", "Demons", "reposync.exe"),  # Path preferito
+                      os.path.join(exe_dir, "reposync.exe"),  # Accanto all'exe
+                      os.path.join(base_folder, "reposync.exe"),  # Nella cartella SETTINGS_PATH
+                      os.path.join(base_folder, "App", "Dashboard", "reposync.exe"),
+                  ]
+              else:
+                  # Sviluppo
+                  venv_scripts = os.path.dirname(sys.executable)
+                  possible_locations = [
+                      os.path.join(base_folder, "App", "Demons", "reposync.exe"),  # Path preferito
+                      os.path.join(venv_scripts, "reposync.exe"),  # Nel venv
+                      os.path.join(base_folder, "reposync.exe"),  # Nella cartella SETTINGS_PATH
+                      os.path.join(base_folder, "App", "Dashboard", "reposync.exe"),
+                  ]
+
+              # Cerca in tutte le posizioni
+              reposync_exe = None
+              for location in possible_locations:
+                  logger.info(f"Cercando reposync.exe in: {location}")
+                  if os.path.exists(location):
+                      reposync_exe = location
+                      logger.info(f"✓ Trovato reposync.exe: {reposync_exe}")
+                      break
+
+              if not reposync_exe:
+                  logger.error(f"✗ reposync.exe non trovato in nessuna posizione")
+                  logger.error(f"Posizioni cercate: {possible_locations}")
+                  raise HTTPException(
+                      status_code=500,
+                      detail=f"reposync.exe non trovato. Installalo in C:\\reposync\\ o configura REPOSYNC_PATH"
+                  )
+
+          sync_command = [reposync_exe, "-c"]
 
           # ❌ RIMUOVI QUESTA PARTE - NON creare il record!
           # sql_insert = text("""
@@ -301,23 +451,48 @@ def trigger_sync(
           # db.execute(sql_insert, {"bank": current_user.bank})
           # db.commit()
 
-          # Lancia il comando (reposync creerà il record con ID=1)
+          # Lancia il comando (reposync aggiornerà automaticamente sync_runs)
           work_dir = os.path.join(base_folder, "App", "Dashboard")
-          process = subprocess.Popen(
-              sync_command,
-              cwd=work_dir,
-              stdout=subprocess.PIPE,
-              stderr=subprocess.PIPE,
-              creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
-          )
+
+          # Crea file di log per stdout/stderr
+          log_dir = os.path.join(work_dir, "sync_logs")
+          os.makedirs(log_dir, exist_ok=True)
+          timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+          stdout_log = os.path.join(log_dir, f"sync_stdout_{timestamp}.log")
+          stderr_log = os.path.join(log_dir, f"sync_stderr_{timestamp}.log")
+
+          # Lancia reposync.exe come subprocess (sia in sviluppo che in produzione)
+          with open(stdout_log, "w") as out_file, open(stderr_log, "w") as err_file:
+              process = subprocess.Popen(
+                  sync_command,
+                  cwd=work_dir,
+                  stdout=out_file,
+                  stderr=err_file,
+                  creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+              )
+
+          # Salva PID in un file per il monitoring
+          pid_file = os.path.join(log_dir, "current_sync.pid")
+          with open(pid_file, "w") as f:
+              f.write(f"PID:{process.pid}\n")
+              f.write(f"User:{current_user.username}\n")
+              f.write(f"Stdout:{stdout_log}\n")
+              f.write(f"Stderr:{stderr_log}\n")
+              f.write(f"StartTime:{datetime.now().isoformat()}\n")
 
           logger.info(f"Sync avviato da {current_user.username}, PID: {process.pid}")
+          process_pid = process.pid
+
+          logger.info(f"Logs: stdout={stdout_log}, stderr={stderr_log}")
+          logger.info(f"PID file: {pid_file}")
 
           return {
               "success": True,
               "message": "Sync avviato con successo",
               "is_running": True,
-              "pid": process.pid
+              "pid": process_pid,
+              "stdout_log": stdout_log,
+              "stderr_log": stderr_log
           }
 
       except HTTPException:

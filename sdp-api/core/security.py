@@ -11,7 +11,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
-from .config import settings
+from core.config import settings
 from db import schemas, models, crud
 from db.database import get_db
 

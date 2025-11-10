@@ -844,26 +844,17 @@ const fetchPublishStatus = useCallback(async () => {
               </div>
             </nav>
 
-            {/* Indicatore Auto-aggiornamento */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              fontSize: '0.875rem',
-              color: '#666'
-            }}>
-              <span>Sincronizzazione automatica</span>
-              <CustomTooltip
-                content={syncRunning
-                  ? `Il sistema esegue automaticamente controlli e sincronizzazioni ogni ${syncInterval} ${syncInterval === 1 ? 'minuto' : 'minuti'} per mantenere i dati sempre aggiornati.`
-                  : `L'autoaggiornamento è disattivato. L'ultimo intervallo configurato era di ${syncInterval} ${syncInterval === 1 ? 'minuto' : 'minuti'}. I controlli e le sincronizzazioni devono essere avviati manualmente.`}
-                position="bottom"
-              >
-                <span
-                  className={`status-dot ${syncRunning ? 'active-success' : 'active-danger'}`}
-                ></span>
-              </CustomTooltip>
-            </div>
+            {/* Indicatore Sync Status */}
+            {syncRunning && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <RefreshCw className="spin" size={18} style={{ color: '#666' }} />
+                <span style={{ fontSize: '0.875rem', color: '#666' }}>Sincronizzazione in corso...</span>
+              </div>
+            )}
 
             {/* Pulsante Aggiorna */}
             <CustomTooltip

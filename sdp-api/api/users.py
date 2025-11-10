@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, Security
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from typing import List, Dict
 
 from db import schemas, models, crud
@@ -33,7 +34,17 @@ def create_new_user(
     if db_user_by_email:
         raise HTTPException(status_code=400, detail=f"Email already registered in bank {user.bank}")
 
-    created_user = crud.create_user(db=db, user=user, bank=user.bank)
+    try:
+        created_user = crud.create_user(db=db, user=user, bank=user.bank)
+    except IntegrityError as e:
+        db.rollback()
+        error_msg = str(e)
+        if "users.email" in error_msg:
+            raise HTTPException(status_code=400, detail=f"Email already registered in bank {user.bank}")
+        elif "users.username" in error_msg:
+            raise HTTPException(status_code=400, detail=f"Username already registered in bank {user.bank}")
+        else:
+            raise HTTPException(status_code=400, detail=f"Database constraint violation: {error_msg}")
 
     # Registra l'azione di creazione nell'audit log
     record_audit_log(

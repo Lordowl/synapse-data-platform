@@ -5,15 +5,14 @@ from .database import Base
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
-        # Rendi univoca la coppia (username, bank) invece di solo username
+        # Username and email unique per bank (not globally)
         Index('idx_username_bank', 'username', 'bank', unique=True),
-        # Rendi univoca la coppia (email, bank) invece di solo email
         Index('idx_email_bank', 'email', 'bank', unique=True),
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, index=True, nullable=False)  # Rimosso unique=True
-    email = Column(String, index=True)  # Rimosso unique=True
+    username = Column(String, index=True, nullable=False)
+    email = Column(String, index=True)
     hashed_password = Column(String, nullable=False)
     role = Column(String, default="user")
     is_active = Column(Boolean, default=True)
@@ -25,10 +24,10 @@ class SyncRun(Base):
     __tablename__ = "sync_runs"
 
     id = Column(Integer, primary_key=True, index=True)
-    bank = Column(String, index=True, nullable=True)
-    start_time = Column(DateTime(timezone=True), server_default=func.now())
+    operation_type = Column(String, index=True, nullable=True)  # Changed from 'status' to 'operation_type'
+    start_time = Column(DateTime(timezone=True), nullable=True)
     end_time = Column(DateTime(timezone=True), nullable=True)
-    status = Column(String, index=True, nullable=False)
+    update_interval = Column(Integer, nullable=True)  # Added field
     files_processed = Column(Integer, default=0)
     files_copied = Column(Integer, default=0)
     files_skipped = Column(Integer, default=0)

@@ -171,7 +171,7 @@ function Home({ setIsAuthenticated }) {
 
       <div className="version-footer">
         <small style={{ color: "#666", fontSize: "12px" }}>
-          Versione 0.2.21{" "}
+          Versione 0.2.22{" "}
         </small>
       </div>
     </div>
