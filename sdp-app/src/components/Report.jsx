@@ -634,17 +634,25 @@ const fetchPublishStatus = useCallback(async () => {
     setFilters(prev => ({ ...prev, [filterName]: value }));
   };
 
-  // Task filtrati SOLO per periodicità (per il semaforo)
+  // Task filtrati per periodicità E banca (per il semaforo)
   const tasksForSemaphore = useMemo(() => {
-    return reportTasks.filter(task => 
-      task.tipo_reportistica?.toLowerCase() === currentPeriodicity.toLowerCase()
-    );
+    const selectedBanca = sessionStorage.getItem("selectedBank");
+    return reportTasks.filter(task => {
+      const matchesBanca = !selectedBanca || task.banca === selectedBanca;
+      const matchesPeriodicity = task.tipo_reportistica?.toLowerCase() === currentPeriodicity.toLowerCase();
+      return matchesBanca && matchesPeriodicity;
+    });
   }, [reportTasks, currentPeriodicity]); 
 
   // Filtra task per periodicità corrente + altri filtri (per la tabella)
   const filteredReportTasks = useMemo(() => {
     console.log("Esempio task:", reportTasks[0]);
+    const selectedBanca = sessionStorage.getItem("selectedBank");
+
     const filtered = reportTasks.filter(task => {
+      // Filtro per banca selezionata
+      const matchesBanca = !selectedBanca || task.banca === selectedBanca;
+
       // Filtro per periodicità basato sul tab selezionato (case-insensitive)
       const matchesPeriodicity = task.tipo_reportistica?.toLowerCase() === currentPeriodicity.toLowerCase();
 
@@ -659,7 +667,7 @@ const fetchPublishStatus = useCallback(async () => {
         (filters.disponibilita_server === "Non disponibile" && task.disponibilita_server === false) ||
         (filters.disponibilita_server === "N/D" && task.disponibilita_server === null);
 
-      return matchesPeriodicity && matchesPackage && matchesDisponibilita;
+      return matchesBanca && matchesPeriodicity && matchesPackage && matchesDisponibilita;
     });
 
     console.log('Filtered tasks:', filtered);
@@ -975,26 +983,28 @@ const fetchPublishStatus = useCallback(async () => {
               </div>
             </nav>
 
-            {/* Indicatore Sync Status */}
-            {syncRunning && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem'
-              }}>
-                <RefreshCw className="spin" size={18} style={{ color: '#666' }} />
-                <span style={{ fontSize: '0.875rem', color: '#666' }}>Sincronizzazione in corso...</span>
-              </div>
-            )}
-
-            {/* Gruppo Last Sync + Aggiorna */}
+            {/* Gruppo controlli sincronizzazione e navigazione */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '1rem'
+              gap: '1rem',
+              flexWrap: 'nowrap'
             }}>
+              {/* Indicatore Sync Status */}
+              {syncRunning && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  whiteSpace: 'nowrap'
+                }}>
+                  <RefreshCw className="spin" size={18} style={{ color: '#666' }} />
+                  <span style={{ fontSize: '0.875rem', color: '#666' }}>Sincronizzazione in corso...</span>
+                </div>
+              )}
+
               {/* Last Sync Info */}
-              {lastSyncInfo && (
+              {lastSyncInfo && !syncRunning && (
                 <CustomTooltip
                   content={`Ultimo sync: ${new Date(lastSyncInfo.last_sync_time).toLocaleString('it-IT')}`}
                   position="bottom"
@@ -1008,7 +1018,8 @@ const fetchPublishStatus = useCallback(async () => {
                     padding: '0.25rem 0.75rem',
                     backgroundColor: '#f9fafb',
                     borderRadius: '6px',
-                    border: '1px solid #e5e7eb'
+                    border: '1px solid #e5e7eb',
+                    whiteSpace: 'nowrap'
                   }}>
                     <Clock size={16} style={{ color: '#9ca3af' }} />
                     <span>{lastSyncInfo.last_sync_ago_human}</span>
@@ -1033,10 +1044,7 @@ const fetchPublishStatus = useCallback(async () => {
 
                       if (response.data.success) {
                         showToast("Sincronizzazione avviata con successo", "success");
-                        // Aggiorna subito lo stato per disabilitare il pulsante
                         setSyncRunning(true);
-                        // Il polling automatico aggiornerà i dati ogni 3 secondi
-                        // Nessuna azione aggiuntiva necessaria
                       } else {
                         showToast(response.data.message || "Sync già in corso", "warning");
                       }
@@ -1052,26 +1060,27 @@ const fetchPublishStatus = useCallback(async () => {
                   disabled={syncRunning || loadingActions.global !== null}
                   style={{
                     opacity: (syncRunning || loadingActions.global !== null) ? '0.5' : '1',
-                    cursor: (syncRunning || loadingActions.global !== null) ? 'not-allowed' : 'pointer'
+                    cursor: (syncRunning || loadingActions.global !== null) ? 'not-allowed' : 'pointer',
+                    whiteSpace: 'nowrap'
                   }}
                 >
                   Aggiorna
                 </button>
               </CustomTooltip>
-            </div>
 
-            {/* Pulsante Indietro */}
-            <button
-              onClick={() => {
-                console.log("Navigating back to /home...");
-                navigate("/home", { replace: true });
-              }}
-              className="btn btn-outline report-header-back-button"
-              // Disabilitato quando c'è un'azione in corso (loadingActions.global !== null)
-              disabled={loadingActions.global !== null}
-            >
-              ← Indietro
-            </button>
+              {/* Pulsante Indietro */}
+              <button
+                onClick={() => {
+                  console.log("Navigating back to /home...");
+                  navigate("/home", { replace: true });
+                }}
+                className="btn btn-outline report-header-back-button"
+                disabled={loadingActions.global !== null}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                ← Indietro
+              </button>
+            </div>
           </div>
         </header>
 
