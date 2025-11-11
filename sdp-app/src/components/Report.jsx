@@ -277,6 +277,7 @@ function Report() {
   const [syncRunning, setSyncRunning] = useState(false); // Stato per tracciare se c'è un sync in corso
   const [syncInterval, setSyncInterval] = useState(5); // Intervallo di aggiornamento in secondi
   const [publishStatus, setPublishStatus] = useState(null); // Stato per tracciare la pubblicazione in corso
+  const [lastSyncInfo, setLastSyncInfo] = useState(null); // Informazioni sull'ultimo sync
 
   // Stato per tracciare le azioni in corso (es. "pubblica-pre-check", "pubblica-report")
   // Quando global !== null, tutti i controlli vengono disabilitati per prevenire azioni concorrenti
@@ -360,12 +361,24 @@ function Report() {
 
  const fetchSyncStatus = useCallback(async () => {
   try {
-    // Usa l'endpoint /is-sync-running
+    // Usa l'endpoint /is-sync-running che ora include anche last_sync_info
     try {
       const response = await apiClient.get("/reportistica/is-sync-running");
       console.log("Is sync running response:", response.data);
       setSyncRunning(response.data?.is_running || false);
       setSyncInterval(response.data?.update_interval || 5);
+
+      // Aggiorna le informazioni sull'ultimo sync
+      if (response.data?.last_sync_time) {
+        setLastSyncInfo({
+          last_sync_time: response.data.last_sync_time,
+          last_sync_ago_seconds: response.data.last_sync_ago_seconds,
+          last_sync_ago_human: response.data.last_sync_ago_human
+        });
+      } else {
+        setLastSyncInfo(null);
+      }
+
       return; // Se funziona, usciamo dalla funzione
     } catch (innerError) {
       // Se l'errore è 422, ignoriamo e continuiamo con il fallback
@@ -374,12 +387,14 @@ function Report() {
       // Per qualsiasi errore, impostiamo semplicemente is_running a false
       setSyncRunning(false);
       setSyncInterval(5);
+      setLastSyncInfo(null);
     }
   } catch (error) {
     // Questo catch esterno non dovrebbe mai essere raggiunto, ma per sicurezza
     console.error("Errore critico nel verificare sync status:", error);
     setSyncRunning(false);
     setSyncInterval(5);
+    setLastSyncInfo(null);
   }
 }, []);
 
@@ -416,7 +431,7 @@ const fetchPublishStatus = useCallback(async () => {
   // Ref per tenere traccia se è il primo caricamento
   const isInitialLoad = useRef(true);
 
-  // Fetch reportistica data from API
+  // Fetch reportistica data from API (caricamento iniziale)
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -478,19 +493,135 @@ const fetchPublishStatus = useCallback(async () => {
       }
     };
 
-    // Carica dati immediatamente
+    // Carica dati solo al mount iniziale
     fetchData();
 
-    // Configura polling ogni 3 secondi
-    const interval = setInterval(() => {
-      fetchData();
-    }, 3000);
-
-    // Cleanup interval on unmount
-    return () => {
-      clearInterval(interval);
-    };
   }, [showToast, fetchRepoUpdateInfo, fetchPackagesReady, fetchSyncStatus, fetchPublishStatus]);
+
+  // WebSocket per aggiornamenti real-time
+  useEffect(() => {
+    let ws = null;
+    let reconnectTimeout = null;
+    let isUnmounting = false;
+
+    const connectWebSocket = () => {
+      if (isUnmounting) return;
+
+      try {
+        // Ottieni il token dal sessionStorage (dove viene effettivamente salvato)
+        const token = sessionStorage.getItem('accessToken');
+        if (!token) {
+          console.warn('No auth token found, skipping WebSocket connection');
+          return;
+        }
+
+        // Costruisci URL WebSocket (cambia http/https in ws/wss)
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//127.0.0.1:9123/api/v1/reportistica/ws/updates?token=${encodeURIComponent(token)}`;
+
+        console.log('Connecting to WebSocket:', wsUrl.replace(token, 'TOKEN_HIDDEN'));
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          console.log('WebSocket connected');
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            console.log('WebSocket message received:', data);
+
+            // Aggiorna lo stato in base ai dati ricevuti
+            if (data.type === 'status_update') {
+              // Aggiorna sync status
+              if (data.sync_status) {
+                setSyncRunning(data.sync_status.is_running || false);
+                setSyncInterval(data.sync_status.update_interval || 5);
+
+                if (data.sync_status.last_sync_time) {
+                  setLastSyncInfo({
+                    last_sync_time: data.sync_status.last_sync_time,
+                    last_sync_ago_seconds: data.sync_status.last_sync_ago_seconds,
+                    last_sync_ago_human: data.sync_status.last_sync_ago_human
+                  });
+                } else {
+                  setLastSyncInfo(null);
+                }
+              }
+
+              // Aggiorna publish status
+              if (data.publish_status !== undefined) {
+                setPublishStatus(data.publish_status);
+              }
+
+              // Aggiorna dati reportistica (se presenti)
+              if (data.reportistica_data && Array.isArray(data.reportistica_data)) {
+                console.log('Updating reportistica data from WebSocket:', data.reportistica_data.length, 'items');
+
+                // Mappa i dati come fa fetchData
+                const mappedData = data.reportistica_data.map(item => ({
+                  id: item.id,
+                  banca: item.banca,
+                  tipo_reportistica: item.tipo_reportistica,
+                  package: item.package || item.nome_file,
+                  nome_file: item.nome_file,
+                  finalita: item.finalita,
+                  user: 'N/D',
+                  data_esecuzione: item.ultima_modifica || item.updated_at,
+                  pre_check: false,
+                  prod: false,
+                  dettagli: item.dettagli || null,
+                  anno: item.anno,
+                  settimana: item.settimana,
+                  mese: item.mese,
+                  disponibilita_server: item.disponibilita_server
+                }));
+
+                setReportTasks(mappedData);
+              }
+            }
+          } catch (error) {
+            console.error('Error processing WebSocket message:', error);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error);
+        };
+
+        ws.onclose = () => {
+          console.log('WebSocket disconnected');
+
+          // Riconnetti automaticamente dopo 3 secondi se non stiamo smontando
+          if (!isUnmounting) {
+            reconnectTimeout = setTimeout(() => {
+              console.log('Attempting WebSocket reconnection...');
+              connectWebSocket();
+            }, 3000);
+          }
+        };
+
+      } catch (error) {
+        console.error('Error creating WebSocket:', error);
+      }
+    };
+
+    // Connetti al WebSocket
+    connectWebSocket();
+
+    // Cleanup alla smontatura del componente
+    return () => {
+      isUnmounting = true;
+
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+
+      if (ws) {
+        ws.close();
+      }
+    };
+  }, []); // Vuoto perché vogliamo connetterci una sola volta
 
   // Funzione per cambiare periodicità
   const handlePeriodicityChange = (newPeriodicity) => {
@@ -856,48 +987,78 @@ const fetchPublishStatus = useCallback(async () => {
               </div>
             )}
 
-            {/* Pulsante Aggiorna */}
-            <CustomTooltip
-              content={syncRunning
-                ? "La sincronizzazione automatica è attiva. Il pulsante è disabilitato durante l'esecuzione."
-                : "Avvia manualmente la sincronizzazione dei dati. Questo aggiornerà tutti i report disponibili."}
-              position="bottom"
-            >
-              <button
-                onClick={async () => {
-                  console.log("Refresh button clicked - triggering sync");
-                  showToast("Avvio sincronizzazione...", "info");
-                  try {
-                    const response = await apiClient.post("/reportistica/trigger-sync");
-                    console.log("Trigger sync response:", response.data);
+            {/* Gruppo Last Sync + Aggiorna */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1rem'
+            }}>
+              {/* Last Sync Info */}
+              {lastSyncInfo && (
+                <CustomTooltip
+                  content={`Ultimo sync: ${new Date(lastSyncInfo.last_sync_time).toLocaleString('it-IT')}`}
+                  position="bottom"
+                >
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    fontSize: '0.875rem',
+                    color: '#6b7280',
+                    padding: '0.25rem 0.75rem',
+                    backgroundColor: '#f9fafb',
+                    borderRadius: '6px',
+                    border: '1px solid #e5e7eb'
+                  }}>
+                    <Clock size={16} style={{ color: '#9ca3af' }} />
+                    <span>{lastSyncInfo.last_sync_ago_human}</span>
+                  </div>
+                </CustomTooltip>
+              )}
 
-                    if (response.data.success) {
-                      showToast("Sincronizzazione avviata con successo", "success");
-                      // Aggiorna subito lo stato per disabilitare il pulsante
-                      setSyncRunning(true);
-                      // Il polling automatico aggiornerà i dati ogni 3 secondi
-                      // Nessuna azione aggiuntiva necessaria
-                    } else {
-                      showToast(response.data.message || "Sync già in corso", "warning");
-                    }
-                  } catch (error) {
-                    console.error("Errore nell'avvio sync:", error);
-                    showToast(
-                      error.response?.data?.detail || "Errore nell'avvio della sincronizzazione",
-                      "error"
-                    );
-                  }
-                }}
-                className="btn btn-outline"
-                disabled={syncRunning || loadingActions.global !== null}
-                style={{
-                  opacity: (syncRunning || loadingActions.global !== null) ? '0.5' : '1',
-                  cursor: (syncRunning || loadingActions.global !== null) ? 'not-allowed' : 'pointer'
-                }}
+              {/* Pulsante Aggiorna */}
+              <CustomTooltip
+                content={syncRunning
+                  ? "La sincronizzazione automatica è attiva. Il pulsante è disabilitato durante l'esecuzione."
+                  : "Avvia manualmente la sincronizzazione dei dati. Questo aggiornerà tutti i report disponibili."}
+                position="bottom"
               >
-                Aggiorna
-              </button>
-            </CustomTooltip>
+                <button
+                  onClick={async () => {
+                    console.log("Refresh button clicked - triggering sync");
+                    showToast("Avvio sincronizzazione...", "info");
+                    try {
+                      const response = await apiClient.post("/reportistica/trigger-sync");
+                      console.log("Trigger sync response:", response.data);
+
+                      if (response.data.success) {
+                        showToast("Sincronizzazione avviata con successo", "success");
+                        // Aggiorna subito lo stato per disabilitare il pulsante
+                        setSyncRunning(true);
+                        // Il polling automatico aggiornerà i dati ogni 3 secondi
+                        // Nessuna azione aggiuntiva necessaria
+                      } else {
+                        showToast(response.data.message || "Sync già in corso", "warning");
+                      }
+                    } catch (error) {
+                      console.error("Errore nell'avvio sync:", error);
+                      showToast(
+                        error.response?.data?.detail || "Errore nell'avvio della sincronizzazione",
+                        "error"
+                      );
+                    }
+                  }}
+                  className="btn btn-outline"
+                  disabled={syncRunning || loadingActions.global !== null}
+                  style={{
+                    opacity: (syncRunning || loadingActions.global !== null) ? '0.5' : '1',
+                    cursor: (syncRunning || loadingActions.global !== null) ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  Aggiorna
+                </button>
+              </CustomTooltip>
+            </div>
 
             {/* Pulsante Indietro */}
             <button

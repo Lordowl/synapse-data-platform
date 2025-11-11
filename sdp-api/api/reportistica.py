@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func, desc
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Set
 from datetime import datetime, timezone
 from pydantic import BaseModel
 import asyncio
@@ -23,6 +23,54 @@ from core.security import get_current_user
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# ============================================================
+# WebSocket Manager per aggiornamenti real-time
+# ============================================================
+
+class ConnectionManager:
+    """Gestisce le connessioni WebSocket attive"""
+
+    def __init__(self):
+        self.active_connections: Set[WebSocket] = set()
+        self._lock = asyncio.Lock()
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        async with self._lock:
+            self.active_connections.add(websocket)
+        logger.info(f"WebSocket client connected. Total connections: {len(self.active_connections)}")
+
+    async def disconnect(self, websocket: WebSocket):
+        async with self._lock:
+            self.active_connections.discard(websocket)
+        logger.info(f"WebSocket client disconnected. Total connections: {len(self.active_connections)}")
+
+    async def broadcast(self, message: dict):
+        """Invia un messaggio a tutti i client connessi"""
+        if not self.active_connections:
+            return
+
+        disconnected = set()
+        async with self._lock:
+            connections = self.active_connections.copy()
+
+        for connection in connections:
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                logger.warning(f"Error sending to WebSocket client: {e}")
+                disconnected.add(connection)
+
+        # Rimuovi connessioni morte
+        if disconnected:
+            async with self._lock:
+                self.active_connections -= disconnected
+
+# Istanza globale del manager
+ws_manager = ConnectionManager()
+
 
 # Schema per i package pronti
 class PackageReady(BaseModel):
@@ -125,49 +173,421 @@ def is_sync_running(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Verifica se c'è un sync in corso nella tabella sync_runs.
-    Un sync è attivo se la differenza tra il timestamp corrente e end_time
-    è minore di update_interval secondi.
-    Restituisce {"is_running": true/false}
+    Verifica se c'è un sync in corso con logica a 3 livelli:
+    1. Marker file (sync appena lanciato, fase iniziale)
+    2. Log files recenti (sync in avvio/inizializzazione)
+    3. Database sync_runs (sync attivo con heartbeat)
+
+    Restituisce {"is_running": true/false, "status": "starting"|"running"|"idle"}
     """
     try:
         from datetime import datetime, timedelta
+        import psutil
+        from core.config import config_manager
 
-        # Prendi il record ID=1 (quello usato da reposync)
+        base_folder = config_manager.get_setting("SETTINGS_PATH")
+        if not base_folder:
+            return {"is_running": False, "status": "idle"}
+
+        # Path ai file di controllo
+        sdp_folder = os.path.join(base_folder, ".sdp")
+        marker_file = os.path.join(sdp_folder, "sync_requested.marker")
+        log_dir = os.path.join(base_folder, "App", "Dashboard", "sync_logs")
+        pid_file = os.path.join(log_dir, "current_sync.pid")
+
+        now = datetime.utcnow()
+
+        logger.debug(f"is-sync-running check: marker={os.path.exists(marker_file)}, pid_file={os.path.exists(pid_file)}, log_dir={os.path.exists(log_dir)}")
+
+        # LIVELLO 1: Controlla se esiste il marker file (sync appena richiesto)
+        if os.path.exists(marker_file):
+            # Leggi timestamp dal marker
+            try:
+                with open(marker_file, "r") as f:
+                    content = f.read()
+                    for line in content.split("\n"):
+                        if line.startswith("timestamp:"):
+                            marker_time_str = line.split(":", 1)[1]
+                            marker_time = datetime.fromisoformat(marker_time_str)
+                            time_since_marker = (now - marker_time).total_seconds()
+
+                            # Se il marker è recente (<5 minuti)
+                            if time_since_marker < 300:
+                                # Controlla se il processo PID esiste
+                                pid = None
+                                process_alive = False
+                                if os.path.exists(pid_file):
+                                    with open(pid_file, "r") as pf:
+                                        for pid_line in pf:
+                                            if pid_line.startswith("PID:"):
+                                                pid = int(pid_line.split(":")[1])
+                                                break
+
+                                # Se il processo è attivo, siamo in fase "starting"
+                                if pid:
+                                    try:
+                                        proc = psutil.Process(pid)
+                                        if proc.is_running():
+                                            process_alive = True
+                                            logger.debug(f"Marker file exists, PID {pid} is running - status: starting")
+                                            return {"is_running": True, "status": "starting"}
+                                    except psutil.NoSuchProcess:
+                                        logger.info(f"Process {pid} not found, but marker is recent")
+
+                                # Se il marker è recente MA il processo è morto, rimuovi il marker
+                                # (significa che il sync è crashato)
+                                logger.debug(f"Marker check: process_alive={process_alive}, time_since_marker={time_since_marker}s")
+                                if not process_alive and time_since_marker > 60:
+                                    logger.warning(f"AUTO-RECOVERY: Marker exists but process is dead (age: {time_since_marker}s) - removing marker and PID")
+                                    try:
+                                        os.remove(marker_file)
+                                        logger.info(f"✓ Marker file removed: {marker_file}")
+                                        # Rimuovi anche il PID file se esiste
+                                        if os.path.exists(pid_file):
+                                            os.remove(pid_file)
+                                            logger.info(f"✓ PID file removed: {pid_file}")
+                                    except Exception as e:
+                                        logger.error(f"Could not remove dead sync files: {e}")
+                                    # Continua con i controlli successivi invece di restituire subito
+                                    break  # Esci dal loop del marker
+
+                                # Controlla se ci sono log files recenti
+                                if os.path.exists(log_dir):
+                                    log_files = [f for f in os.listdir(log_dir) if f.startswith("sync_stdout_")]
+                                    if log_files:
+                                        # Prendi il file di log più recente
+                                        latest_log = max([os.path.join(log_dir, f) for f in log_files], key=os.path.getmtime)
+                                        log_age = (now.timestamp() - os.path.getmtime(latest_log))
+
+                                        # Se il log è molto recente (< 2 minuti), il sync sta partendo
+                                        if log_age < 120:
+                                            logger.debug(f"Marker file exists, recent log files - status: starting")
+                                            return {"is_running": True, "status": "starting"}
+
+                            # Se il marker è vecchio (>5 min) rimuovilo sempre
+                            # (o il processo è morto, o ha scritto nel DB e va rimosso)
+                            elif time_since_marker >= 300:
+                                logger.info(f"Removing stale marker file (age: {time_since_marker}s)")
+                                try:
+                                    os.remove(marker_file)
+                                except Exception as e:
+                                    logger.warning(f"Could not remove stale marker: {e}")
+            except Exception as e:
+                logger.warning(f"Error reading marker file: {e}")
+
+        # LIVELLO 2: Controlla log files recenti (sync in inizializzazione)
+        if os.path.exists(log_dir):
+            log_files = [f for f in os.listdir(log_dir) if f.startswith("sync_stdout_")]
+            if log_files:
+                latest_log = max([os.path.join(log_dir, f) for f in log_files], key=os.path.getmtime)
+                log_age = (now.timestamp() - os.path.getmtime(latest_log))
+
+                # Se log recente E processo attivo
+                if log_age < 180:  # 3 minuti
+                    pid = None
+                    if os.path.exists(pid_file):
+                        with open(pid_file, "r") as pf:
+                            for pid_line in pf:
+                                if pid_line.startswith("PID:"):
+                                    pid = int(pid_line.split(":")[1])
+                                    break
+
+                    if pid:
+                        try:
+                            proc = psutil.Process(pid)
+                            if proc.is_running():
+                                logger.debug(f"Recent log files, PID {pid} running - status: starting")
+                                return {"is_running": True, "status": "starting"}
+                        except psutil.NoSuchProcess:
+                            pass
+
+        # LIVELLO 3: Controlla database sync_runs (sync attivo con heartbeat)
         sql = text("SELECT end_time, update_interval FROM sync_runs WHERE id = 1")
         result = db.execute(sql).fetchone()
 
-        if not result:
-            return {"is_running": False}
+        last_sync_info = None
 
-        end_time_str, update_interval = result
+        if result:
+            end_time_str, update_interval = result
 
-        if not end_time_str or not update_interval:
-            return {"is_running": False}
+            if end_time_str and update_interval:
+                end_time = datetime.fromisoformat(end_time_str)
+                time_diff = (now - end_time).total_seconds()
+                interval_seconds = update_interval * 60
 
-        # Converti end_time in datetime
+                # Calcola informazioni "last sync" per il frontend
+                if time_diff < 60:
+                    last_sync_human = f"{int(time_diff)} secondi fa"
+                elif time_diff < 3600:
+                    minutes = int(time_diff / 60)
+                    last_sync_human = f"{minutes} minuto fa" if minutes == 1 else f"{minutes} minuti fa"
+                elif time_diff < 86400:
+                    hours = int(time_diff / 3600)
+                    last_sync_human = f"{hours} ora fa" if hours == 1 else f"{hours} ore fa"
+                else:
+                    days = int(time_diff / 86400)
+                    last_sync_human = f"{days} giorno fa" if days == 1 else f"{days} giorni fa"
+
+                last_sync_info = {
+                    "last_sync_time": end_time_str,
+                    "last_sync_ago_seconds": int(time_diff),
+                    "last_sync_ago_human": last_sync_human
+                }
+
+                # Se il database mostra heartbeat attivo, rimuovi il marker
+                if time_diff < interval_seconds:
+                    # Rimuovi il marker se esiste (transizione a "running")
+                    if os.path.exists(marker_file):
+                        logger.info("Sync is now running in DB, removing marker file")
+                        try:
+                            os.remove(marker_file)
+                        except Exception as e:
+                            logger.warning(f"Could not remove marker: {e}")
+
+                    logger.debug(f"DB heartbeat active - status: running")
+                    return {
+                        "is_running": True,
+                        "status": "running",
+                        "update_interval": update_interval,
+                        **last_sync_info
+                    }
+
+        # Nessun sync attivo
+        logger.debug("No sync activity detected - status: idle")
+        response = {"is_running": False, "status": "idle"}
+        if last_sync_info:
+            response.update(last_sync_info)
+        return response
+
+    except Exception as e:
+        logger.error(f"Errore nel verificare sync status: {e}", exc_info=True)
+        return {"is_running": False, "status": "idle"}
+
+
+@router.get("/last-sync-info")
+def get_last_sync_info(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Restituisce informazioni sull'ultimo sync completato.
+
+    Restituisce:
+    - last_sync_time: Timestamp dell'ultimo sync (ISO format)
+    - last_sync_ago_seconds: Secondi trascorsi dall'ultimo sync
+    - last_sync_ago_human: Stringa human-readable (es. "2 ore fa", "5 minuti fa")
+    - never_synced: True se non c'è mai stato un sync
+    """
+    try:
+        from datetime import datetime
+
+        # Prendi il record ID=1 (quello usato da reposync)
+        sql = text("SELECT end_time FROM sync_runs WHERE id = 1")
+        result = db.execute(sql).fetchone()
+
+        if not result or not result[0]:
+            return {
+                "never_synced": True,
+                "last_sync_time": None,
+                "last_sync_ago_seconds": None,
+                "last_sync_ago_human": "Mai sincronizzato"
+            }
+
+        end_time_str = result[0]
         end_time = datetime.fromisoformat(end_time_str)
-        # Usa UTC per confrontare con timestamp salvati in UTC
         now = datetime.utcnow()
 
-        # Calcola la differenza in secondi
-        time_diff = (now - end_time).total_seconds()
+        # Calcola differenza in secondi
+        seconds_ago = (now - end_time).total_seconds()
 
-        # update_interval è in MINUTI, convertiamo in secondi per il confronto
-        interval_seconds = update_interval * 60
-
-        # Se la differenza è minore di update_interval (in secondi), il sync è attivo
-        is_active = time_diff < interval_seconds
-
-        logger.debug(f"Sync status check: end_time={end_time}, now={now}, diff={time_diff}s, interval={update_interval}min ({interval_seconds}s), active={is_active}")
+        # Formatta in modo human-readable
+        if seconds_ago < 60:
+            human_readable = f"{int(seconds_ago)} secondi fa"
+        elif seconds_ago < 3600:
+            minutes = int(seconds_ago / 60)
+            human_readable = f"{minutes} minuto fa" if minutes == 1 else f"{minutes} minuti fa"
+        elif seconds_ago < 86400:
+            hours = int(seconds_ago / 3600)
+            human_readable = f"{hours} ora fa" if hours == 1 else f"{hours} ore fa"
+        else:
+            days = int(seconds_ago / 86400)
+            human_readable = f"{days} giorno fa" if days == 1 else f"{days} giorni fa"
 
         return {
-            "is_running": is_active,
-            "update_interval": update_interval
+            "never_synced": False,
+            "last_sync_time": end_time_str,
+            "last_sync_ago_seconds": int(seconds_ago),
+            "last_sync_ago_human": human_readable
         }
+
     except Exception as e:
-        logger.error(f"Errore nel verificare sync status: {e}")
-        return {"is_running": False, "update_interval": 5}
+        logger.error(f"Errore in get_last_sync_info: {e}", exc_info=True)
+        return {
+            "never_synced": True,
+            "last_sync_time": None,
+            "last_sync_ago_seconds": None,
+            "last_sync_ago_human": "Errore nel recuperare informazioni",
+            "error": str(e)
+        }
+
+
+@router.get("/sync-status")
+def get_sync_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Endpoint dettagliato per monitorare lo stato del sync con informazioni estese.
+
+    Stati possibili:
+    - idle: Nessun sync in corso
+    - starting: Sync appena lanciato, in fase iniziale (marker file presente)
+    - running: Sync attivo con heartbeat nel database
+    - failed: Sync fallito o crashato
+    - completed: Sync completato di recente
+
+    Restituisce anche informazioni su PID, log files, timestamp, ecc.
+    """
+    try:
+        from datetime import datetime
+        import psutil
+        from core.config import config_manager
+
+        base_folder = config_manager.get_setting("SETTINGS_PATH")
+        if not base_folder:
+            return {
+                "status": "idle",
+                "is_running": False,
+                "message": "SETTINGS_PATH non configurato"
+            }
+
+        # Path ai file di controllo
+        sdp_folder = os.path.join(base_folder, ".sdp")
+        marker_file = os.path.join(sdp_folder, "sync_requested.marker")
+        log_dir = os.path.join(base_folder, "App", "Dashboard", "sync_logs")
+        pid_file = os.path.join(log_dir, "current_sync.pid")
+
+        now = datetime.utcnow()
+
+        # Informazioni da raccogliere
+        result = {
+            "status": "idle",
+            "is_running": False,
+            "marker_exists": os.path.exists(marker_file),
+            "pid_file_exists": os.path.exists(pid_file),
+            "process_alive": False,
+            "db_heartbeat_active": False,
+            "details": {}
+        }
+
+        # Controlla marker file
+        if os.path.exists(marker_file):
+            try:
+                with open(marker_file, "r") as f:
+                    content = f.read()
+                    marker_data = {}
+                    for line in content.split("\n"):
+                        if ":" in line:
+                            key, value = line.split(":", 1)
+                            marker_data[key] = value
+
+                    if "timestamp" in marker_data:
+                        marker_time = datetime.fromisoformat(marker_data["timestamp"])
+                        age_seconds = (now - marker_time).total_seconds()
+                        result["details"]["marker_age_seconds"] = age_seconds
+                        result["details"]["marker_data"] = marker_data
+            except Exception as e:
+                logger.warning(f"Error reading marker file: {e}")
+
+        # Controlla PID file e processo
+        if os.path.exists(pid_file):
+            try:
+                with open(pid_file, "r") as f:
+                    pid_data = {}
+                    for line in f:
+                        if ":" in line:
+                            key, value = line.split(":", 1)
+                            pid_data[key] = value.strip()
+
+                    if "PID" in pid_data:
+                        pid = int(pid_data["PID"])
+                        result["details"]["pid"] = pid
+
+                        try:
+                            proc = psutil.Process(pid)
+                            if proc.is_running():
+                                result["process_alive"] = True
+                                result["details"]["process_status"] = proc.status()
+                                result["details"]["process_cpu_percent"] = proc.cpu_percent(interval=0.1)
+                                result["details"]["process_memory_mb"] = round(proc.memory_info().rss / 1024 / 1024, 2)
+                        except psutil.NoSuchProcess:
+                            result["process_alive"] = False
+            except Exception as e:
+                logger.warning(f"Error reading PID file: {e}")
+
+        # Controlla log files
+        if os.path.exists(log_dir):
+            log_files = [f for f in os.listdir(log_dir) if f.startswith("sync_stdout_")]
+            if log_files:
+                latest_log = max([os.path.join(log_dir, f) for f in log_files], key=os.path.getmtime)
+                log_age = (now.timestamp() - os.path.getmtime(latest_log))
+                result["details"]["latest_log_file"] = os.path.basename(latest_log)
+                result["details"]["latest_log_age_seconds"] = round(log_age, 2)
+
+        # Controlla database sync_runs
+        sql = text("SELECT end_time, update_interval FROM sync_runs WHERE id = 1")
+        db_result = db.execute(sql).fetchone()
+
+        if db_result:
+            end_time_str, update_interval = db_result
+
+            if end_time_str and update_interval:
+                end_time = datetime.fromisoformat(end_time_str)
+                time_diff = (now - end_time).total_seconds()
+                interval_seconds = update_interval * 60
+
+                result["details"]["db_end_time"] = end_time_str
+                result["details"]["db_update_interval_minutes"] = update_interval
+                result["details"]["db_last_update_seconds_ago"] = round(time_diff, 2)
+
+                if time_diff < interval_seconds:
+                    result["db_heartbeat_active"] = True
+
+        # Determina lo stato finale
+        if result["db_heartbeat_active"]:
+            result["status"] = "running"
+            result["is_running"] = True
+            result["message"] = "Sync attivo con heartbeat nel database"
+        elif result["marker_exists"] and result["process_alive"]:
+            result["status"] = "starting"
+            result["is_running"] = True
+            result["message"] = "Sync in fase di avvio"
+        elif result["marker_exists"] and not result["process_alive"]:
+            result["status"] = "failed"
+            result["is_running"] = False
+            result["message"] = "Sync fallito o crashato (marker presente ma processo non attivo)"
+        elif result["process_alive"]:
+            result["status"] = "starting"
+            result["is_running"] = True
+            result["message"] = "Processo sync attivo, in attesa di heartbeat"
+        else:
+            # Controlla se c'è stato un sync recente completato
+            if "latest_log_age_seconds" in result["details"] and result["details"]["latest_log_age_seconds"] < 600:
+                result["status"] = "completed"
+                result["message"] = "Sync completato di recente"
+            else:
+                result["status"] = "idle"
+                result["message"] = "Nessun sync in corso"
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Errore in get_sync_status: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "is_running": False,
+            "message": f"Errore nel verificare lo stato: {str(e)}"
+        }
 
 
 @router.get("/publish-status")
@@ -246,6 +666,35 @@ def get_publish_status(
             "is_running": False,
             "data": None
         }
+
+
+@router.get("/sync-debug-paths")
+def sync_debug_paths(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Endpoint di debug per vedere i path usati dall'API"""
+    try:
+        from core.config import config_manager
+
+        base_folder = config_manager.get_setting("SETTINGS_PATH")
+        sdp_folder = os.path.join(base_folder, ".sdp") if base_folder else None
+        marker_file = os.path.join(sdp_folder, "sync_requested.marker") if sdp_folder else None
+        log_dir = os.path.join(base_folder, "App", "Dashboard", "sync_logs") if base_folder else None
+        pid_file = os.path.join(log_dir, "current_sync.pid") if log_dir else None
+
+        return {
+            "SETTINGS_PATH": base_folder,
+            "sdp_folder": sdp_folder,
+            "marker_file": marker_file,
+            "marker_exists": os.path.exists(marker_file) if marker_file else False,
+            "log_dir": log_dir,
+            "pid_file": pid_file,
+            "pid_exists": os.path.exists(pid_file) if pid_file else False
+        }
+    except Exception as e:
+        logger.error(f"Errore in sync-debug-paths: {e}", exc_info=True)
+        return {"error": str(e)}
 
 
 @router.get("/sync-debug")
@@ -362,6 +811,12 @@ def trigger_sync(
       try:
           from datetime import datetime
 
+          # Path base per marker e configurazione
+          from core.config import config_manager
+          base_folder = config_manager.get_setting("SETTINGS_PATH")
+          if not base_folder:
+              raise HTTPException(status_code=500, detail="SETTINGS_PATH non configurato")
+
           # Controlla SOLO il record ID=1 (quello che usa reposync)
           # Un sync è attivo se la differenza tra ora e end_time è minore di update_interval
           sql = text("SELECT end_time, update_interval FROM sync_runs WHERE id = 1")
@@ -387,11 +842,17 @@ def trigger_sync(
                           "is_running": True
                       }
 
-          # Path venv
-          from core.config import config_manager
-          base_folder = config_manager.get_setting("SETTINGS_PATH")
-          if not base_folder:
-              raise HTTPException(status_code=500, detail="SETTINGS_PATH non configurato")
+          # ✅ CREA IL MARKER FILE IMMEDIATAMENTE per feedback istantaneo
+          sdp_folder = os.path.join(base_folder, ".sdp")
+          os.makedirs(sdp_folder, exist_ok=True)
+          marker_file = os.path.join(sdp_folder, "sync_requested.marker")
+
+          with open(marker_file, "w") as f:
+              f.write(f"timestamp:{datetime.now().isoformat()}\n")
+              f.write(f"user:{current_user.username}\n")
+              f.write(f"bank:{current_user.bank}\n")
+
+          logger.info(f"✓ Marker file created: {marker_file}")
 
           # Cerca reposync.exe in path centralizzato o standard
           logger.info(f"sys.frozen = {getattr(sys, 'frozen', False)}")
@@ -437,12 +898,24 @@ def trigger_sync(
               if not reposync_exe:
                   logger.error(f"✗ reposync.exe non trovato in nessuna posizione")
                   logger.error(f"Posizioni cercate: {possible_locations}")
+                  # Rimuovi il marker se reposync non viene trovato
+                  if os.path.exists(marker_file):
+                      os.remove(marker_file)
+                      logger.info(f"Marker file rimosso dopo errore: {marker_file}")
                   raise HTTPException(
                       status_code=500,
                       detail=f"reposync.exe non trovato. Installalo in C:\\reposync\\ o configura REPOSYNC_PATH"
                   )
 
-          sync_command = [reposync_exe, "-c"]
+          # Prepara il comando con logging abilitato
+          sync_command = [
+              reposync_exe,
+              "-c",
+              "--enable-file-logging",
+              "--log-level", "DEBUG"
+          ]
+
+          logger.info(f"Comando reposync: {' '.join(sync_command)}")
 
           # ❌ RIMUOVI QUESTA PARTE - NON creare il record!
           # sql_insert = text("""
@@ -499,6 +972,18 @@ def trigger_sync(
           raise
       except Exception as e:
           logger.error(f"Errore sync: {e}", exc_info=True)
+          # Rimuovi il marker file se c'è stato un errore
+          try:
+              from core.config import config_manager
+              base_folder = config_manager.get_setting("SETTINGS_PATH")
+              if base_folder:
+                  sdp_folder = os.path.join(base_folder, ".sdp")
+                  marker_file = os.path.join(sdp_folder, "sync_requested.marker")
+                  if os.path.exists(marker_file):
+                      os.remove(marker_file)
+                      logger.info(f"Marker file rimosso dopo errore generico: {marker_file}")
+          except Exception as cleanup_error:
+              logger.warning(f"Errore nella rimozione del marker: {cleanup_error}")
           raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1989,3 +2474,293 @@ async def publish_production(
             logger.error(f"Failed to save error log to database: {db_error}")
 
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# WebSocket Endpoint per aggiornamenti real-time
+# ============================================================
+
+@router.websocket("/ws/updates")
+async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = Query(None)):
+    """
+    WebSocket endpoint per ricevere aggiornamenti real-time su:
+    - Stato sync
+    - Package disponibili
+    - Stato pubblicazione
+    - Info repo update
+
+    Autenticazione: passare il token JWT come query parameter ?token=xxx
+    """
+    # Verifica autenticazione
+    if not token:
+        await websocket.close(code=1008, reason="Authentication required")
+        return
+
+    try:
+        # Verifica il token JWT
+        from jose import jwt, JWTError
+        from core.config import settings
+
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        username = payload.get("sub")
+        bank = payload.get("bank")
+
+        if not username or not bank:
+            await websocket.close(code=1008, reason="Invalid token payload")
+            return
+
+        logger.info(f"WebSocket authenticated for user: {username} (bank: {bank})")
+
+    except JWTError as e:
+        logger.warning(f"WebSocket JWT decode error: {e}")
+        await websocket.close(code=1008, reason="Invalid token")
+        return
+    except Exception as e:
+        logger.error(f"WebSocket authentication error: {e}")
+        await websocket.close(code=1008, reason="Authentication failed")
+        return
+
+    await ws_manager.connect(websocket)
+
+    try:
+        # Import necessari per le query
+        from core.config import config_manager
+        import psutil
+
+        # Loop per inviare aggiornamenti periodici
+        while True:
+            try:
+                # Prepara i dati aggregati
+                update_data = {
+                    "type": "status_update",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+
+                # 1. Sync Status
+                try:
+                    sync_status_data = await get_sync_status_data()
+                    update_data["sync_status"] = sync_status_data
+                except Exception as e:
+                    logger.error(f"Error getting sync status: {e}")
+                    update_data["sync_status"] = {"is_running": False, "status": "idle"}
+
+                # 2. Publish Status
+                try:
+                    publish_status_data = await get_publish_status_data()
+                    update_data["publish_status"] = publish_status_data
+                except Exception as e:
+                    logger.error(f"Error getting publish status: {e}")
+                    update_data["publish_status"] = None
+
+                # 3. Reportistica Data
+                try:
+                    reportistica_data = await get_reportistica_data(bank=bank)
+                    update_data["reportistica_data"] = reportistica_data
+                except Exception as e:
+                    logger.error(f"Error getting reportistica data: {e}")
+                    update_data["reportistica_data"] = []
+
+                # Invia aggiornamento al client
+                await websocket.send_json(update_data)
+
+                # Aspetta 2 secondi prima del prossimo update
+                await asyncio.sleep(2)
+
+            except Exception as e:
+                logger.error(f"Error in WebSocket update loop: {e}", exc_info=True)
+                # Se c'è un errore, esci dal loop per evitare di inviare a una connessione chiusa
+                break
+
+    except WebSocketDisconnect:
+        logger.info("WebSocket client disconnected")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+    finally:
+        await ws_manager.disconnect(websocket)
+
+
+async def get_sync_status_data() -> dict:
+    """Helper per ottenere lo stato del sync"""
+    from core.config import config_manager
+    import psutil
+
+    try:
+        # Ottieni una sessione DB
+        db_gen = get_db()
+        db = next(db_gen)
+
+        try:
+            base_folder = config_manager.get_setting("SETTINGS_PATH")
+            if not base_folder:
+                return {"is_running": False, "status": "idle"}
+
+            log_dir = os.path.join(base_folder, "App", "Dashboard", "sync_logs")
+            pid_file = os.path.join(log_dir, "current_sync.pid")
+            now = datetime.utcnow()
+
+            # Controlla se c'è un PID file attivo
+            if os.path.exists(pid_file):
+                try:
+                    with open(pid_file, "r") as pf:
+                        for pid_line in pf:
+                            if pid_line.startswith("PID:"):
+                                pid = int(pid_line.split(":")[1])
+                                try:
+                                    proc = psutil.Process(pid)
+                                    if proc.is_running():
+                                        return {"is_running": True, "status": "running"}
+                                except psutil.NoSuchProcess:
+                                    pass
+                except Exception as e:
+                    logger.warning(f"Error reading PID file: {e}")
+
+            # Controlla database sync_runs (heartbeat)
+            sql = text("SELECT end_time, update_interval FROM sync_runs WHERE id = 1")
+            result = db.execute(sql).fetchone()
+
+            last_sync_info = None
+
+            if result:
+                end_time_str, update_interval = result
+
+                if end_time_str and update_interval:
+                    end_time = datetime.fromisoformat(end_time_str)
+                    time_diff = (now - end_time).total_seconds()
+                    interval_seconds = update_interval * 60
+
+                    # Calcola last sync info
+                    if time_diff < 60:
+                        last_sync_human = f"{int(time_diff)} secondi fa"
+                    elif time_diff < 3600:
+                        minutes = int(time_diff / 60)
+                        last_sync_human = f"{minutes} minuto fa" if minutes == 1 else f"{minutes} minuti fa"
+                    elif time_diff < 86400:
+                        hours = int(time_diff / 3600)
+                        last_sync_human = f"{hours} ora fa" if hours == 1 else f"{hours} ore fa"
+                    else:
+                        days = int(time_diff / 86400)
+                        last_sync_human = f"{days} giorno fa" if days == 1 else f"{days} giorni fa"
+
+                    last_sync_info = {
+                        "last_sync_time": end_time_str,
+                        "last_sync_ago_seconds": int(time_diff),
+                        "last_sync_ago_human": last_sync_human
+                    }
+
+                    # Se heartbeat attivo
+                    if time_diff < interval_seconds:
+                        return {
+                            "is_running": True,
+                            "status": "running",
+                            "update_interval": update_interval,
+                            **last_sync_info
+                        }
+
+            # Nessun sync attivo
+            response = {"is_running": False, "status": "idle"}
+            if last_sync_info:
+                response.update(last_sync_info)
+            return response
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"Error in get_sync_status_data: {e}")
+        return {"is_running": False, "status": "idle"}
+
+
+async def get_publish_status_data() -> Optional[dict]:
+    """Helper per ottenere lo stato della pubblicazione"""
+    try:
+        db_gen = get_db()
+        db = next(db_gen)
+
+        try:
+            from core.config import config_manager
+            base_folder = config_manager.get_setting("SETTINGS_PATH")
+            if not base_folder:
+                return None
+
+            publish_status_file = os.path.join(base_folder, "App", "Dashboard", "publish_status.json")
+
+            if os.path.exists(publish_status_file):
+                with open(publish_status_file, "r", encoding="utf-8") as f:
+                    return json.load(f)
+
+            return None
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"Error in get_publish_status_data: {e}")
+        return None
+
+
+async def get_reportistica_data(bank: Optional[str] = None) -> List[dict]:
+    """Helper per ottenere i dati reportistica"""
+    try:
+        db_gen = get_db()
+        db = next(db_gen)
+
+        try:
+            # Query per ottenere i dati reportistica (usa direttamente la tabella reportistica)
+            query = """
+                SELECT
+                    id,
+                    banca,
+                    package,
+                    nome_file,
+                    finalita,
+                    anno,
+                    settimana,
+                    mese,
+                    ultima_modifica,
+                    updated_at,
+                    tipo_reportistica,
+                    dettagli,
+                    disponibilita_server
+                FROM reportistica
+                ORDER BY updated_at DESC
+            """
+
+            result = db.execute(text(query))
+            rows = result.fetchall()
+
+            # Mappa i risultati
+            data = []
+            for row in rows:
+                # Converti datetime in string per JSON serialization
+                ultima_modifica = row[8]
+                if ultima_modifica and not isinstance(ultima_modifica, str):
+                    ultima_modifica = ultima_modifica.isoformat() if hasattr(ultima_modifica, 'isoformat') else str(ultima_modifica)
+
+                updated_at = row[9]
+                if updated_at and not isinstance(updated_at, str):
+                    updated_at = updated_at.isoformat() if hasattr(updated_at, 'isoformat') else str(updated_at)
+
+                data.append({
+                    "id": row[0],
+                    "banca": row[1],
+                    "package": row[2] or row[3],  # package o nome_file
+                    "nome_file": row[3],
+                    "finalita": row[4],
+                    "anno": row[5],
+                    "settimana": row[6],
+                    "mese": row[7],
+                    "ultima_modifica": ultima_modifica,
+                    "updated_at": updated_at,
+                    "tipo_reportistica": row[10],
+                    "dettagli": row[11],
+                    "disponibilita_server": bool(row[12]) if row[12] is not None else None
+                })
+
+            return data
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"Error in get_reportistica_data: {e}")
+        return []
