@@ -539,12 +539,15 @@ const fetchPublishStatus = useCallback(async () => {
                 setSyncInterval(data.sync_status.update_interval || 5);
 
                 if (data.sync_status.last_sync_time) {
-                  setLastSyncInfo({
+                  const syncInfo = {
                     last_sync_time: data.sync_status.last_sync_time,
                     last_sync_ago_seconds: data.sync_status.last_sync_ago_seconds,
                     last_sync_ago_human: data.sync_status.last_sync_ago_human
-                  });
+                  };
+                  console.log('[WebSocket] Setting lastSyncInfo:', syncInfo, 'syncRunning:', data.sync_status.is_running);
+                  setLastSyncInfo(syncInfo);
                 } else {
+                  console.log('[WebSocket] No last_sync_time, clearing lastSyncInfo');
                   setLastSyncInfo(null);
                 }
               }
