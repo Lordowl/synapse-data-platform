@@ -4,7 +4,7 @@ import time
 from fluentx.flow_executor import run_flow
 from fluentx.utility import get_general_config
 from openpyxl import load_workbook
-from .utility import extract_information, check_and_move, get_download_path, get_destination_path, extract_error, get_resource_path, get_users_list, get_config_from_sharepoint, get_users_from_sharepoint, get_flow_from_sharepoint
+from utility import extract_information, check_and_move, get_download_path, get_destination_path, extract_error, get_resource_path, get_users_list, get_config_from_sharepoint, get_users_from_sharepoint, get_flow_from_sharepoint
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -107,7 +107,7 @@ def main(workspace: str, PBI_packages: list):
 
     # Carica il flusso .xlsx o .xlsm per FluentX
     try:
-        _FLOW_PATH = get_resource_path(r"config_data/newSparkasse.xlsm")
+        _FLOW_PATH = get_resource_path(r"config_data/newNewSparkasse.xlsm")
         _FLOW_NAME = basename(_FLOW_PATH).split(".")[0]
         workbook = load_workbook(_FLOW_PATH, data_only=True)
     except Exception as e:
@@ -120,6 +120,10 @@ def main(workspace: str, PBI_packages: list):
     # Login
     data_chains["chains"] = {chain: data[chain] for chain in login_chain}
     actions, text_list, workbook_report, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook)
+    print(log)
+    for l in log["Login"]["Login"].values():
+        if l["status"] == "error":  # al momento non accade mai, probabilmente perché tutte le task hanno "CONTINUE" in caso di errore - DA VERIFICARE
+            sys.exit(f"ERROR: non sono riuscito a fare il login: {l['message']}")
 
     # Workspace
     if workspace != "Engage-PRE CHECK":
@@ -176,15 +180,23 @@ def main(workspace: str, PBI_packages: list):
             print(f"Attendo lo spinner per {package}...")
             # Combino l'XPath della riga con quello relativo dello spinner
             xpath_spinner_ms = row_xpath + spinner_xpath.replace('.', '')
-            wait.until(EC.presence_of_element_located((By.XPATH, xpath_spinner_ms)))
-            print("Spinner apparso sulla riga corretta.")
+            try:
+                wait.until(EC.presence_of_element_located((By.XPATH, xpath_spinner_ms)))
+                print("Spinner apparso sulla riga corretta.")
+                # Attendo la scomparsa dello spinner
+                print("Attendo la scomparsa dello spinner...")
+                no_more_spinner = wait_until_element_disappears_robust(driver, xpath_spinner_ms, timeout=86400)
+                if no_more_spinner:
+                    print("Lo spinner è scomparso.")
+                    no_spinner = False
+            except TimeoutException:
+                packages_status[package] = f"Timeout! Lo spinner non è apparso in tempo."
+                print(f"Timeout! Lo spinner non è apparso in tempo.")
+                no_more_spinner = False
+                no_spinner = True
 
-            # Attendo la scomparsa dello spinner
-            print("Attendo la scomparsa dello spinner...")
-            no_more_spinner = wait_until_element_disappears_robust(driver, xpath_spinner_ms, timeout=86400)
-
-            if no_more_spinner:
-                print("Spinner scomparso. Controllo la riga per eventuali errori...")
+            if no_more_spinner or no_spinner:
+                print("Controllo la riga per eventuali errori...")
                 
                 # Ritrovo la riga (per evitare StaleElementReferenceException) e controllo se ha generato errori
                 updt_row = driver.find_element(By.XPATH, row_xpath)
@@ -214,25 +226,43 @@ def main(workspace: str, PBI_packages: list):
                             print(f"Messaggio Principale: {main_error}")
                             print(f"ID Attività: {activity_id}")
                             print("----------------------")
-                            packages_status[package] = f"Aggiornamento non completato, errore rilevato: {main_error} (ID Attività: {activity_id})"
+                            if no_spinner:
+                                print(f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato: {main_error} (ID Attività: {activity_id})")
+                                packages_status[package] = f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato: {main_error} (ID Attività: {activity_id})"
+                            else:
+                                print(f"Aggiornamento non completato, errore rilevato: {main_error} (ID Attività: {activity_id})")
+                                packages_status[package] = f"Aggiornamento non completato, errore rilevato: {main_error} (ID Attività: {activity_id})"
                         else:
-                            packages_status[package] = f"Aggiornamento non completato, errore rilevato ma dettagli non disponibili."
-                            print("Non è stato possibile estrarre i dettagli dell'errore.")
+                            if no_spinner:
+                                print(f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato ma dettagli non disponibili.")
+                                packages_status[package] = f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato ma dettagli non disponibili."
+                            else:
+                                packages_status[package] = f"Aggiornamento non completato, errore rilevato ma dettagli non disponibili."
+                                print("Aggiornamento non completato, errore rilevato ma dettagli non disponibili.")
                         
                     except NoSuchElementException:
-                        print(f"Comportamento inatteso per {package}: errore rilevato ma popup mancante.")
+                        if no_spinner:
+                            print(f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato ma popup mancante.")
+                            packages_status[package] = f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato ma popup mancante."
+                        else:
+                            packages_status[package] = f"Aggiornamento non completato, errore rilevato ma popup mancante."
+                            print(f"Aggiornamento non completato, errore rilevato ma popup mancante.")
                     
                 except NoSuchElementException:
-                    packages_status[package] = "Aggiornamento completato con successo."
-                    print(f"Operazione per '{package}' completata con successo, nessun errore trovato.")
+                    if no_spinner:
+                        print(f"Lo spinner non è mai apparso, aggiornamento non effettuato ma nessun errore rilevato.")
+                        packages_status[package] = "Lo spinner non è mai apparso, aggiornamento non effettuato ma nessun errore rilevato."
+                    else:
+                        packages_status[package] = "Aggiornamento completato con successo."
+                        print(f"Operazione per '{package}' completata con successo, nessun errore trovato.")
                     
             else:
                 packages_status[package] = "Timeout! L'aggiornamento ha richiesto più tempo del previsto: esito non disponibile."
                 print(f"Timeout! Lo spinner per '{package}' è ancora visibile.")
 
         except TimeoutException:
-            packages_status[package] = f"Timeout! Non è stato possibile trovare la riga per '{package}' o lo spinner non è apparso in tempo."
-            print(f"Timeout! Non è stato possibile trovare la riga per '{package}' o lo spinner non è apparso in tempo.")
+            packages_status[package] = f"Timeout! Non è stato possibile trovare la riga per '{package}'."
+            print(f"Timeout! Non è stato possibile trovare la riga per '{package}'.")
 
         print(log)
 
@@ -244,26 +274,13 @@ def main(workspace: str, PBI_packages: list):
 
 
 if __name__ == "__main__":
-    import argparse
-    import json
-
-    parser = argparse.ArgumentParser(description="Power BI automation script")
-    parser.add_argument("--workspace", required=True, help="Workspace name")
-    parser.add_argument("--packages", required=True, help="Comma-separated list of packages")
-    args = parser.parse_args()
-
     print("Starting Dispatcher...")
-    workspace = args.workspace
-    PBI_packages = [pkg.strip() for pkg in args.packages.split(',')]
-
-    print(f"[INFO] Workspace: {workspace}")
-    print(f"[INFO] Packages: {PBI_packages}")
-
+    workspace = "Engage-DEV"    # "Engage-PRE CHECK"
+    PBI_packages = ["Bancassurance_v2", "Bonifico_istantaneo_v2", "Breve_Termine_v2", "Copertina", "Flussi Esterni_v2", "Impieghi_v2", "ML_Termine_v2", "Raccolta Indiretta_v2", "Raccolta_Diretta_v2", "Homepage_Pre_Check"]
+    PBI_packages = ["Agribusiness", "Bancassurance", "Bonifico_istantaneo", "Breve_Termine", "Flussi Esterni", "Impieghi", "ML_Termine", "Raccolta Indiretta", "Raccolta_Diretta", "Homepage"]
     status = main(workspace, PBI_packages)
-
-    # Output as JSON for easy parsing
-    print("\n[RESULT]")
-    print(json.dumps(status, indent=2))
+    from pprint import pprint
+    pprint(status)
 
 
 # /html/body/div[1]/root/mat-sidenav-container/mat-sidenav-content/tri-shell-panel-outlet/tri-item-renderer-panel/tri-extension-panel-outlet/mat-sidenav-container/mat-sidenav-content/div/div/div[1]/tri-shell/tri-item-renderer/tri-extension-page-outlet/div[2]/workspace-view/tri-workspace-view/mat-sidenav-container/mat-sidenav-content/workspace-list-view/tri-workspace-list-view/section/main/fluent-workspace/mat-sidenav-container/mat-sidenav-content/fluent-workspace-list/fluent-list-table-base/div/cdk-virtual-scroll-viewport/div[1]/div[4]/div[7]/span/dataset-icon-container-modern/span/spinner/div/div/div[5]

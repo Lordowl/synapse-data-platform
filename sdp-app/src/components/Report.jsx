@@ -410,23 +410,7 @@ const fetchPublishStatus = useCallback(async () => {
 }, []);
 
   // Funzione per caricare i data dalla tabella report_data
-  const fetchPackagesReady = useCallback(async () => {
-    try {
-      // Carica i package disponibili filtrati per periodicità
-      // L'endpoint /test-packages-v2 già restituisce tutti i dati completi (pre_check, prod, settimana, mese, ecc.)
-      const periodicity = searchParams.get('type') || 'settimanale';
-      const typeParam = periodicity === 'settimanale' ? 'Settimanale' : 'Mensile';
-      const packagesResponse = await apiClient.get(`/reportistica/test-packages-v2?type_reportistica=${typeParam}`);
-      const availablePackages = packagesResponse.data || [];
-      console.log('Available packages from /test-packages-v2:', availablePackages);
-
-      // Usa direttamente i dati da /test-packages-v2 (già completi!)
-      setPackagesReady(availablePackages);
-    } catch (error) {
-      console.error("Errore nel caricamento packages ready:", error);
-      setPackagesReady([]);
-    }
-  }, [searchParams]);
+  // fetchPackagesReady rimosso - i dati arrivano via WebSocket
 
   // Ref per tenere traccia se è il primo caricamento
   const isInitialLoad = useRef(true);
@@ -470,9 +454,7 @@ const fetchPublishStatus = useCallback(async () => {
         console.log('Mapped Data:', mappedData);
         setReportTasks(mappedData);
         await fetchRepoUpdateInfo();
-        await fetchPackagesReady();
-        await fetchSyncStatus(); // Verifica se c'è un sync in corso
-        await fetchPublishStatus(); // Verifica lo stato della pubblicazione
+        // packagesReady, syncStatus e publishStatus vengono aggiornati automaticamente via WebSocket
 
       } catch (error) {
         console.error('Error fetching reportistica data:', error);
@@ -496,7 +478,7 @@ const fetchPublishStatus = useCallback(async () => {
     // Carica dati solo al mount iniziale
     fetchData();
 
-  }, [showToast, fetchRepoUpdateInfo, fetchPackagesReady, fetchSyncStatus, fetchPublishStatus]);
+  }, [showToast, fetchRepoUpdateInfo, fetchSyncStatus, fetchPublishStatus]);
 
   // WebSocket per aggiornamenti real-time
   useEffect(() => {
@@ -515,9 +497,21 @@ const fetchPublishStatus = useCallback(async () => {
           return;
         }
 
-        // Costruisci URL WebSocket (cambia http/https in ws/wss)
+        // Costruisci URL WebSocket dinamicamente basandoti sull'URL dell'API
+        // apiClient potrebbe avere baseURL configurato, altrimenti usa window.location
+        const apiBaseUrl = apiClient.defaults?.baseURL || `${window.location.protocol}//${window.location.host}`;
+
+        // Estrai host e porta dall'URL dell'API
+        let wsHost = '127.0.0.1:9123'; // default
+        try {
+          const apiUrl = new URL(apiBaseUrl, window.location.origin);
+          wsHost = apiUrl.host; // include porta se presente
+        } catch (e) {
+          console.warn('Could not parse API base URL, using default WebSocket host');
+        }
+
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${wsProtocol}//127.0.0.1:9123/api/v1/reportistica/ws/updates?token=${encodeURIComponent(token)}`;
+        const wsUrl = `${wsProtocol}//${wsHost}/api/v1/reportistica/ws/updates?token=${encodeURIComponent(token)}`;
 
         console.log('Connecting to WebSocket:', wsUrl.replace(token, 'TOKEN_HIDDEN'));
         ws = new WebSocket(wsUrl);
@@ -582,6 +576,24 @@ const fetchPublishStatus = useCallback(async () => {
 
                 setReportTasks(mappedData);
               }
+
+              // Aggiorna packages ready (tabella pubblicazione)
+              console.log('[WebSocket] packages_ready received:', data.packages_ready ? `${data.packages_ready.length} items` : 'NOT PRESENT OR NULL');
+              if (data.packages_ready && Array.isArray(data.packages_ready)) {
+                console.log('Updating packages ready from WebSocket:', data.packages_ready.length, 'items');
+                const bancassurance = data.packages_ready.find(p => p.package === 'Bancassurance');
+                console.log('Bancassurance data:', bancassurance);
+                if (bancassurance) {
+                  console.log('  -> pre_check:', bancassurance.pre_check);
+                  console.log('  -> prod:', bancassurance.prod);
+                }
+
+                // Forza un nuovo array per triggare il re-render React
+                setPackagesReady([...data.packages_ready]);
+                console.log('[WebSocket] setPackagesReady called with NEW array reference');
+              } else {
+                console.warn('[WebSocket] packages_ready is missing or not an array:', data.packages_ready);
+              }
             }
           } catch (error) {
             console.error('Error processing WebSocket message:', error);
@@ -629,8 +641,7 @@ const fetchPublishStatus = useCallback(async () => {
   // Funzione per cambiare periodicità
   const handlePeriodicityChange = (newPeriodicity) => {
     setSearchParams({ type: newPeriodicity });
-    // Ricarica i package quando cambia la periodicità
-    fetchPackagesReady();
+    // I package vengono aggiornati automaticamente via WebSocket
   };
 
   const handleFilterChange = (filterName, value) => {
@@ -754,8 +765,7 @@ const fetchPublishStatus = useCallback(async () => {
           console.log('Risultati pubblicazione:', response.data);
           console.log(`Aggiornati ${response.data.packages.length} package:`, response.data.packages);
 
-          // Ricarica i dati dal database per mostrare i log aggiornati
-          await fetchPackagesReady();
+          // I dati vengono aggiornati automaticamente via WebSocket
 
           showToast(`Pre-Check pubblicato con successo! (${response.data.packages.length} package aggiornati)`, "success");
         } catch (error) {
@@ -774,8 +784,7 @@ const fetchPublishStatus = useCallback(async () => {
           console.log('Risultati pubblicazione produzione:', response.data);
           console.log(`Aggiornati ${response.data.packages.length} package:`, response.data.packages);
 
-          // Ricarica i dati dal database per mostrare i log aggiornati
-          await fetchPackagesReady();
+          // I dati vengono aggiornati automaticamente via WebSocket
 
           showToast(`Report pubblicato in Produzione con successo! (${response.data.packages.length} package aggiornati)`, "success");
 
@@ -811,8 +820,7 @@ const fetchPublishStatus = useCallback(async () => {
                 }
                 showToast(`✅ Sistema avanzato alla settimana ${newSettimana}`, "success");
 
-                // Ricarica i pacchetti per aggiornare la UI
-                await fetchPackagesReady();
+                // I pacchetti vengono aggiornati automaticamente via WebSocket
               } else {
                 const newMese = repoUpdateInfo.mese + 1;
                 const response = await apiClient.put('/repo-update/', { mese: newMese });
@@ -823,8 +831,7 @@ const fetchPublishStatus = useCallback(async () => {
                 }
                 showToast(`✅ Sistema avanzato al mese ${newMese}`, "success");
 
-                // Ricarica i pacchetti per aggiornare la UI
-                await fetchPackagesReady();
+                // I pacchetti vengono aggiornati automaticamente via WebSocket
               }
             } catch (error) {
               console.error('Errore aggiornamento periodo dopo pubblicazione:', error);
@@ -860,7 +867,8 @@ const fetchPublishStatus = useCallback(async () => {
 
   // Dati per la tabella di pubblicazione - presi da packagesReady e filtrati per periodicità
   const publicationData = useMemo(() => {
-    console.log('=== Filtro Package per Periodicità ===');
+    console.log('=== [useMemo publicationData] RE-CALCULATING ===');
+    console.log('packagesReady:', packagesReady);
     console.log('Totale package disponibili:', packagesReady.length);
     console.log('Periodicità selezionata:', currentPeriodicity);
 
@@ -1105,8 +1113,7 @@ const fetchPublishStatus = useCallback(async () => {
                       if (response.data) {
                         setRepoUpdateInfo(response.data);
                       }
-                      // Ricarica i pacchetti per aggiornare la UI
-                      await fetchPackagesReady();
+                      // I pacchetti vengono aggiornati automaticamente via WebSocket
                     } catch (error) {
                       console.error('Errore aggiornamento settimana:', error);
                     }
@@ -1139,8 +1146,7 @@ const fetchPublishStatus = useCallback(async () => {
                       if (response.data) {
                         setRepoUpdateInfo(response.data);
                       }
-                      // Ricarica i pacchetti per aggiornare la UI
-                      await fetchPackagesReady();
+                      // I pacchetti vengono aggiornati automaticamente via WebSocket
                     } catch (error) {
                       console.error('Errore aggiornamento mese:', error);
                     }
@@ -1166,8 +1172,7 @@ const fetchPublishStatus = useCallback(async () => {
                   setRepoUpdateInfo(prev => ({...prev, anno: newAnno}));
                   try {
                     await apiClient.put('/repo-update/', { anno: newAnno });
-                    // Ricarica i pacchetti per aggiornare la UI
-                    await fetchPackagesReady();
+                    // I pacchetti vengono aggiornati automaticamente via WebSocket
                   } catch (error) {
                     console.error('Errore aggiornamento anno:', error);
                   }
@@ -1491,6 +1496,29 @@ const fetchPublishStatus = useCallback(async () => {
               >
                 <Send className="btn-icon-md" /> Pubblica Report {periodicityConfig.label}
               </button>
+
+              {/* Indicatore di caricamento durante la pubblicazione */}
+              {loadingActions.global && (
+                <div style={{
+                  marginTop: '1rem',
+                  padding: '1rem',
+                  backgroundColor: '#f0f9ff',
+                  border: '1px solid #bae6fd',
+                  borderRadius: '8px',
+                  textAlign: 'center',
+                  color: '#0369a1'
+                }}>
+                  <div className="loading-spinner" style={{ marginBottom: '0.5rem' }}></div>
+                  <div style={{ fontSize: '14px', fontWeight: '500' }}>
+                    {loadingActions.global === 'pubblica-pre-check' ? 'Pubblicazione Pre-Check in corso...' :
+                     loadingActions.global === 'pubblica-report' ? 'Pubblicazione Report in corso...' :
+                     'Operazione in corso...'}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '0.25rem' }}>
+                    La tabella si aggiornerà automaticamente al termine
+                  </div>
+                </div>
+              )}
 
               {/* Stato Pubblicazione - Sotto i pulsanti */}
               {publishStatus && publishStatus.is_running && publishStatus.data && (

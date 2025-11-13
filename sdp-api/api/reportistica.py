@@ -1398,21 +1398,21 @@ def get_packages_ready(
         logger.info(f"Current period from repo_update_info: anno={current_anno}, settimana={current_settimana}, mese={current_mese}")
 
         # Filtra per banca dell'utente corrente (case-insensitive)
-        query = db.query(
-            models.ReportMapping.package,
-            models.ReportMapping.ws_precheck,
-            models.ReportMapping.ws_production,
-            models.ReportMapping.bank,
-            models.ReportMapping.Type_reportisica
-        ).filter(
-            func.lower(models.ReportMapping.bank) == func.lower(current_user.bank)
-        )
+        # NOTA: Usa query SQL diretta per poter usare rowid per l'ordinamento
+        sql = text("""
+            SELECT package, ws_precheck, ws_production, bank, Type_reportisica
+            FROM report_mapping
+            WHERE LOWER(bank) = LOWER(:bank)
+            AND (:type_reportistica IS NULL OR Type_reportisica = :type_reportistica)
+            ORDER BY rowid
+        """)
 
-        # Filtra per tipo di reportistica se specificato
-        if type_reportistica:
-            query = query.filter(models.ReportMapping.Type_reportisica == type_reportistica)
+        params = {
+            "bank": current_user.bank,
+            "type_reportistica": type_reportistica
+        }
 
-        results = query.all()
+        results = db.execute(sql, params).fetchall()
         logger.debug(f"Found {len(results)} packages for bank {current_user.bank}")
 
         # Per ogni package, cerca l'ultimo log in publication_logs
@@ -1801,16 +1801,20 @@ async def publish_precheck(
             )
 
         # Prendi i dati dalla tabella report_mapping filtrati per banca e periodicità
-        query = db.query(
-            models.ReportMapping.ws_precheck,
-            models.ReportMapping.package,
-            models.ReportMapping.datafactory
-        ).filter(
-            models.ReportMapping.Type_reportisica == periodicity_db,
-            func.lower(models.ReportMapping.bank) == func.lower(current_user.bank)
-        )
+        # Usa raw SQL con ORDER BY rowid per mantenere l'ordine del database
+        from sqlalchemy import text
+        sql = text("""
+            SELECT ws_precheck, package, datafactory
+            FROM report_mapping
+            WHERE Type_reportisica = :periodicity
+            AND LOWER(bank) = LOWER(:bank)
+            ORDER BY rowid
+        """)
 
-        results = query.all()
+        results = db.execute(sql, {
+            "periodicity": periodicity_db,
+            "bank": current_user.bank
+        }).fetchall()
         logger.debug(f"Found {len(results)} records from report_mapping")
 
         if not results:
@@ -2156,16 +2160,20 @@ async def publish_production(
             )
         # Prendi i dati dalla tabella report_mapping filtrati per banca e periodicità
         # Usa ws_production invece di ws_precheck
-        query = db.query(
-            models.ReportMapping.ws_production,
-            models.ReportMapping.package,
-            models.ReportMapping.datafactory
-        ).filter(
-            models.ReportMapping.Type_reportisica == periodicity_db,
-            func.lower(models.ReportMapping.bank) == func.lower(current_user.bank)
-        )
+        # Usa raw SQL con ORDER BY rowid per mantenere l'ordine del database
+        from sqlalchemy import text
+        sql = text("""
+            SELECT ws_production, package, datafactory
+            FROM report_mapping
+            WHERE Type_reportisica = :periodicity
+            AND LOWER(bank) = LOWER(:bank)
+            ORDER BY rowid
+        """)
 
-        results = query.all()
+        results = db.execute(sql, {
+            "periodicity": periodicity_db,
+            "bank": current_user.bank
+        }).fetchall()
         logger.debug(f"Found {len(results)} records from report_mapping")
 
         if not results:
@@ -2560,8 +2568,42 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = Query(
                     logger.error(f"Error getting reportistica data: {e}")
                     update_data["reportistica_data"] = []
 
+                # 4. Packages Ready (per tabella pubblicazione)
+                try:
+                    packages_ready_data = await get_packages_ready_data(bank=bank, type_reportistica=None)
+                    update_data["packages_ready"] = packages_ready_data
+                    logger.info(f"Loaded {len(packages_ready_data)} packages ready")
+
+                    # Debug: mostra lo stato dei primi package
+                    if packages_ready_data:
+                        for pkg in packages_ready_data[:3]:  # Primi 3 package
+                            logger.info(f"  Package {pkg['package']}: precheck={pkg['pre_check']}, prod={pkg['prod']}")
+                except Exception as e:
+                    logger.error(f"Error getting packages ready data: {e}", exc_info=True)
+                    update_data["packages_ready"] = []
+
                 # Invia aggiornamento al client
-                await websocket.send_json(update_data)
+                try:
+                    # Serializza manualmente per evitare problemi con PyInstaller
+                    import json
+                    json_data = json.dumps(update_data, ensure_ascii=False, default=str)
+                    json_size = len(json_data)
+                    logger.debug(f"Sending WebSocket update: {json_size} bytes, keys: {list(update_data.keys())}")
+
+                    await websocket.send_text(json_data)
+                    logger.debug("WebSocket update sent successfully")
+                except WebSocketDisconnect:
+                    logger.info("Client disconnected during send")
+                    break
+                except Exception as send_error:
+                    logger.error(f"Error sending WebSocket data: {send_error}", exc_info=True)
+                    logger.error(f"Data keys: {update_data.keys()}")
+                    if 'reportistica_data' in update_data:
+                        logger.error(f"Reportistica data count: {len(update_data['reportistica_data'])}")
+                    if 'packages_ready' in update_data:
+                        logger.error(f"Packages ready count: {len(update_data['packages_ready'])}")
+                    # Non fare raise, continua il loop
+                    break
 
                 # Aspetta 2 secondi prima del prossimo update
                 await asyncio.sleep(2)
@@ -2623,12 +2665,11 @@ async def get_sync_status_data() -> dict:
             if result:
                 end_time_str, update_interval = result
 
-                if end_time_str and update_interval:
+                if end_time_str:
                     end_time = datetime.fromisoformat(end_time_str)
                     time_diff = (now - end_time).total_seconds()
-                    interval_seconds = update_interval * 60
 
-                    # Calcola last sync info
+                    # Calcola last sync info SEMPRE (anche se il sync è vecchio)
                     if time_diff < 60:
                         last_sync_human = f"{int(time_diff)} secondi fa"
                     elif time_diff < 3600:
@@ -2647,14 +2688,16 @@ async def get_sync_status_data() -> dict:
                         "last_sync_ago_human": last_sync_human
                     }
 
-                    # Se heartbeat attivo
-                    if time_diff < interval_seconds:
-                        return {
-                            "is_running": True,
-                            "status": "running",
-                            "update_interval": update_interval,
-                            **last_sync_info
-                        }
+                    # Se heartbeat attivo (sync in corso)
+                    if update_interval:
+                        interval_seconds = update_interval * 60
+                        if time_diff < interval_seconds:
+                            return {
+                                "is_running": True,
+                                "status": "running",
+                                "update_interval": update_interval,
+                                **last_sync_info
+                            }
 
             # Nessun sync attivo
             response = {"is_running": False, "status": "idle"}
@@ -2740,6 +2783,15 @@ async def get_reportistica_data(bank: Optional[str] = None) -> List[dict]:
                 if updated_at and not isinstance(updated_at, str):
                     updated_at = updated_at.isoformat() if hasattr(updated_at, 'isoformat') else str(updated_at)
 
+                # Gestisci dettagli che potrebbe essere JSON
+                dettagli = row[11]
+                if dettagli and isinstance(dettagli, str):
+                    try:
+                        import json
+                        dettagli = json.loads(dettagli)
+                    except:
+                        pass  # Mantieni come stringa se non è JSON valido
+
                 data.append({
                     "id": row[0],
                     "banca": row[1],
@@ -2752,7 +2804,7 @@ async def get_reportistica_data(bank: Optional[str] = None) -> List[dict]:
                     "ultima_modifica": ultima_modifica,
                     "updated_at": updated_at,
                     "tipo_reportistica": row[10],
-                    "dettagli": row[11],
+                    "dettagli": dettagli,
                     "disponibilita_server": bool(row[12]) if row[12] is not None else None
                 })
 
@@ -2763,4 +2815,276 @@ async def get_reportistica_data(bank: Optional[str] = None) -> List[dict]:
 
     except Exception as e:
         logger.error(f"Error in get_reportistica_data: {e}")
+        return []
+
+
+async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = None) -> List[dict]:
+    """Helper per ottenere i dati packages ready (test-packages-v2)"""
+    try:
+        db_gen = get_db()
+        db = next(db_gen)
+
+        try:
+            # Query packages da report_mapping (ORDER BY rowid per mantenere ordine DB)
+            sql = text("""
+                SELECT package, ws_precheck, ws_production, bank, Type_reportisica
+                FROM report_mapping
+                WHERE LOWER(bank) = LOWER(:bank)
+                AND (:type_reportistica IS NULL OR Type_reportisica = :type_reportistica)
+                ORDER BY rowid
+            """)
+
+            params = {
+                "bank": bank,
+                "type_reportistica": type_reportistica
+            }
+
+            results = db.execute(sql, params).fetchall()
+
+            # Ottieni periodo corrente da repo_update_info
+            repo_info_query = """
+                SELECT anno, settimana, mese
+                FROM repo_update_info
+                ORDER BY updated_at DESC
+                LIMIT 1
+            """
+            repo_info_result = db.execute(text(repo_info_query)).fetchone()
+
+            current_anno = None
+            current_settimana = None
+            current_mese = None
+
+            if repo_info_result:
+                current_anno = repo_info_result[0]
+                current_settimana = repo_info_result[1]
+                current_mese = repo_info_result[2]
+
+            packages = []
+
+            # Carica tutti i publication logs per il periodo corrente
+            pub_logs_query = """
+                SELECT id, packages, publication_type, status, anno, settimana, mese, output, error, timestamp
+                FROM publication_logs
+                WHERE bank = :bank
+                AND anno = :anno
+                ORDER BY timestamp DESC, id DESC
+            """
+            pub_logs_result = db.execute(text(pub_logs_query), {
+                "bank": bank,
+                "anno": current_anno
+            }).fetchall()
+
+            # Crea un dizionario per tracciare lo stato di ogni package
+            # Usa SOLO log con singolo package, ignora completamente log multi-package
+            package_status = {}  # {package_name: {"precheck": status, "prod": status, "anno": int, "settimana": int, "mese": int}}
+            seen_combinations = {}  # {(pkg_name, pub_type): True} per tracciare cosa abbiamo già processato
+
+            logger.debug(f"Processing {len(pub_logs_result)} publication logs")
+
+            # Parse JSON packages
+            import json
+
+            # Processa SOLO i log con singolo package
+            for log_row in pub_logs_result:
+                log_id = log_row[0]
+                logger.debug(f"  Processing log ID {log_id}")
+                log_packages = log_row[1]  # JSON array
+                pub_type = log_row[2]  # "precheck" o "production"
+                log_status = log_row[3]  # "success" o "error"
+                log_anno = log_row[4]
+                log_settimana = log_row[5]
+                log_mese = log_row[6]
+                log_output = log_row[7]  # output
+                log_error = log_row[8]  # error
+                log_timestamp = log_row[9]  # timestamp
+
+                try:
+                    if isinstance(log_packages, str):
+                        pkg_list = json.loads(log_packages)
+                    else:
+                        pkg_list = log_packages
+                except:
+                    continue
+
+                # IGNORA completamente log con package multipli
+                if len(pkg_list) != 1:
+                    logger.debug(f"    Skipping multi-package log (contains {len(pkg_list)} packages)")
+                    continue
+
+                # Per ogni package nel log (in questo caso sarà sempre 1)
+                for pkg_name in pkg_list:
+                    # Chiave per identificare univocamente package + tipo
+                    combo_key = (pkg_name, pub_type)
+
+                    # Salta se già processato (prendiamo solo il primo = più recente)
+                    if combo_key in seen_combinations:
+                        continue
+
+                    seen_combinations[combo_key] = True
+
+                    # Inizializza lo stato del package se non esiste
+                    if pkg_name not in package_status:
+                        package_status[pkg_name] = {
+                            "precheck": False,
+                            "prod": False,
+                            "anno_precheck": None,
+                            "settimana_precheck": None,
+                            "mese_precheck": None,
+                            "anno_prod": None,
+                            "settimana_prod": None,
+                            "mese_prod": None,
+                            "dettagli_precheck": None,
+                            "dettagli_prod": None,
+                            "error_precheck": None,
+                            "error_prod": None,
+                            "data_esecuzione_precheck": None,
+                            "data_esecuzione_prod": None
+                        }
+
+                    # Determina lo stato: analizza il contenuto dei messaggi
+                    # Solo ROSSO o VERDE (niente arancione)
+                    status_value = False
+
+                    # Concatena output ed error per analizzare tutto il contenuto
+                    full_message = ""
+                    if log_output:
+                        full_message += str(log_output) + " "
+                    if log_error:
+                        full_message += str(log_error)
+
+                    full_message_lower = full_message.lower()
+
+                    # Determina lo stato basandosi sul contenuto del messaggio
+                    # Timeout viene trattato come errore (ROSSO)
+                    if "errore" in full_message_lower or "error" in full_message_lower or "timeout" in full_message_lower:
+                        status_value = "error"  # Rosso
+                    elif "successo" in full_message_lower or log_status == "success":
+                        status_value = True  # Verde
+                    elif log_status == "success":
+                        status_value = True  # Verde (fallback su status se nessuna parola chiave trovata)
+                    else:
+                        status_value = "error"  # Rosso (default per status != success)
+
+                    # Prepara dettagli e error
+                    # Se c'è output, usa quello per dettagli
+                    # Se c'è solo error, NON metterlo in dettagli (andrà in error_precheck/error_prod)
+                    dettagli_message = log_output if log_output else None
+                    error_message = log_error if log_error else None
+
+                    # Aggiorna lo stato del package (solo per il primo log = più recente)
+                    if pub_type == "precheck":
+                        package_status[pkg_name]["precheck"] = status_value
+                        package_status[pkg_name]["anno_precheck"] = log_anno
+                        package_status[pkg_name]["settimana_precheck"] = log_settimana
+                        package_status[pkg_name]["mese_precheck"] = log_mese
+                        package_status[pkg_name]["dettagli_precheck"] = dettagli_message
+                        package_status[pkg_name]["error_precheck"] = error_message
+                        package_status[pkg_name]["data_esecuzione_precheck"] = log_timestamp
+                    elif pub_type == "production":
+                        package_status[pkg_name]["prod"] = status_value
+                        package_status[pkg_name]["anno_prod"] = log_anno
+                        package_status[pkg_name]["settimana_prod"] = log_settimana
+                        package_status[pkg_name]["mese_prod"] = log_mese
+                        package_status[pkg_name]["dettagli_prod"] = dettagli_message
+                        package_status[pkg_name]["error_prod"] = error_message
+                        package_status[pkg_name]["data_esecuzione_prod"] = log_timestamp
+
+            # Ora processa ogni package da report_mapping
+            for row in results:
+                package_name = row[0]
+                ws_precheck = row[1]
+                ws_production = row[2]
+                pkg_type = row[4]
+
+                # Determina se è settimanale o mensile
+                is_weekly = 'settimanale' in (pkg_type or '').lower()
+
+                # Default values
+                pre_check = False
+                prod = False
+                anno_precheck = current_anno
+                settimana_precheck = current_settimana if is_weekly else None
+                mese_precheck = current_mese if not is_weekly else None
+                anno_prod = current_anno
+                settimana_prod = current_settimana if is_weekly else None
+                mese_prod = current_mese if not is_weekly else None
+                dettagli_precheck = None
+                dettagli_prod = None
+                error_precheck = None
+                error_prod = None
+                data_esecuzione_precheck = None
+                data_esecuzione_prod = None
+
+                # Controlla se abbiamo uno stato per questo package
+                if package_name in package_status:
+                    pkg_state = package_status[package_name]
+
+                    # Verifica precheck se esiste
+                    if pkg_state["anno_precheck"] is not None:
+                        needs_reset_precheck = False
+                        if pkg_state["anno_precheck"] != current_anno:
+                            needs_reset_precheck = True
+                        elif is_weekly and pkg_state["settimana_precheck"] != current_settimana:
+                            needs_reset_precheck = True
+                        elif not is_weekly and pkg_state["mese_precheck"] != current_mese:
+                            needs_reset_precheck = True
+
+                        if not needs_reset_precheck:
+                            pre_check = pkg_state["precheck"]
+                            anno_precheck = pkg_state["anno_precheck"]
+                            settimana_precheck = pkg_state["settimana_precheck"]
+                            mese_precheck = pkg_state["mese_precheck"]
+                            dettagli_precheck = pkg_state["dettagli_precheck"]
+                            error_precheck = pkg_state["error_precheck"]
+                            data_esecuzione_precheck = pkg_state["data_esecuzione_precheck"]
+
+                    # Verifica production se esiste
+                    if pkg_state["anno_prod"] is not None:
+                        needs_reset_prod = False
+                        if pkg_state["anno_prod"] != current_anno:
+                            needs_reset_prod = True
+                        elif is_weekly and pkg_state["settimana_prod"] != current_settimana:
+                            needs_reset_prod = True
+                        elif not is_weekly and pkg_state["mese_prod"] != current_mese:
+                            needs_reset_prod = True
+
+                        if not needs_reset_prod:
+                            prod = pkg_state["prod"]
+                            anno_prod = pkg_state["anno_prod"]
+                            settimana_prod = pkg_state["settimana_prod"]
+                            mese_prod = pkg_state["mese_prod"]
+                            dettagli_prod = pkg_state["dettagli_prod"]
+                            error_prod = pkg_state["error_prod"]
+                            data_esecuzione_prod = pkg_state["data_esecuzione_prod"]
+
+                packages.append({
+                    "package": package_name,
+                    "user": "N/D",
+                    "data_esecuzione": data_esecuzione_precheck,
+                    "pre_check": pre_check,
+                    "prod": prod,
+                    "dettagli": dettagli_precheck,
+                    "error_precheck": error_precheck,
+                    "user_prod": "N/D",
+                    "data_esecuzione_prod": data_esecuzione_prod,
+                    "dettagli_prod": dettagli_prod,
+                    "error_prod": error_prod,
+                    "anno_precheck": anno_precheck,
+                    "settimana_precheck": settimana_precheck,
+                    "mese_precheck": mese_precheck,
+                    "anno_prod": anno_prod,
+                    "settimana_prod": settimana_prod,
+                    "mese_prod": mese_prod,
+                    "type_reportistica": pkg_type,
+                    "ws_precheck": ws_precheck,
+                    "ws_production": ws_production
+                })
+
+            return packages
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"Error in get_packages_ready_data: {e}")
         return []
