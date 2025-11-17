@@ -233,12 +233,13 @@ def execute_selected_flows(
     elements_results = []
     all_lines = []
     try:
+        # Timeout di 12 ore per gestire ingestion di file multipli o operazioni lunghe
         result = subprocess.run(
             command_args,
             capture_output=True,
             text=True,
             check=False,
-            timeout=300,
+            timeout=43200,  # 12 ore
             encoding="cp1252",
             shell=False,
         )
