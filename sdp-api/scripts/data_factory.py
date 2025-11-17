@@ -1,6 +1,7 @@
 from os.path import *
 import sys
 import time
+import logging
 from fluentx.flow_executor import run_flow
 from fluentx.utility import get_general_config
 from openpyxl import load_workbook
@@ -11,6 +12,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException, NoSuchElementException
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def wait_until_element_disappears_robust(driver: webdriver.Chrome, element_xpath: str, timeout: int = 300) -> bool:
@@ -192,20 +195,37 @@ def estrai_e_analizza_errori(actions):
         return False # Interrompe l'azione
         
     # --- 2. ANALISI DATI E AZIONE ---
-    
-    # Nomi delle colonne estratti dall'HTML
-    colonna_nome_attivita = "Activity name"
-    colonna_stato = "Activity status"
+
+    logger.info(f"Colonne disponibili nella tabella: {tabella_dati.columns.tolist()}")
+
+    # Trova i nomi delle colonne (potrebbero avere spazi extra o case diverso)
+    colonna_nome_attivita = None
+    colonna_stato = None
+
+    for col in tabella_dati.columns:
+        col_lower = col.lower().strip()
+        if 'activity' in col_lower and 'name' in col_lower:
+            colonna_nome_attivita = col
+        if 'activity' in col_lower and 'status' in col_lower:
+            colonna_stato = col
+
+    if not colonna_nome_attivita or not colonna_stato:
+        error_msg = f"Colonne non trovate nella tabella! Disponibili: {tabella_dati.columns.tolist()}"
+        logger.error(error_msg)
+        return False
+
+    logger.info(f"Usando colonne: name='{colonna_nome_attivita}', status='{colonna_stato}'")
+
     valore_errore = "Failed" # Il testo che cerchiamo
-    
+
     # Filtra il DataFrame per trovare solo le righe con errore
     righe_con_errore = tabella_dati[tabella_dati[colonna_stato] == valore_errore]
-    
+
     if righe_con_errore.empty:
-        print("Analisi completata: Nessun errore ('Failed') trovato nella tabella.")
+        logger.info("Analisi completata: Nessun errore ('Failed') trovato nella tabella.")
         return True # Successo
 
-    print(f"Trovate {len(righe_con_errore)} attività con stato '{valore_errore}'.")
+    logger.info(f"Trovate {len(righe_con_errore)} attività con stato '{valore_errore}'.")
     errori_raccolti = []
 
     # --- 3. CICLO SULLE RIGHE FALLITE ---
@@ -276,21 +296,21 @@ def main(year_month_values: list, workspace: str) -> dict:
     print(data_chains)
 
     # Login
-    data_chains["chains"] = {chain: data[chain] for chain in login_chain}
-    actions, text_list, workbook_report, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook)
-    print(log)
-    for l in log["Login"]["Login"].values():
-        if l["status"] == "error":  # al momento non accade mai, probabilmente perché tutte le task hanno "CONTINUE" in caso di errore - DA VERIFICARE
-            error_msg = l.get('message', 'Errore sconosciuto')
-            error_result = {"error": f"ERROR: non sono riuscito a fare il login: {error_msg}"}
-            print(f"Returning error: {error_result}")
-            return error_result
+    # data_chains["chains"] = {chain: data[chain] for chain in login_chain}
+    # actions, text_list, workbook_report, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook)
+    # print(log)
+    # for l in log["Login"]["Login"].values():
+    #     if l["status"] == "error":  # al momento non accade mai, probabilmente perché tutte le task hanno "CONTINUE" in caso di errore - DA VERIFICARE
+    #         error_msg = l.get('message', 'Errore sconosciuto')
+    #         error_result = {"error": f"ERROR: non sono riuscito a fare il login: {error_msg}"}
+    #         print(f"Returning error: {error_result}")
+    #         return error_result
     
     # Main
     workbook["Raggiungi Main"]["F7"].value = f'{workspace}'    # da modificare
     workbook["Raggiungi Main"]["B11"].value = f'//div[contains(@data-parent-name, "Pipelines") and contains(@data-sa-idt, "{workspace}") and contains(@aria-label, "{workspace}")]'    # da modificare
     data_chains["chains"] = {chain: data[chain] for chain in main_chain}
-    actions, text_list, workbook_report, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions) 
+    actions, text_list, workbook_report, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook) #actions=actions) 
     for key, value in log["Raggiungi Main"]["Raggiungi Main"].items():
         # print(f"{key}: {value['status']}") 
         if value['status'] == "error":
@@ -328,11 +348,32 @@ def main(year_month_values: list, workspace: str) -> dict:
             process_status = log['Check Status']['Check Status']['Chech Status']['extracted_texts'][0]
         print(log)
         if process_status != 'Succeeded':
-            print('Processo completato con errori, ne estraggo i dettagli...')
+            logger.info('Processo completato con errori, ne estraggo i dettagli...')
             status_table = extract_html_table(actions)
-            print(status_table)
+            logger.info(f"Tabella estratta:\n{status_table}")
+            logger.info(f"Colonne disponibili: {status_table.columns.tolist()}")
+
+            # Trova i nomi delle colonne (potrebbero avere spazi extra o case diverso)
+            col_activity_name = None
+            col_activity_status = None
+
+            for col in status_table.columns:
+                col_lower = col.lower().strip()
+                if 'activity' in col_lower and 'name' in col_lower:
+                    col_activity_name = col
+                if 'activity' in col_lower and 'status' in col_lower:
+                    col_activity_status = col
+
+            if not col_activity_name or not col_activity_status:
+                error_msg = f"Colonne non trovate! Disponibili: {status_table.columns.tolist()}"
+                logger.error(error_msg)
+                output_dict[year_month] = f"Errore: {error_msg}"
+                continue
+
+            logger.info(f"Usando colonne: name='{col_activity_name}', status='{col_activity_status}'")
+
             # Filtra il DataFrame e seleziona solo la colonna 'Activity name'
-            failed_activities = list(status_table[status_table['Activity status'] == 'Failed']['Activity name'])
+            failed_activities = list(status_table[status_table[col_activity_status] == 'Failed'][col_activity_name])
             for failed_activity in failed_activities:
                 error_path = f"//span[@title='{failed_activity}']/ancestor::tr//div[@role='button' and @title='Error']"
                 workbook["Extract Error"]["B3"].value = error_path

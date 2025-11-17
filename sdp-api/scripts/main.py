@@ -1,15 +1,18 @@
 from os.path import *
 import sys
 import time
+import logging
 from fluentx.flow_executor import run_flow
 from fluentx.utility import get_general_config
 from openpyxl import load_workbook
-from utility import extract_information, check_and_move, get_download_path, get_destination_path, extract_error, get_resource_path, get_users_list, get_config_from_sharepoint, get_users_from_sharepoint, get_flow_from_sharepoint
+from scripts.utility import extract_information, check_and_move, get_download_path, get_destination_path, extract_error, get_resource_path, get_users_list, get_config_from_sharepoint, get_users_from_sharepoint, get_flow_from_sharepoint
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException, NoSuchElementException
+
+logger = logging.getLogger(__name__)
 
 
 def wait_until_element_disappears_robust(driver: webdriver.Chrome, element_xpath: str, timeout: int = 300) -> bool:
@@ -95,10 +98,11 @@ def estrai_dettagli_errore(driver):
 
 
 def main(workspace: str, PBI_packages: list):
-    print(workspace)
-    print(PBI_packages)
+    logger.info(f"=== INIZIO ELABORAZIONE ===")
+    logger.info(f"Workspace: {workspace}")
+    logger.info(f"Packages: {PBI_packages}")
     modules = ["web", "windows app", "file", "sharepoint"]
-    # modelli_semantici = ["Breve_Termine", "Flussi Esterni", "Flussi Netti", "Impieghi", "ML_Termine", "Raccolta Indiretta", "Raccolta_Diretta"]   # "Bonifico_istantaneo", "Homepage_Pre_Check", 
+    # modelli_semantici = ["Breve_Termine", "Flussi Esterni", "Flussi Netti", "Impieghi", "ML_Termine", "Raccolta Indiretta", "Raccolta_Diretta"]   # "Bonifico_istantaneo", "Homepage_Pre_Check",
     login_chain = ["Login"]
     ms_chain = ["Filtro MS"]
     update_chain = ["Aggiorna MS"]
@@ -107,31 +111,39 @@ def main(workspace: str, PBI_packages: list):
 
     # Carica il flusso .xlsx o .xlsm per FluentX
     try:
-        _FLOW_PATH = get_resource_path(r"config_data/newNewSparkasse.xlsm")
+        _FLOW_PATH = get_resource_path(r"config_data/Sparkasse.xlsm")
         _FLOW_NAME = basename(_FLOW_PATH).split(".")[0]
         workbook = load_workbook(_FLOW_PATH, data_only=True)
+        logger.info(f"Flusso FluentX caricato: {_FLOW_PATH}")
     except Exception as e:
-        print(f'Problema con il caricamento del flusso FluentX: {e}')
+        logger.error(f'Problema con il caricamento del flusso FluentX: {e}')
 
     data, data_chains = get_general_config(workbook)
-    print(data)
-    print(data_chains)
+    logger.debug(f"Data: {data}")
+    logger.debug(f"Data chains: {data_chains}")
 
     # Login
+    logger.info("Fase Login in corso...")
     data_chains["chains"] = {chain: data[chain] for chain in login_chain}
     actions, text_list, workbook_report, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook)
-    print(log)
-    for l in log["Login"]["Login"].values():
-        if l["status"] == "error":  # al momento non accade mai, probabilmente perché tutte le task hanno "CONTINUE" in caso di errore - DA VERIFICARE
-            sys.exit(f"ERROR: non sono riuscito a fare il login: {l['message']}")
+    logger.info(f"Login log: {log}")
+    for task_name, l in log["Login"]["Login"].items():
+        if l["status"] == "error":
+            # Ignora l'errore per il task "premere si su rimanere connessi" (opzionale)
+            if "rimanere connessi" in task_name.lower():
+                logger.debug(f"Task '{task_name}' fallito ma ignorato (opzionale)")
+                continue
+            error_msg = l.get('error') or l.get('message', 'Errore sconosciuto')
+            logger.error(f"ERROR durante login nel task '{task_name}': {error_msg}")
 
     # Workspace
     if workspace != "Engage-PRE CHECK":
-        print(f"Cambio workspace in {workspace}...")
+        logger.info(f"Cambio workspace in {workspace}...")
         workbook["Cambia workspace"]["B5"].value = f'//button[contains(@data-testid, "workspace-item-btn") and contains(@title, "{workspace}")]'    # da modificare
         data_chains["chains"] = {chain: data[chain] for chain in workspace_chain}
         actions, text_list, workbook_report, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
         if log["Cambia workspace"]["Cambia workspace"]["Selezionare workspace"]["status"] == "error":
+            logger.error(f"ERROR: non sono riuscito a trovare il workspace '{workspace}'. Controlla che il nome sia corretto.")
             sys.exit(f"ERROR: non sono riuscito a trovare il workspace '{workspace}'. Controlla che il nome sia corretto.")
     
     # Filtro MS
@@ -145,7 +157,7 @@ def main(workspace: str, PBI_packages: list):
     packages_status = {}
 
     for package in PBI_packages:
-        print(f'Aggiorno {package}...')
+        logger.info(f"=== Aggiornamento package: {package} ===")
         x_path_ms = f'//span[@data-value="{package}"]'
         x_path_updt = f'//span[@data-value="{package}"]//button[@aria-label="Aggiorna adesso"]//mat-icon[@data-mat-icon-name="pbi-glyph-refresh"]'
         workbook["Aggiorna MS"]["B3"].value = x_path_ms    # da modificare
@@ -154,11 +166,11 @@ def main(workspace: str, PBI_packages: list):
         actions, text_list, workbook_report, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
         # print(log["Aggiorna MS"]["Aggiorna MS"])
         if log["Aggiorna MS"]["Aggiorna MS"]["Cerco riga MS"]["status"] == "error":
-            print(f"Non sono riuscito a trovare la riga per '{package}'. Controlla che il nome sia corretto.")
+            logger.warning(f"Non sono riuscito a trovare la riga per '{package}'. Controlla che il nome sia corretto.")
             packages_status[package] = "Modello Semantico non trovato."
             continue
         if log["Aggiorna MS"]["Aggiorna MS"]["Aggiorno MS"]["status"] == "error":
-            print(f"Non sono riuscito ad aggiornare '{package}'.")
+            logger.warning(f"Non sono riuscito ad aggiornare '{package}'.")
             packages_status[package] = "Modello Semantico non aggiornato."
             continue
         
@@ -169,51 +181,51 @@ def main(workspace: str, PBI_packages: list):
 
         try:
             # Identifico la riga del modello semantico
-            print(f"Ricerca della riga per {package}...")
+            logger.info(f"Ricerca della riga per {package}...")
             wait = WebDriverWait(driver, 10)
-            
+
             # Salvo la riga in una variabile
             ms_row = wait.until(EC.presence_of_element_located((By.XPATH, row_xpath)))
-            print("Riga trovata.")
+            logger.info("Riga trovata.")
 
             # Attendo la comparsa dello spinner
-            print(f"Attendo lo spinner per {package}...")
+            logger.info(f"Attendo lo spinner per {package}...")
             # Combino l'XPath della riga con quello relativo dello spinner
             xpath_spinner_ms = row_xpath + spinner_xpath.replace('.', '')
             try:
                 wait.until(EC.presence_of_element_located((By.XPATH, xpath_spinner_ms)))
-                print("Spinner apparso sulla riga corretta.")
+                logger.info("Spinner apparso sulla riga corretta.")
                 # Attendo la scomparsa dello spinner
-                print("Attendo la scomparsa dello spinner...")
+                logger.info("Attendo la scomparsa dello spinner...")
                 no_more_spinner = wait_until_element_disappears_robust(driver, xpath_spinner_ms, timeout=86400)
                 if no_more_spinner:
-                    print("Lo spinner è scomparso.")
+                    logger.info("Lo spinner è scomparso.")
                     no_spinner = False
             except TimeoutException:
                 packages_status[package] = f"Timeout! Lo spinner non è apparso in tempo."
-                print(f"Timeout! Lo spinner non è apparso in tempo.")
+                logger.warning(f"Timeout! Lo spinner non è apparso in tempo.")
                 no_more_spinner = False
                 no_spinner = True
 
             if no_more_spinner or no_spinner:
-                print("Controllo la riga per eventuali errori...")
-                
+                logger.info("Controllo la riga per eventuali errori...")
+
                 # Ritrovo la riga (per evitare StaleElementReferenceException) e controllo se ha generato errori
                 updt_row = driver.find_element(By.XPATH, row_xpath)
-                
+
                 try:
                     error_msg = updt_row.find_element(By.XPATH, update_error)
-                    print(f"ERRORE RILEVATO per {package}")
+                    logger.error(f"ERRORE RILEVATO per {package}")
                     # print(update_error)
                     # print(error_msg)
                     try:
                         # Trovo il bottone dell'errore
                         error_btn = updt_row.find_element(By.XPATH, update_error)
-                        print(f"Clicco per dettagli...")
-                        
+                        logger.info(f"Clicco per dettagli...")
+
                         # Clicco il bottone per aprire i dettagli
                         error_btn.click()
-                        
+
                         # Chiama la funzione per estrarre il testo dal popup
                         details = estrai_dettagli_errore(driver)
 
@@ -221,55 +233,58 @@ def main(workspace: str, PBI_packages: list):
                             # Ora puoi accedere a qualsiasi informazione per nome
                             main_error = details.get("Errore dell'origine dati")
                             activity_id = details.get("ID attività")
-                            
-                            print("\n--- Riepilogo Errore ---")
-                            print(f"Messaggio Principale: {main_error}")
-                            print(f"ID Attività: {activity_id}")
-                            print("----------------------")
+
+                            logger.error("--- Riepilogo Errore ---")
+                            logger.error(f"Messaggio Principale: {main_error}")
+                            logger.error(f"ID Attività: {activity_id}")
+                            logger.error("----------------------")
                             if no_spinner:
-                                print(f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato: {main_error} (ID Attività: {activity_id})")
+                                logger.error(f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato: {main_error} (ID Attività: {activity_id})")
                                 packages_status[package] = f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato: {main_error} (ID Attività: {activity_id})"
                             else:
-                                print(f"Aggiornamento non completato, errore rilevato: {main_error} (ID Attività: {activity_id})")
+                                logger.error(f"Aggiornamento non completato, errore rilevato: {main_error} (ID Attività: {activity_id})")
                                 packages_status[package] = f"Aggiornamento non completato, errore rilevato: {main_error} (ID Attività: {activity_id})"
                         else:
                             if no_spinner:
-                                print(f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato ma dettagli non disponibili.")
+                                logger.error(f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato ma dettagli non disponibili.")
                                 packages_status[package] = f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato ma dettagli non disponibili."
                             else:
                                 packages_status[package] = f"Aggiornamento non completato, errore rilevato ma dettagli non disponibili."
-                                print("Aggiornamento non completato, errore rilevato ma dettagli non disponibili.")
-                        
+                                logger.error("Aggiornamento non completato, errore rilevato ma dettagli non disponibili.")
+
                     except NoSuchElementException:
                         if no_spinner:
-                            print(f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato ma popup mancante.")
+                            logger.error(f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato ma popup mancante.")
                             packages_status[package] = f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato ma popup mancante."
                         else:
                             packages_status[package] = f"Aggiornamento non completato, errore rilevato ma popup mancante."
-                            print(f"Aggiornamento non completato, errore rilevato ma popup mancante.")
-                    
+                            logger.error(f"Aggiornamento non completato, errore rilevato ma popup mancante.")
+
                 except NoSuchElementException:
                     if no_spinner:
-                        print(f"Lo spinner non è mai apparso, aggiornamento non effettuato ma nessun errore rilevato.")
+                        logger.warning(f"Lo spinner non è mai apparso, aggiornamento non effettuato ma nessun errore rilevato.")
                         packages_status[package] = "Lo spinner non è mai apparso, aggiornamento non effettuato ma nessun errore rilevato."
                     else:
                         packages_status[package] = "Aggiornamento completato con successo."
-                        print(f"Operazione per '{package}' completata con successo, nessun errore trovato.")
-                    
+                        logger.info(f"✓ Operazione per '{package}' completata con successo, nessun errore trovato.")
+
             else:
                 packages_status[package] = "Timeout! L'aggiornamento ha richiesto più tempo del previsto: esito non disponibile."
-                print(f"Timeout! Lo spinner per '{package}' è ancora visibile.")
+                logger.warning(f"Timeout! Lo spinner per '{package}' è ancora visibile.")
 
         except TimeoutException:
             packages_status[package] = f"Timeout! Non è stato possibile trovare la riga per '{package}'."
-            print(f"Timeout! Non è stato possibile trovare la riga per '{package}'.")
+            logger.error(f"Timeout! Non è stato possibile trovare la riga per '{package}'.")
 
-        print(log)
+        logger.debug(f"Log dettagliato: {log}")
 
+    logger.info("Aggiornamento app in corso...")
     data_chains["chains"] = {chain: data[chain] for chain in app_chain}
     actions, text_list, workbook_report, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
-    print(log)
-    
+    logger.debug(f"App update log: {log}")
+
+    logger.info(f"=== ELABORAZIONE COMPLETATA ===")
+    logger.info(f"Riepilogo: {packages_status}")
     return packages_status
 
 

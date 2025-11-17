@@ -2714,31 +2714,68 @@ async def get_sync_status_data() -> dict:
 
 
 async def get_publish_status_data() -> Optional[dict]:
-    """Helper per ottenere lo stato della pubblicazione"""
+    """Helper per ottenere lo stato della pubblicazione dalla tabella sync_runs"""
     try:
         db_gen = get_db()
         db = next(db_gen)
 
         try:
-            from core.config import config_manager
-            base_folder = config_manager.get_setting("SETTINGS_PATH")
-            if not base_folder:
-                return None
+            from datetime import datetime
 
-            publish_status_file = os.path.join(base_folder, "App", "Dashboard", "publish_status.json")
+            # Leggi dalla tabella sync_runs (ID=2 per publish)
+            query = text("""
+                SELECT
+                    start_time,
+                    end_time,
+                    update_interval,
+                    files_processed,
+                    files_copied,
+                    files_skipped,
+                    files_failed,
+                    error_details
+                FROM sync_runs
+                WHERE id = 2 AND operation_type = 'publish'
+            """)
 
-            if os.path.exists(publish_status_file):
-                with open(publish_status_file, "r", encoding="utf-8") as f:
-                    return json.load(f)
+            result = db.execute(query).fetchone()
 
-            return None
+            if not result:
+                return {"is_running": False, "status": "idle"}
+
+            start_time, end_time, update_interval, files_processed, files_copied, files_skipped, files_failed, error_details = result
+
+            # Se end_time è NULL, publish è in corso
+            is_running = end_time is None
+
+            if is_running:
+                return {
+                    "is_running": True,
+                    "status": "running",
+                    "phase": error_details or "unknown",  # phase salvata in error_details
+                    "start_time": start_time.isoformat() if start_time else None,
+                    "files_processed": files_processed or 0,
+                    "files_copied": files_copied or 0,
+                    "files_skipped": files_skipped or 0,
+                    "files_failed": files_failed or 0
+                }
+            else:
+                return {
+                    "is_running": False,
+                    "status": "completed",
+                    "start_time": start_time.isoformat() if start_time else None,
+                    "end_time": end_time.isoformat() if end_time else None,
+                    "files_processed": files_processed or 0,
+                    "files_copied": files_copied or 0,
+                    "files_skipped": files_skipped or 0,
+                    "files_failed": files_failed or 0
+                }
 
         finally:
             db.close()
 
     except Exception as e:
         logger.error(f"Error in get_publish_status_data: {e}")
-        return None
+        return {"is_running": False, "status": "error"}
 
 
 async def get_reportistica_data(bank: Optional[str] = None) -> List[dict]:
@@ -3016,57 +3053,85 @@ async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = 
                 data_esecuzione_prod = None
 
                 # Controlla se abbiamo uno stato per questo package
+                # I dati vengono sempre mostrati, ma i semafori solo se il periodo corrisponde
                 if package_name in package_status:
                     pkg_state = package_status[package_name]
 
-                    # Verifica precheck se esiste
+                    # Carica precheck se esiste
                     if pkg_state["anno_precheck"] is not None:
-                        needs_reset_precheck = False
+                        # Verifica se il periodo corrisponde per il semaforo
+                        period_matches = True
                         if pkg_state["anno_precheck"] != current_anno:
-                            needs_reset_precheck = True
+                            period_matches = False
                         elif is_weekly and pkg_state["settimana_precheck"] != current_settimana:
-                            needs_reset_precheck = True
+                            period_matches = False
                         elif not is_weekly and pkg_state["mese_precheck"] != current_mese:
-                            needs_reset_precheck = True
+                            period_matches = False
 
-                        if not needs_reset_precheck:
-                            pre_check = pkg_state["precheck"]
-                            anno_precheck = pkg_state["anno_precheck"]
-                            settimana_precheck = pkg_state["settimana_precheck"]
-                            mese_precheck = pkg_state["mese_precheck"]
-                            dettagli_precheck = pkg_state["dettagli_precheck"]
-                            error_precheck = pkg_state["error_precheck"]
-                            data_esecuzione_precheck = pkg_state["data_esecuzione_precheck"]
+                        # Semaforo solo se periodo corrisponde, dati sempre
+                        pre_check = pkg_state["precheck"] if period_matches else False
+                        anno_precheck = pkg_state["anno_precheck"]
+                        settimana_precheck = pkg_state["settimana_precheck"]
+                        mese_precheck = pkg_state["mese_precheck"]
+                        dettagli_precheck = pkg_state["dettagli_precheck"]
+                        error_precheck = pkg_state["error_precheck"]
+                        data_esecuzione_precheck = pkg_state["data_esecuzione_precheck"]
 
-                    # Verifica production se esiste
+                    # Carica production se esiste
                     if pkg_state["anno_prod"] is not None:
-                        needs_reset_prod = False
+                        # Verifica se il periodo corrisponde per il semaforo
+                        period_matches = True
                         if pkg_state["anno_prod"] != current_anno:
-                            needs_reset_prod = True
+                            period_matches = False
                         elif is_weekly and pkg_state["settimana_prod"] != current_settimana:
-                            needs_reset_prod = True
+                            period_matches = False
                         elif not is_weekly and pkg_state["mese_prod"] != current_mese:
-                            needs_reset_prod = True
+                            period_matches = False
 
-                        if not needs_reset_prod:
-                            prod = pkg_state["prod"]
-                            anno_prod = pkg_state["anno_prod"]
-                            settimana_prod = pkg_state["settimana_prod"]
-                            mese_prod = pkg_state["mese_prod"]
-                            dettagli_prod = pkg_state["dettagli_prod"]
-                            error_prod = pkg_state["error_prod"]
-                            data_esecuzione_prod = pkg_state["data_esecuzione_prod"]
+                        # Semaforo solo se periodo corrisponde, dati sempre
+                        prod = pkg_state["prod"] if period_matches else False
+                        anno_prod = pkg_state["anno_prod"]
+                        settimana_prod = pkg_state["settimana_prod"]
+                        mese_prod = pkg_state["mese_prod"]
+                        dettagli_prod = pkg_state["dettagli_prod"]
+                        error_prod = pkg_state["error_prod"]
+                        data_esecuzione_prod = pkg_state["data_esecuzione_prod"]
+
+                # Converti timestamp da UTC a ora locale (come in ingest)
+                def format_timestamp(ts):
+                    if ts is None:
+                        return None
+
+                    from datetime import datetime, timedelta
+
+                    # Se è stringa, parsala
+                    if isinstance(ts, str):
+                        ts_clean = ts.replace('Z', '').replace('+00:00', '').split('.')[0]
+                        try:
+                            ts = datetime.fromisoformat(ts_clean)
+                        except:
+                            return ts_clean
+
+                    # Converti da UTC (salvato da func.now()) a ora locale italiana
+                    # SQLite func.now() restituisce UTC, quindi aggiungiamo offset per Italy
+                    if hasattr(ts, 'isoformat'):
+                        # Aggiungi 1 ora per timezone italiano (UTC+1)
+                        ts_local = ts + timedelta(hours=1)
+                        # Usa .isoformat() come per ultima_modifica
+                        return ts_local.isoformat() if hasattr(ts_local, 'isoformat') else str(ts_local)
+
+                    return str(ts)
 
                 packages.append({
                     "package": package_name,
                     "user": "N/D",
-                    "data_esecuzione": data_esecuzione_precheck,
+                    "data_esecuzione": format_timestamp(data_esecuzione_precheck),
                     "pre_check": pre_check,
                     "prod": prod,
                     "dettagli": dettagli_precheck,
                     "error_precheck": error_precheck,
                     "user_prod": "N/D",
-                    "data_esecuzione_prod": data_esecuzione_prod,
+                    "data_esecuzione_prod": format_timestamp(data_esecuzione_prod),
                     "dettagli_prod": dettagli_prod,
                     "error_prod": error_prod,
                     "anno_precheck": anno_precheck,
