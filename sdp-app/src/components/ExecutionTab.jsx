@@ -1,9 +1,11 @@
 // src/components/Ingest/ExecutionTab.jsx
-import React from "react";
+import React, { useState } from "react";
 import {
   Play,
   Filter,
   RefreshCw,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { getStatusBadgeColor } from "../utils/ingestUtils";
 
@@ -41,6 +43,9 @@ function ExecutionTabContent({
   getSortIcon,
   metadataFilePath,
 }) {
+  // 🔹 Stato per tracciare quali dettagli sono espansi
+  const [expandedDetails, setExpandedDetails] = useState(new Set());
+
   // 🔹 Filtraggio locale basato su week, year, package e status
   const displayedFlows = filteredAndSortedFlows.filter(flow => {
     const matchesPackage = packageFilter === "all" || flow.package === packageFilter;
@@ -55,6 +60,19 @@ function ExecutionTabContent({
 
   // Conta solo i flussi visualizzati che sono selezionati
   const selectedDisplayedCount = displayedFlows.filter(flow => selectedFlows.has(flow.id)).length;
+
+  // 🔹 Funzione per toggle espansione dettagli
+  const toggleDetailExpansion = (flowId) => {
+    setExpandedDetails(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(flowId)) {
+        newSet.delete(flowId);
+      } else {
+        newSet.add(flowId);
+      }
+      return newSet;
+    });
+  };
 
   return (
     <div className="tab-content-padding">
@@ -91,7 +109,7 @@ function ExecutionTabContent({
                 <input
                   type="checkbox"
                   className="form-checkbox"
-                  onChange={handleSelectAllFlows}
+                  onChange={(e) => handleSelectAllFlows(e, displayedFlows)}
                   checked={displayedFlows.length > 0 && displayedFlows.every(flow => selectedFlows.has(flow.id))}
                   ref={(el) => {
                     if (el) {
@@ -138,8 +156,40 @@ function ExecutionTabContent({
                   }) : "N/A"}
                 </td>
                 <td data-label="Status"><span className={`status-badge ${getStatusBadgeColor(flow.result)}`}>{flow.result || "N/A"}</span></td>
-                <td data-label="Dettagli" style={{ fontSize: '0.85rem', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {flow.detail ? <span title={flow.detail}>{flow.detail}</span> : <span className="muted-text italic">Nessun dettaglio</span>}
+                <td data-label="Dettagli" style={{ fontSize: '0.85rem', maxWidth: '300px' }}>
+                  {flow.detail ? (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                      <div style={{
+                        flex: 1,
+                        overflow: 'hidden',
+                        textOverflow: expandedDetails.has(flow.id) ? 'clip' : 'ellipsis',
+                        whiteSpace: expandedDetails.has(flow.id) ? 'normal' : 'nowrap',
+                        wordBreak: expandedDetails.has(flow.id) ? 'break-word' : 'normal'
+                      }}>
+                        {flow.detail}
+                      </div>
+                      {flow.detail.length > 50 && (
+                        <button
+                          onClick={() => toggleDetailExpansion(flow.id)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: '2px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            color: 'var(--color-primary, #3b82f6)',
+                            flexShrink: 0
+                          }}
+                          title={expandedDetails.has(flow.id) ? "Comprimi" : "Espandi"}
+                        >
+                          {expandedDetails.has(flow.id) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="muted-text italic">Nessun dettaglio</span>
+                  )}
                 </td>
               </tr>
             ))}

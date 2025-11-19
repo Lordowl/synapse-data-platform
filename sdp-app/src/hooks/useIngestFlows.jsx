@@ -96,9 +96,11 @@ export const useIngestFlows = (flowsData, generalParams, setGeneralParams, fetch
     });
   }, []);
 
-  const handleSelectAllFlows = useCallback((e) => {
+  const handleSelectAllFlows = useCallback((e, flowsToSelect = null) => {
     if (e.target.checked) {
-      setSelectedFlows(new Set(filteredAndSortedFlows.map((f) => f.id)));
+      // Usa i flussi passati come parametro, altrimenti usa filteredAndSortedFlows
+      const flows = flowsToSelect || filteredAndSortedFlows;
+      setSelectedFlows(new Set(flows.map((f) => f.id)));
     } else {
       setSelectedFlows(new Set());
     }

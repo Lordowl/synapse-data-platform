@@ -77,7 +77,10 @@ export const useIngestData = (metadataFilePath) => {
       const combinedFlows = staticFlows
         .filter((flow) => flow.ID)
         .map((flow) => {
-          const executionHistory = historyLatestMap[flow.ID] || {};
+          // Cerca l'history con il formato corretto usato nel database (es. "142/1" invece di "142")
+          // Se flow.SEQ esiste, costruisci l'ID completo con "/" come separatore
+          const dbElementId = flow.SEQ ? `${flow.ID}/${flow.SEQ}` : flow.ID;
+          const executionHistory = historyLatestMap[dbElementId] || historyLatestMap[flow.ID] || {};
           return {
             id: `${flow.ID}-${flow.SEQ || "0"}`,
             originalId: flow.ID,
