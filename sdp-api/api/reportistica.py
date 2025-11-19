@@ -2079,7 +2079,7 @@ async def publish_precheck(
         return {
             "status": "success",
             "message": "Pre-check pubblicato con successo",
-            "workspace": workspace,
+            "workspace": workspace_datafactory if workspace_datafactory else workspace_powerbi,
             "packages": pbi_packages,
             "output": stdout,
             "packages_details": packages_details
@@ -2439,7 +2439,7 @@ async def publish_production(
         return {
             "status": "success",
             "message": "Pubblicazione in produzione completata con successo",
-            "workspace": workspace,
+            "workspace": workspace_datafactory if workspace_datafactory else workspace_powerbi,
             "packages": pbi_packages,
             "output": stdout,
             "packages_details": packages_details
