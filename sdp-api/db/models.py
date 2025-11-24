@@ -77,6 +77,7 @@ class Reportistica(Base):
     tipo_reportistica = Column(String, nullable=True)  # settimanale/mensile
     anno = Column(Integer, nullable=True)
     settimana = Column(Integer, nullable=True)
+    mese = Column(Integer, nullable=True)  # mese per reportistica mensile
     nome_file = Column(String, nullable=False)  # ✅ Rimosso unique=True, gestito da __table_args__
     package = Column(String, nullable=True)
     finalita = Column(String, nullable=True)
@@ -154,3 +155,18 @@ class PublicationLog(Base):
     anno = Column(Integer, nullable=True)  # Anno di riferimento
     settimana = Column(Integer, nullable=True)  # Settimana di riferimento (per reportistica settimanale)
     mese = Column(Integer, nullable=True)  # Mese di riferimento (per reportistica mensile)
+
+
+class PackageReady(Base):
+    __tablename__ = "package_ready"
+
+    id = Column(Integer, primary_key=True, index=True)
+    package = Column(String, nullable=False)
+    ws_precheck = Column(String, nullable=True)
+    ws_produzione = Column(String, nullable=True)
+    user = Column(String, nullable=True)
+    data_esecuzione = Column(DateTime(timezone=True), nullable=True)
+    pre_check = Column(Boolean, default=False)
+    prod = Column(Boolean, default=False)
+    log = Column(Text, nullable=True)
+    bank = Column(String, index=True, nullable=True)

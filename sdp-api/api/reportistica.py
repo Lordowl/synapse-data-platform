@@ -85,8 +85,8 @@ class PackageReady(BaseModel):
 
 @router.get("/")
 def get_reportistica_items(
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0, description="Numero di record da saltare"),
+    limit: int = Query(100, ge=0, description="Numero massimo di record da restituire"),
     anno: Optional[int] = Query(None, description="Filtra per anno"),
     settimana: Optional[int] = Query(None, description="Filtra per settimana"),
     package: Optional[str] = Query(None, description="Filtra per package"),
