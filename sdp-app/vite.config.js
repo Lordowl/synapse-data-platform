@@ -9,17 +9,17 @@ export default defineConfig(async () => ({
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   clearScreen: false,
-  
+
   server: {
     port: 1420,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
-          protocol: "ws",
-          host,
-          port: 1421,
-        }
+        protocol: "ws",
+        host,
+        port: 1421,
+      }
       : undefined,
     watch: {
       ignored: ["**/src-tauri/**"],
@@ -46,5 +46,9 @@ export default defineConfig(async () => ({
   // Assicurati che i plugin Tauri siano trattati correttamente
   define: {
     global: 'globalThis',
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
   },
 }));
