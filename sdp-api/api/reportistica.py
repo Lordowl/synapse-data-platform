@@ -1466,6 +1466,7 @@ def get_packages_ready(
 
                     # Se questo log contiene il package che stiamo cercando
                     if package_name in packages_list:
+                        logger.info(f"Found precheck log for package {package_name}: log_id={log.id}, status={log.status}")
                         data_esecuzione_precheck = log.timestamp
                         user_precheck = "Sistema" if not log.user_id else f"User #{log.user_id}"
                         anno_precheck = log.anno
@@ -1474,6 +1475,7 @@ def get_packages_ready(
 
                         # Prendi il messaggio dall'output o dall'error
                         message = log.output if log.output else (log.error if log.error else "")
+                        logger.debug(f"Message for {package_name}: {message[:200] if message else 'EMPTY'}")
 
                         # Salva il campo error separatamente se presente
                         error_precheck = log.error if log.error else None
@@ -1482,20 +1484,25 @@ def get_packages_ready(
                         if "successo" in message.lower():
                             pre_check_status = True  # Verde
                             dettagli_precheck = message
+                            logger.info(f"Package {package_name}: status=TRUE (found 'successo' in message)")
                         elif "timeout" in message.lower():
                             pre_check_status = "timeout"  # Giallo/Arancione
                             dettagli_precheck = message
+                            logger.info(f"Package {package_name}: status=TIMEOUT")
                         elif "errore" in message.lower() or "error" in message.lower():
                             pre_check_status = "error"  # Rosso
                             dettagli_precheck = message
+                            logger.info(f"Package {package_name}: status=ERROR")
                         else:
                             # Fallback sul campo status del log
                             if log.status == 'success':
                                 pre_check_status = True
                                 dettagli_precheck = message if message else "Aggiornamento completato con successo"
+                                logger.info(f"Package {package_name}: status=TRUE (from log.status)")
                             else:
                                 pre_check_status = False
                                 dettagli_precheck = message if message else "Errore durante l'aggiornamento"
+                                logger.warning(f"Package {package_name}: status=FALSE (log.status={log.status})")
 
                         # Abbiamo trovato il log per questo package, usiamo il più recente
                         break
@@ -1923,6 +1930,19 @@ async def publish_precheck(
                             print(json.dumps(combined_status, indent=2))
                             logger.info("FASE 2 COMPLETATA!")
 
+                        except SystemExit as e:
+                            error_msg = f"FASE 2 FALLITA - Script terminato: {str(e)}"
+                            logger.error(error_msg)
+                            stderr_capture.write(error_msg + "\n")
+                            # Ritorna un risultato vuoto invece di crashare
+                            combined_status = {
+                                "phase_1_datafactory": df_status if workspace_datafactory else "Skipped",
+                                "phase_2_powerbi": {},
+                                "error": str(e)
+                            }
+                            print("\n[RESULT]")
+                            print(json.dumps(combined_status, indent=2))
+                            return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
                         except Exception as e:
                             error_msg = f"FASE 2 FALLITA - Eccezione in scripts.main: {str(e)}"
                             logger.error(error_msg)
@@ -1937,7 +1957,16 @@ async def publish_precheck(
                         from scripts import main as script_main
 
                         logger.info(f"Calling scripts.main.main with workspace_powerbi={workspace_powerbi}, packages={pbi_packages}")
-                        status = script_main.main(workspace_powerbi, pbi_packages)
+                        try:
+                            status = script_main.main(workspace_powerbi, pbi_packages)
+                        except SystemExit as e:
+                            error_msg = f"Script Power BI terminato con errore: {str(e)}"
+                            logger.error(error_msg)
+                            stderr_capture.write(error_msg + "\n")
+                            status = {"error": str(e)}
+                            print("\n[RESULT]")
+                            print(json.dumps(status, indent=2))
+                            return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
 
                         print("\n[RESULT]")
                         print(json.dumps(status, indent=2))
@@ -1988,10 +2017,14 @@ async def publish_precheck(
             year_month = f"{str(anno)[-2:]}{mese:02d}"
 
             # Determina lo status generale: successo solo se entrambe le fasi hanno successo
-            phase_1_success = False
+            phase_1_success = True  # Default True se skippata
             phase_2_success = False
 
-            if isinstance(phase_1_result, dict) and phase_1_result != "Skipped":
+            # Controlla se Data Factory è stata eseguita o skippata
+            if phase_1_result == "Skipped" or (isinstance(phase_1_result, dict) and len(phase_1_result) == 0):
+                phase_1_success = True  # Se skippata, considerala come successo
+                logger.info("FASE 1 Data Factory: Skipped")
+            elif isinstance(phase_1_result, dict):
                 df_status_value = phase_1_result.get(year_month, "Unknown")
                 phase_1_success = df_status_value == "Succeeded"
                 logger.info(f"FASE 1 Data Factory status: {df_status_value}")
@@ -2019,7 +2052,7 @@ async def publish_precheck(
 
                 log_entry = models.PublicationLog(
                     bank=current_user.bank,
-                    workspace=workspace_datafactory if workspace_datafactory else workspace_powerbi,
+                    workspace=workspace_powerbi,  # Usa sempre workspace Power BI perché i package sono lì
                     packages=[package_name],  # Un package per volta (come settimanale)
                     publication_type="precheck",
                     status="success" if (phase_1_success and package_success) else "error",
@@ -2287,7 +2320,7 @@ async def publish_production(
 
                             # Combina i risultati di entrambe le fasi
                             combined_status = {
-                                "phase_1_datafactory": df_status if workspace_datafactory else "Skipped",
+                                "phase_1_datafactory": "Skipped",  # Data Factory temporaneamente disabilitata
                                 "phase_2_powerbi": pbi_status
                             }
 
@@ -2295,6 +2328,19 @@ async def publish_production(
                             print(json.dumps(combined_status, indent=2))
                             logger.info("PRODUCTION FASE 2 COMPLETATA!")
 
+                        except SystemExit as e:
+                            error_msg = f"PRODUCTION FASE 2 FALLITA - Script terminato: {str(e)}"
+                            logger.error(error_msg)
+                            stderr_capture.write(error_msg + "\n")
+                            # Ritorna un risultato vuoto invece di crashare
+                            combined_status = {
+                                "phase_1_datafactory": df_status if workspace_datafactory else "Skipped",
+                                "phase_2_powerbi": {},
+                                "error": str(e)
+                            }
+                            print("\n[RESULT]")
+                            print(json.dumps(combined_status, indent=2))
+                            return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
                         except Exception as e:
                             error_msg = f"PRODUCTION FASE 2 FALLITA - Eccezione in scripts.main: {str(e)}"
                             logger.error(error_msg)
@@ -2309,7 +2355,16 @@ async def publish_production(
                         from scripts import main as script_main
 
                         logger.info(f"Calling scripts.main.main (PRODUCTION) with workspace_powerbi={workspace_powerbi}, packages={pbi_packages}")
-                        status = script_main.main(workspace_powerbi, pbi_packages)
+                        try:
+                            status = script_main.main(workspace_powerbi, pbi_packages)
+                        except SystemExit as e:
+                            error_msg = f"PRODUCTION Script Power BI terminato con errore: {str(e)}"
+                            logger.error(error_msg)
+                            stderr_capture.write(error_msg + "\n")
+                            status = {"error": str(e)}
+                            print("\n[RESULT]")
+                            print(json.dumps(status, indent=2))
+                            return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
 
                         print("\n[RESULT]")
                         print(json.dumps(status, indent=2))
@@ -2392,7 +2447,7 @@ async def publish_production(
 
                 log_entry = models.PublicationLog(
                     bank=current_user.bank,
-                    workspace=workspace_datafactory if workspace_datafactory else workspace_powerbi,
+                    workspace=workspace_powerbi,  # Usa sempre workspace Power BI perché i package sono lì
                     packages=[package_name],  # Un package per volta (come settimanale)
                     publication_type="production",
                     status="success" if (phase_1_success and package_success) else "error",
@@ -2778,7 +2833,7 @@ async def get_publish_status_data() -> Optional[dict]:
                     "is_running": True,
                     "status": "running",
                     "phase": error_details or "unknown",  # phase salvata in error_details
-                    "start_time": start_time.isoformat() if start_time else None,
+                    "start_time": start_time.isoformat() if hasattr(start_time, 'isoformat') else str(start_time) if start_time else None,
                     "files_processed": files_processed or 0,
                     "files_copied": files_copied or 0,
                     "files_skipped": files_skipped or 0,
@@ -2788,8 +2843,8 @@ async def get_publish_status_data() -> Optional[dict]:
                 return {
                     "is_running": False,
                     "status": "completed",
-                    "start_time": start_time.isoformat() if start_time else None,
-                    "end_time": end_time.isoformat() if end_time else None,
+                    "start_time": start_time.isoformat() if hasattr(start_time, 'isoformat') else str(start_time) if start_time else None,
+                    "end_time": end_time.isoformat() if hasattr(end_time, 'isoformat') else str(end_time) if end_time else None,
                     "files_processed": files_processed or 0,
                     "files_copied": files_copied or 0,
                     "files_skipped": files_skipped or 0,
@@ -3062,15 +3117,15 @@ async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = 
                 # Determina se è settimanale o mensile
                 is_weekly = 'settimanale' in (pkg_type or '').lower()
 
-                # Default values
+                # Default values - NON impostare anno/settimana/mese se non ci sono log
                 pre_check = False
                 prod = False
-                anno_precheck = current_anno
-                settimana_precheck = current_settimana if is_weekly else None
-                mese_precheck = current_mese if not is_weekly else None
-                anno_prod = current_anno
-                settimana_prod = current_settimana if is_weekly else None
-                mese_prod = current_mese if not is_weekly else None
+                anno_precheck = None
+                settimana_precheck = None
+                mese_precheck = None
+                anno_prod = None
+                settimana_prod = None
+                mese_prod = None
                 dettagli_precheck = None
                 dettagli_prod = None
                 error_precheck = None
