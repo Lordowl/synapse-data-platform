@@ -349,7 +349,6 @@ function LogsTabContent({
                     <span className="execution-summary">
                       Esecuzione avvenuta il "{formatTimestamp(exec.timestamp)}"
                       {exec.executedBy ? ` da "${exec.executedBy}"` : ""}
-                      {exec.anno || exec.settimana ? ` - Anno: ${exec.anno || 'N/A'}, Settimana: ${exec.settimana || 'N/A'}` : ""}
                       {exec.params && Object.keys(exec.params).length > 0
                         ? ` con parametri: ${Object.entries(exec.params)
                             .map(([key, value]) => {

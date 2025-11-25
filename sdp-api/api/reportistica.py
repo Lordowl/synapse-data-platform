@@ -2004,22 +2004,34 @@ async def publish_precheck(
             overall_success = phase_1_success and phase_2_success
             logger.info(f"Overall success: {overall_success}")
 
-            # Salva un UNICO log con i risultati combinati
-            log_entry = models.PublicationLog(
-                bank=current_user.bank,
-                workspace=workspace_datafactory if workspace_datafactory else workspace_powerbi,
-                packages=pbi_packages,  # Salva i nomi reali dei package mensili
-                publication_type="precheck",
-                status="success" if overall_success else "error",
-                output=json.dumps(packages_details, indent=2) if overall_success else None,
-                error=json.dumps(packages_details, indent=2) if not overall_success else None,
-                user_id=current_user.id,
-                anno=anno,
-                settimana=None,
-                mese=mese
-            )
-            db.add(log_entry)
-            logger.info(f"Log salvato per mensile: status={'success' if overall_success else 'error'}")
+            # MENSILE: Salva un log per OGNI package (come settimanale)
+            # Questo permette alla UI di mostrare lo stato di ogni package separatamente
+            for package_name in pbi_packages:
+                # Estrai il risultato specifico per questo package dalla fase 2
+                package_detail = phase_2_result.get(package_name, "Nessun dettaglio disponibile")
+                package_success = "successo" in str(package_detail).lower()
+
+                # Combina i risultati di entrambe le fasi per questo package
+                combined_result = {
+                    "phase_1_datafactory": phase_1_result,
+                    "phase_2_powerbi": {package_name: package_detail}
+                }
+
+                log_entry = models.PublicationLog(
+                    bank=current_user.bank,
+                    workspace=workspace_datafactory if workspace_datafactory else workspace_powerbi,
+                    packages=[package_name],  # Un package per volta (come settimanale)
+                    publication_type="precheck",
+                    status="success" if (phase_1_success and package_success) else "error",
+                    output=json.dumps(combined_result, indent=2) if (phase_1_success and package_success) else None,
+                    error=json.dumps(combined_result, indent=2) if not (phase_1_success and package_success) else None,
+                    user_id=current_user.id,
+                    anno=anno,
+                    settimana=None,
+                    mese=mese
+                )
+                db.add(log_entry)
+                logger.info(f"Log salvato per package mensile {package_name}: status={'success' if (phase_1_success and package_success) else 'error'}")
 
         else:
             # SETTIMANALE: Salva per ogni package (scripts.main)
@@ -2047,11 +2059,12 @@ async def publish_precheck(
 
         # Aggiorna i contatori della publish run
         if is_mensile:
-            total_packages = 1
-            year_month = f"{str(anno)[-2:]}{mese:02d}"
-            status_value = packages_details.get(year_month, "Unknown")
-            success_count = 1 if status_value == "Succeeded" else 0
-            failed_count = 0 if status_value == "Succeeded" else 1
+            # Per mensile, conta i package individuali (non solo il year_month)
+            total_packages = len(pbi_packages)
+            phase_2_result = packages_details.get("phase_2_powerbi", {})
+            success_count = sum(1 for pkg in pbi_packages if "successo" in str(phase_2_result.get(pkg, "")).lower())
+            failed_count = total_packages - success_count
+            logger.info(f"Mensile PRECHECK publish run stats: total={total_packages}, success={success_count}, failed={failed_count}")
         else:
             total_packages = len(pbi_packages)
             success_count = sum(1 for pkg in pbi_packages if "successo" in str(packages_details.get(pkg, "")).lower())
@@ -2364,22 +2377,34 @@ async def publish_production(
             overall_success = phase_1_success and phase_2_success
             logger.info(f"PRODUCTION Overall success: {overall_success}")
 
-            # Salva un UNICO log con i risultati combinati
-            log_entry = models.PublicationLog(
-                bank=current_user.bank,
-                workspace=workspace_datafactory if workspace_datafactory else workspace_powerbi,
-                packages=pbi_packages,  # Salva i nomi reali dei package mensili
-                publication_type="production",
-                status="success" if overall_success else "error",
-                output=json.dumps(packages_details, indent=2) if overall_success else None,
-                error=json.dumps(packages_details, indent=2) if not overall_success else None,
-                user_id=current_user.id,
-                anno=anno,
-                settimana=None,
-                mese=mese
-            )
-            db.add(log_entry)
-            logger.info(f"Log salvato per mensile PRODUCTION: status={'success' if overall_success else 'error'}")
+            # MENSILE PRODUCTION: Salva un log per OGNI package (come settimanale)
+            # Questo permette alla UI di mostrare lo stato di ogni package separatamente
+            for package_name in pbi_packages:
+                # Estrai il risultato specifico per questo package dalla fase 2
+                package_detail = phase_2_result.get(package_name, "Nessun dettaglio disponibile")
+                package_success = "successo" in str(package_detail).lower()
+
+                # Combina i risultati di entrambe le fasi per questo package
+                combined_result = {
+                    "phase_1_datafactory": phase_1_result,
+                    "phase_2_powerbi": {package_name: package_detail}
+                }
+
+                log_entry = models.PublicationLog(
+                    bank=current_user.bank,
+                    workspace=workspace_datafactory if workspace_datafactory else workspace_powerbi,
+                    packages=[package_name],  # Un package per volta (come settimanale)
+                    publication_type="production",
+                    status="success" if (phase_1_success and package_success) else "error",
+                    output=json.dumps(combined_result, indent=2) if (phase_1_success and package_success) else None,
+                    error=json.dumps(combined_result, indent=2) if not (phase_1_success and package_success) else None,
+                    user_id=current_user.id,
+                    anno=anno,
+                    settimana=None,
+                    mese=mese
+                )
+                db.add(log_entry)
+                logger.info(f"Log salvato per package mensile PRODUCTION {package_name}: status={'success' if (phase_1_success and package_success) else 'error'}")
 
         else:
             # SETTIMANALE PRODUCTION: Salva per ogni package (scripts.main)
@@ -2407,11 +2432,12 @@ async def publish_production(
 
         # Aggiorna i contatori della publish run
         if is_mensile:
-            total_packages = 1
-            year_month = f"{str(anno)[-2:]}{mese:02d}"
-            status_value = packages_details.get(year_month, "Unknown")
-            success_count = 1 if status_value == "Succeeded" else 0
-            failed_count = 0 if status_value == "Succeeded" else 1
+            # Per mensile, conta i package individuali (non solo il year_month)
+            total_packages = len(pbi_packages)
+            phase_2_result = packages_details.get("phase_2_powerbi", {})
+            success_count = sum(1 for pkg in pbi_packages if "successo" in str(phase_2_result.get(pkg, "")).lower())
+            failed_count = total_packages - success_count
+            logger.info(f"Mensile PRODUCTION publish run stats: total={total_packages}, success={success_count}, failed={failed_count}")
         else:
             total_packages = len(pbi_packages)
             success_count = sum(1 for pkg in pbi_packages if "successo" in str(packages_details.get(pkg, "")).lower())

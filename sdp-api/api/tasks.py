@@ -282,6 +282,7 @@ def execute_selected_flows(
         # Analisi log per elementi
         current_id = None
         buffer = []
+        pre_id_buffer = []  # Buffer per errori prima di trovare un ID
         start_patterns = ["Inizio processo elemento con ID"]
         # Regex più flessibile: cattura ID con lettere, numeri, slash, underscore, trattini
         id_regex = re.compile(r"ID\s+([\w/\-]+)")
@@ -298,14 +299,48 @@ def execute_selected_flows(
                         buffer = []
                         current_id = match.group(1).strip()
                         logger.info(f"Nuovo elemento trovato nel log: ID={current_id}, riga='{line_clean[:100]}'")
+                        pre_id_buffer = []  # Reset pre_id_buffer dopo aver trovato un ID
                     break
             else:
                 if current_id is not None:
                     buffer.append(line)
+                else:
+                    # Linee prima di trovare qualsiasi ID
+                    pre_id_buffer.append(line)
+
         if current_id:
             logger.info(f"Salvando dettagli per ultimo elemento: {current_id}")
             elem_status = save_element_detail(current_id, buffer, script_failed=(result.returncode != 0))
             elements_results.append(elem_status)
+
+        # Se ci sono errori nel pre_id_buffer (errori globali prima di processare elementi)
+        # Salva come dettaglio con ID "GLOBAL" per tutti i flow richiesti
+        if pre_id_buffer:
+            global_errors = []
+            for line in pre_id_buffer:
+                line_upper = line.strip().upper()
+                if "ERROR" in line_upper:
+                    global_errors.append(line.strip())
+
+            if global_errors:
+                logger.warning(f"Trovati {len(global_errors)} errori globali prima di processare elementi specifici")
+                # Salva un errore globale per ogni flow richiesto
+                for flow in request.flows:
+                    element_id = str(flow.id).replace("/", "-")
+                    try:
+                        crud.create_execution_detail(
+                            db=db,
+                            log_key=log_key,
+                            element_id=element_id,
+                            error_lines=global_errors,
+                            result="Failed",
+                            bank=current_user.bank,
+                            anno=anno_int,
+                            settimana=settimana_int,
+                        )
+                        elements_results.append("Failed")
+                    except Exception as e:
+                        logger.error(f"Errore nel salvare errore globale per elemento {element_id}: {e}")
 
         # --- Determinazione stato globale ---
         if "Failed" in elements_results or result.returncode != 0:

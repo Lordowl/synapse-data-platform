@@ -23,9 +23,10 @@ def clean_and_filter_data(file_path: str, sheet_name: str) -> pd.DataFrame | Non
 
         # 🔑 Ricostruzione della colonna "Filename out"
         print("   -> Creazione nuova colonna 'Filename out' da Path/Filename/Formato...")
+        # Rimuovi eventuali punti finali da Filename out per evitare doppi punti
         df['Filename out'] = (
             df['Path out'].str.strip() + "/" +
-            df['Filename out'].str.strip() + "." +
+            df['Filename out'].str.strip().str.rstrip('.') + "." +
             df['Formato out'].str.strip()
         )
 
