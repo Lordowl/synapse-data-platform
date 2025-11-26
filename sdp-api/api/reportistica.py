@@ -2257,56 +2257,8 @@ async def publish_production(
 
                     if is_mensile:
                         # ==========================================
-                        # MENSILE PRODUCTION: FLUSSO A 2 FASI
+                        # MENSILE PRODUCTION: Solo Power BI (Data Factory già eseguito in precheck)
                         # ==========================================
-
-                        # FASE 1: Azure Data Factory
-                        if workspace_datafactory:
-                            logger.info("="*80)
-                            logger.info("PRODUCTION FASE 1: Esecuzione Azure Data Factory")
-                            logger.info("="*80)
-
-                            from scripts import data_factory
-
-                            # Prepara year_month_values (es. ["2511"])
-                            year_month_values = [f"{str(anno)[-2:]}{mese:02d}"]
-                            logger.info(f"Calling data_factory.main (PRODUCTION) with year_month={year_month_values}, workspace_datafactory={workspace_datafactory}")
-
-                            try:
-                                df_status = data_factory.main(year_month_values, workspace_datafactory)
-                                logger.info(f"Data Factory result (PRODUCTION): {df_status}")
-
-                                # Controlla se c'è un errore nel risultato di data_factory
-                                if isinstance(df_status, dict) and "error" in df_status:
-                                    error_msg = f"PRODUCTION FASE 1 FALLITA - Data Factory error: {df_status['error']}"
-                                    logger.error(error_msg)
-                                    stderr_capture.write(error_msg + "\n")
-                                    print("\n[RESULT]")
-                                    print(json.dumps(df_status, indent=2))
-                                    return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
-
-                                # Verifica se Data Factory ha avuto successo
-                                year_month = year_month_values[0]
-                                if isinstance(df_status, dict):
-                                    df_result = df_status.get(year_month, "Unknown")
-                                    if df_result != "Succeeded":
-                                        error_msg = f"PRODUCTION FASE 1 FALLITA - Data Factory non ha completato con successo: {df_result}"
-                                        logger.error(error_msg)
-                                        stderr_capture.write(error_msg + "\n")
-                                        print("\n[RESULT]")
-                                        print(json.dumps(df_status, indent=2))
-                                        return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
-
-                                logger.info("PRODUCTION FASE 1 COMPLETATA CON SUCCESSO!")
-
-                            except Exception as e:
-                                error_msg = f"PRODUCTION FASE 1 FALLITA - Eccezione in data_factory.main: {str(e)}"
-                                logger.error(error_msg)
-                                import traceback
-                                stderr_capture.write(error_msg + "\n" + traceback.format_exc())
-                                return 1, stdout_capture.getvalue(), stderr_capture.getvalue()
-
-                        # FASE 2: Power BI (solo se FASE 1 ha avuto successo)
                         logger.info("="*80)
                         logger.info("PRODUCTION FASE 2: Pubblicazione Power BI")
                         logger.info("="*80)
@@ -2334,7 +2286,7 @@ async def publish_production(
                             stderr_capture.write(error_msg + "\n")
                             # Ritorna un risultato vuoto invece di crashare
                             combined_status = {
-                                "phase_1_datafactory": df_status if workspace_datafactory else "Skipped",
+                                "phase_1_datafactory": "Skipped",
                                 "phase_2_powerbi": {},
                                 "error": str(e)
                             }
