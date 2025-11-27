@@ -8,6 +8,7 @@ import sys
 # from pypdf.errors import PdfReadError # Importa l'errore
 import logging # o semplicemente print
 import pandas as pd
+from core.config import config_manager
 
 
 def extract_error(data: Dict[str, Any]) -> Tuple[List[str], List[str], List[str]]:
@@ -287,6 +288,32 @@ def get_resource_path(relative_path):
             base_path = os.path.dirname(os.path.abspath(__file__))
    
     return os.path.join(base_path, relative_path)
+
+
+def get_flow_path(flow_name: str) -> str:
+    """
+    Ottiene il percorso del file di flusso FluentX dalla cartella App/Flows.
+
+    Args:
+        flow_name: Nome del flusso (es. "Sparkasse" o "DataFactory")
+
+    Returns:
+        Percorso assoluto del file .xlsm
+
+    Raises:
+        FileNotFoundError: Se il file non esiste
+    """
+    settings_path = config_manager.get_setting("SETTINGS_PATH")
+    if not settings_path:
+        raise FileNotFoundError("SETTINGS_PATH non configurato. Impossibile trovare i flussi.")
+
+    # Costruisce il percorso: <SETTINGS_PATH>/App/Flows/<flow_name>.xlsm
+    flow_path = os.path.join(settings_path, "App", "Flows", f"{flow_name}.xlsm")
+
+    if not os.path.exists(flow_path):
+        raise FileNotFoundError(f"File di flusso non trovato: {flow_path}")
+
+    return flow_path
 
 
 def get_script_path(relative_path):

@@ -13,7 +13,6 @@ a = Analysis(
     pathex=[current_dir],
     hookspath=[current_dir],
     binaries=[
-        ('scripts/config_data', 'spks_dispatching/config_data'),
         ('venv/Lib/site-packages/sharpynt/config_data', 'sharpynt/config_data'),
     ],
     datas=[

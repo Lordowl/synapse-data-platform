@@ -5,7 +5,7 @@ import logging
 from fluentx.flow_executor import run_flow
 from fluentx.utility import get_general_config
 from openpyxl import load_workbook
-from scripts.utility import extract_information, check_and_move, get_download_path, get_destination_path, extract_error, get_resource_path, get_users_list, get_config_from_sharepoint, get_users_from_sharepoint, get_flow_from_sharepoint
+from scripts.utility import extract_information, check_and_move, get_download_path, get_destination_path, extract_error, get_resource_path, get_flow_path, get_users_list, get_config_from_sharepoint, get_users_from_sharepoint, get_flow_from_sharepoint
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -109,9 +109,9 @@ def main(workspace: str, PBI_packages: list):
     app_chain = ["Aggiorna app"]
     workspace_chain = ["Cambia workspace"]
 
-    # Carica il flusso .xlsx o .xlsm per FluentX
+    # Carica il flusso .xlsx o .xlsm per FluentX dalla cartella App/Flows
     try:
-        _FLOW_PATH = get_resource_path(r"config_data/Sparkasse.xlsm")
+        _FLOW_PATH = get_flow_path("Sparkasse")
         _FLOW_NAME = basename(_FLOW_PATH).split(".")[0]
         workbook = load_workbook(_FLOW_PATH, data_only=True)
         logger.info(f"Flusso FluentX caricato: {_FLOW_PATH}")
