@@ -273,6 +273,7 @@ function Report() {
   const [packagesReady, setPackagesReady] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
+  const [selectedPublishPackages, setSelectedPublishPackages] = useState(new Set()); // Package selezionati per publish
   const [repoUpdateInfo, setRepoUpdateInfo] = useState({ anno: 2025, settimana: 29, mese: 1, semaforo: 0 });
   const [syncRunning, setSyncRunning] = useState(false); // Stato per tracciare se c'è un sync in corso
   const [syncInterval, setSyncInterval] = useState(5); // Intervallo di aggiornamento in secondi
@@ -755,12 +756,18 @@ const fetchPublishStatus = useCallback(async () => {
 
     try {
       if (actionName === 'pubblica-pre-check') {
-        showToast(`Avvio pubblicazione in Pre-Check...`, "info");
+        // Verifica che ci siano package selezionati
+        if (selectedPublishPackages.size === 0) {
+          showToast("Nessun package selezionato per la pubblicazione.", "warning");
+          return;
+        }
+
+        showToast(`Avvio pubblicazione in Pre-Check (${selectedPublishPackages.size} package)...`, "info");
 
         try {
-          // Chiama l'endpoint API per eseguire lo script Power BI
-          // I package vengono letti dalla tabella report_data del DB filtrati per banca
-          const response = await apiClient.post(`/reportistica/publish-precheck?periodicity=${currentPeriodicity}`);
+          // Costruisci query string con i package selezionati
+          const packagesParams = Array.from(selectedPublishPackages).map(pkg => `selected_packages=${encodeURIComponent(pkg)}`).join('&');
+          const response = await apiClient.post(`/reportistica/publish-precheck?periodicity=${currentPeriodicity}&${packagesParams}`);
 
           console.log('Risultati pubblicazione:', response.data);
           console.log(`Aggiornati ${response.data.packages.length} package:`, response.data.packages);
@@ -775,11 +782,18 @@ const fetchPublishStatus = useCallback(async () => {
         }
 
       } else if (actionName === 'pubblica-report') {
-        showToast(`Avvio pubblicazione Report in Produzione...`, "info");
+        // Verifica che ci siano package selezionati
+        if (selectedPublishPackages.size === 0) {
+          showToast("Nessun package selezionato per la pubblicazione.", "warning");
+          return;
+        }
+
+        showToast(`Avvio pubblicazione Report in Produzione (${selectedPublishPackages.size} package)...`, "info");
 
         try {
-          // Chiama l'endpoint API per production
-          const response = await apiClient.post(`/reportistica/publish-production?periodicity=${currentPeriodicity}`);
+          // Costruisci query string con i package selezionati
+          const packagesParams = Array.from(selectedPublishPackages).map(pkg => `selected_packages=${encodeURIComponent(pkg)}`).join('&');
+          const response = await apiClient.post(`/reportistica/publish-production?periodicity=${currentPeriodicity}&${packagesParams}`);
 
           console.log('Risultati pubblicazione produzione:', response.data);
           console.log(`Aggiornati ${response.data.packages.length} package:`, response.data.packages);
@@ -915,7 +929,8 @@ const fetchPublishStatus = useCallback(async () => {
       anno_prod: pkg.anno_prod,
       settimana_prod: pkg.settimana_prod,
       mese_prod: pkg.mese_prod,
-      bank: pkg.bank // Aggiungi anche la banca se serve
+      bank: pkg.bank, // Aggiungi anche la banca se serve
+      obbligatorio: pkg.obbligatorio === true // True se obbligatorio, False altrimenti
     }));
 
     console.log('publicationData MAPPED:', mapped);
@@ -940,11 +955,63 @@ const fetchPublishStatus = useCallback(async () => {
     });
   }, [tasksForSemaphore, repoUpdateInfo, currentPeriodicity]);
 
-  // Verifica se tutte le righe della seconda tabella hanno pre_check = true (verde, non error/timeout)
+  // Verifica se tutti i package SELEZIONATI hanno pre_check = true (verde, non error/timeout)
   const allPreCheckGreen = useMemo(() => {
-    return publicationData.length > 0 &&
-           publicationData.every(item => item.pre_check === true);
+    if (selectedPublishPackages.size === 0) return false;
+
+    // Filtra solo i package selezionati
+    const selectedItems = publicationData.filter(item => selectedPublishPackages.has(item.package));
+
+    return selectedItems.length > 0 &&
+           selectedItems.every(item => item.pre_check === true);
+  }, [publicationData, selectedPublishPackages]);
+
+  // Inizializza la selezione dei package per publish quando cambiano i dati
+  // I package obbligatori sono sempre selezionati
+  useEffect(() => {
+    if (publicationData.length > 0) {
+      // Seleziona automaticamente tutti i package obbligatori
+      const obbligatoriPackages = publicationData
+        .filter(pkg => pkg.obbligatorio)
+        .map(pkg => pkg.package);
+
+      setSelectedPublishPackages(prev => {
+        const newSelection = new Set(prev);
+        // Aggiungi tutti gli obbligatori
+        obbligatoriPackages.forEach(pkg => newSelection.add(pkg));
+        return newSelection;
+      });
+    }
   }, [publicationData]);
+
+  // Handler per toggle selezione package (solo per non-obbligatori)
+  const handlePublishPackageToggle = (packageName, isObbligatorio) => {
+    if (isObbligatorio) return; // Non permettere deselezionare obbligatori
+
+    setSelectedPublishPackages(prev => {
+      const newSelection = new Set(prev);
+      if (newSelection.has(packageName)) {
+        newSelection.delete(packageName);
+      } else {
+        newSelection.add(packageName);
+      }
+      return newSelection;
+    });
+  };
+
+  // Handler per seleziona/deseleziona tutti (solo non-obbligatori)
+  const handleSelectAllPublishPackages = (selectAll) => {
+    setSelectedPublishPackages(prev => {
+      const newSelection = new Set();
+      // Sempre includi gli obbligatori
+      publicationData.filter(pkg => pkg.obbligatorio).forEach(pkg => newSelection.add(pkg.package));
+      // Se selectAll, aggiungi anche gli opzionali
+      if (selectAll) {
+        publicationData.filter(pkg => !pkg.obbligatorio).forEach(pkg => newSelection.add(pkg.package));
+      }
+      return newSelection;
+    });
+  };
 
   // Icona dinamica per il tipo di report
   const ReportIcon = periodicityConfig.icon;
@@ -1328,6 +1395,16 @@ const fetchPublishStatus = useCallback(async () => {
               <table className="report-table" style={{ backgroundColor: 'white', width: '100%', tableLayout: 'fixed' }}>
                 <thead>
                   <tr>
+                    <th style={{ width: '50px', textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={publicationData.length > 0 && selectedPublishPackages.size === publicationData.length}
+                        onChange={(e) => handleSelectAllPublishPackages(e.target.checked)}
+                        disabled={loadingActions.global !== null}
+                        title="Seleziona/Deseleziona tutti"
+                        style={{ cursor: loadingActions.global !== null ? 'not-allowed' : 'pointer' }}
+                      />
+                    </th>
                     <th style={{ width: '120px' }}>Package</th>
                     <th style={{ width: '60px', textAlign: 'center' }}>Pre-Check</th>
                     <th style={{ width: '80px' }}>{currentPeriodicity === 'settimanale' ? 'Settimana' : 'Mese'}</th>
@@ -1341,13 +1418,31 @@ const fetchPublishStatus = useCallback(async () => {
                 <tbody>
                   {publicationData.length === 0 ? (
                     <tr>
-                      <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
                         Nessun package pronto per la pubblicazione.
                       </td>
                     </tr>
                   ) : publicationData.map(item => (
                     <tr key={item.id}>
-                      <td style={{ fontSize: '15px' }}><strong>{item.package}</strong></td>
+                      <td style={{ textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedPublishPackages.has(item.package)}
+                          onChange={() => handlePublishPackageToggle(item.package, item.obbligatorio)}
+                          disabled={item.obbligatorio || loadingActions.global !== null}
+                          title={item.obbligatorio ? 'Package obbligatorio (non deselezionabile)' : 'Seleziona per la pubblicazione'}
+                          style={{
+                            cursor: (item.obbligatorio || loadingActions.global !== null) ? 'not-allowed' : 'pointer',
+                            opacity: item.obbligatorio ? 0.7 : 1
+                          }}
+                        />
+                      </td>
+                      <td style={{ fontSize: '15px' }}>
+                        <strong>{item.package}</strong>
+                        {item.obbligatorio && (
+                          <span style={{ marginLeft: '6px', fontSize: '11px', color: '#dc2626', fontWeight: 'bold' }} title="Obbligatorio">*</span>
+                        )}
+                      </td>
                       <td style={{ textAlign: 'center' }}>
                         <div style={{
                           width: '100%',

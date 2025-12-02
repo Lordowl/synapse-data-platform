@@ -396,6 +396,7 @@ class ReportMapping(db.Base):
     package = Column(String, primary_key=True)
     finality = Column(String, nullable=True)  # Finalità del report
     datafactory = Column(String, nullable=True)  # Workspace Azure Data Factory (solo per mensili)
+    obbligatorio = Column(String, nullable=True)  # Y = obbligatorio (non deselezionabile), vuoto = opzionale
 
 class PublicationLog(db.Base):
     __tablename__ = "publication_logs"

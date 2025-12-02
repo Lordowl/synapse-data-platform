@@ -1775,6 +1775,7 @@ def toggle_disponibilita_server(
 @router.post("/publish-precheck")
 async def publish_precheck(
     periodicity: str = Query(..., description="Periodicità: 'settimanale' o 'mensile'"),
+    selected_packages: Optional[List[str]] = Query(None, description="Lista dei package selezionati (opzionale)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
@@ -1782,7 +1783,7 @@ async def publish_precheck(
     from sqlalchemy import func
     from db import publish_tracker
 
-    logger.info(f"publish_precheck called for user: {current_user.username}, bank: {current_user.bank}, periodicity: {periodicity}")
+    logger.info(f"publish_precheck called for user: {current_user.username}, bank: {current_user.bank}, periodicity: {periodicity}, selected_packages: {selected_packages}")
 
     try:
         # Normalizza periodicità
@@ -1837,7 +1838,14 @@ async def publish_precheck(
         workspace_datafactory = results[0][2] if len(results[0]) > 2 else None
 
         # Estrai lista dei package
-        pbi_packages = [row[1] for row in results if row[1]]
+        all_packages = [row[1] for row in results if row[1]]
+
+        # Se selected_packages è fornito, filtra solo quelli selezionati
+        if selected_packages:
+            pbi_packages = [pkg for pkg in all_packages if pkg in selected_packages]
+            logger.info(f"Filtered packages based on selection: {pbi_packages} (from {len(all_packages)} total)")
+        else:
+            pbi_packages = all_packages
 
         logger.info(f"Workspace Power BI: {workspace_powerbi}")
         logger.info(f"Workspace Data Factory: {workspace_datafactory}")
@@ -2173,6 +2181,7 @@ async def publish_precheck(
 @router.post("/publish-production")
 async def publish_production(
     periodicity: str = Query(..., description="Periodicità: 'settimanale' o 'mensile'"),
+    selected_packages: Optional[List[str]] = Query(None, description="Lista dei package selezionati (opzionale)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
@@ -2180,7 +2189,7 @@ async def publish_production(
     from sqlalchemy import func
     from db import publish_tracker
 
-    logger.info(f"publish_production called for user: {current_user.username}, bank: {current_user.bank}, periodicity: {periodicity}")
+    logger.info(f"publish_production called for user: {current_user.username}, bank: {current_user.bank}, periodicity: {periodicity}, selected_packages: {selected_packages}")
 
     try:
         # Normalizza periodicità
@@ -2235,7 +2244,14 @@ async def publish_production(
         workspace_datafactory = results[0][2] if len(results[0]) > 2 else None
 
         # Estrai lista dei package
-        pbi_packages = [row[1] for row in results if row[1]]
+        all_packages = [row[1] for row in results if row[1]]
+
+        # Se selected_packages è fornito, filtra solo quelli selezionati
+        if selected_packages:
+            pbi_packages = [pkg for pkg in all_packages if pkg in selected_packages]
+            logger.info(f"Filtered packages based on selection: {pbi_packages} (from {len(all_packages)} total)")
+        else:
+            pbi_packages = all_packages
 
         logger.info(f"Production Workspace Power BI: {workspace_powerbi}")
         logger.info(f"Production Workspace Data Factory: {workspace_datafactory}")
@@ -2897,7 +2913,7 @@ async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = 
         try:
             # Query packages da report_mapping (ORDER BY rowid per mantenere ordine DB)
             sql = text("""
-                SELECT package, ws_precheck, ws_production, bank, Type_reportisica
+                SELECT package, ws_precheck, ws_production, bank, Type_reportisica, obbligatorio
                 FROM report_mapping
                 WHERE LOWER(bank) = LOWER(:bank)
                 AND (:type_reportistica IS NULL OR Type_reportisica = :type_reportistica)
@@ -3065,6 +3081,7 @@ async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = 
                 ws_precheck = row[1]
                 ws_production = row[2]
                 pkg_type = row[4]
+                obbligatorio = row[5] if len(row) > 5 else None
 
                 # Determina se è settimanale o mensile
                 is_weekly = 'settimanale' in (pkg_type or '').lower()
@@ -3175,7 +3192,8 @@ async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = 
                     "mese_prod": mese_prod,
                     "type_reportistica": pkg_type,
                     "ws_precheck": ws_precheck,
-                    "ws_production": ws_production
+                    "ws_production": ws_production,
+                    "obbligatorio": obbligatorio == "Y"  # True se Y, False altrimenti
                 })
 
             return packages
