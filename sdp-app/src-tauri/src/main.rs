@@ -22,6 +22,44 @@ impl BackendState {
     }
 }
 
+// Comando per fermare il backend (usato prima degli aggiornamenti)
+#[tauri::command]
+fn stop_backend(state: tauri::State<Mutex<BackendState>>) -> Result<String, String> {
+    if let Some(pid) = state.lock().unwrap().pid {
+        println!("🛑 Terminazione backend con PID: {} (pre-update)", pid);
+
+        #[cfg(target_os = "windows")]
+        {
+            let result = StdCommand::new("taskkill")
+                .args(&["/PID", &pid.to_string(), "/F", "/T"])
+                .output();
+
+            match result {
+                Ok(output) => {
+                    if output.status.success() {
+                        state.lock().unwrap().pid = None;
+                        Ok(format!("Backend terminato (PID: {})", pid))
+                    } else {
+                        Err(format!("Errore taskkill: {:?}", output.stderr))
+                    }
+                }
+                Err(e) => Err(format!("Errore esecuzione taskkill: {}", e))
+            }
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            unsafe {
+                libc::kill(pid as i32, libc::SIGTERM);
+            }
+            state.lock().unwrap().pid = None;
+            Ok(format!("Backend terminato (PID: {})", pid))
+        }
+    } else {
+        Ok("Backend non in esecuzione".to_string())
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
@@ -29,6 +67,7 @@ fn main() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(Mutex::new(BackendState::new()))
+        .invoke_handler(tauri::generate_handler![stop_backend])
         .setup(|app| {
             // Prova prima il percorso delle binaries (dev), poi il resource dir (installed)
             let binaries_dir = PathBuf::from("C:\\Users\\EmanueleDeFeo\\Documents\\Projects\\Synapse-Data-Platform\\sdp-app\\src-tauri\\binaries");
