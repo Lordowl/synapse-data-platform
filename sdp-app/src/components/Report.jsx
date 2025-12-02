@@ -966,6 +966,47 @@ const fetchPublishStatus = useCallback(async () => {
            selectedItems.every(item => item.pre_check === true);
   }, [publicationData, selectedPublishPackages]);
 
+  // Trova i package con errori (pre_check o prod con errore/timeout)
+  const packagesWithErrors = useMemo(() => {
+    return publicationData.filter(item =>
+      item.pre_check === 'error' ||
+      item.pre_check === 'timeout' ||
+      item.prod === 'error' ||
+      item.prod === 'timeout'
+    );
+  }, [publicationData]);
+
+  // Handler per rilanciare i package con errori
+  const handleRetryErrors = async () => {
+    if (packagesWithErrors.length === 0) return;
+
+    const errorPackageNames = packagesWithErrors.map(p => p.package);
+
+    // Determina se rilanciare pre-check o prod in base allo stato degli errori
+    // Se ci sono errori in prod, rilancia prod; altrimenti rilancia pre-check
+    const hasProductionErrors = packagesWithErrors.some(p => p.prod === 'error' || p.prod === 'timeout');
+    const actionName = hasProductionErrors ? 'pubblica-report' : 'pubblica-pre-check';
+
+    setLoadingActions(prev => ({ ...prev, global: actionName }));
+
+    try {
+      showToast(`Rilancio ${errorPackageNames.length} package con errori...`, "info");
+
+      const packagesParams = errorPackageNames.map(pkg => `selected_packages=${encodeURIComponent(pkg)}`).join('&');
+      const endpoint = hasProductionErrors ? 'publish-production' : 'publish-precheck';
+      const response = await apiClient.post(`/reportistica/${endpoint}?periodicity=${currentPeriodicity}&${packagesParams}`);
+
+      console.log('Risultati rilancio:', response.data);
+      showToast(`Rilancio completato! (${response.data.packages.length} package)`, "success");
+
+    } catch (error) {
+      console.error('Errore rilancio:', error);
+      showToast(`Errore durante il rilancio: ${error.response?.data?.detail || error.message}`, "error");
+    } finally {
+      setLoadingActions(prev => ({ ...prev, global: null }));
+    }
+  };
+
   // Inizializza la selezione dei package per publish quando cambiano i dati
   // I package obbligatori sono sempre selezionati
   useEffect(() => {
@@ -1591,6 +1632,28 @@ const fetchPublishStatus = useCallback(async () => {
               >
                 <Send className="btn-icon-md" /> Pubblica Report {periodicityConfig.label}
               </button>
+
+              {/* Pulsante Rilancia con Errori - appare solo se ci sono errori */}
+              {packagesWithErrors.length > 0 && (
+                <button
+                  className="btn btn-outline"
+                  onClick={handleRetryErrors}
+                  disabled={loadingActions.global !== null}
+                  title={`Rilancia ${packagesWithErrors.length} package con errori: ${packagesWithErrors.map(p => p.package).join(', ')}`}
+                  style={{
+                    opacity: loadingActions.global !== null ? '0.4' : '1',
+                    cursor: loadingActions.global !== null ? 'not-allowed' : 'pointer',
+                    padding: '0.75rem 1rem',
+                    whiteSpace: 'nowrap',
+                    width: '100%',
+                    backgroundColor: '#fef2f2',
+                    borderColor: '#fca5a5',
+                    color: '#dc2626'
+                  }}
+                >
+                  <RefreshCw className="btn-icon-md" /> Rilancia Package Falliti ({packagesWithErrors.length})
+                </button>
+              )}
 
               {/* Indicatore di caricamento durante la pubblicazione */}
               {loadingActions.global && (
