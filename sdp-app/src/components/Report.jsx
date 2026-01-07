@@ -653,7 +653,8 @@ const fetchPublishStatus = useCallback(async () => {
   const tasksForSemaphore = useMemo(() => {
     const selectedBanca = sessionStorage.getItem("selectedBank");
     return reportTasks.filter(task => {
-      const matchesBanca = !selectedBanca || task.banca === selectedBanca;
+      // Confronto case-insensitive per la banca
+      const matchesBanca = !selectedBanca || task.banca?.toLowerCase() === selectedBanca.toLowerCase();
       const matchesPeriodicity = task.tipo_reportistica?.toLowerCase() === currentPeriodicity.toLowerCase();
       return matchesBanca && matchesPeriodicity;
     });
@@ -665,8 +666,8 @@ const fetchPublishStatus = useCallback(async () => {
     const selectedBanca = sessionStorage.getItem("selectedBank");
 
     const filtered = reportTasks.filter(task => {
-      // Filtro per banca selezionata
-      const matchesBanca = !selectedBanca || task.banca === selectedBanca;
+      // Filtro per banca selezionata (case-insensitive)
+      const matchesBanca = !selectedBanca || task.banca?.toLowerCase() === selectedBanca.toLowerCase();
 
       // Filtro per periodicità basato sul tab selezionato (case-insensitive)
       const matchesPeriodicity = task.tipo_reportistica?.toLowerCase() === currentPeriodicity.toLowerCase();
