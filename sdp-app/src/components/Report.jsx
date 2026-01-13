@@ -1479,7 +1479,7 @@ function Report() {
                           }}
                         />
                       </td>
-                      <td style={{ fontSize: '15px', wordBreak: 'break-word' }}>
+                      <td style={{ wordBreak: 'break-word' }}>
                         <strong>{item.package}</strong>
                         {item.obbligatorio && (
                           <span style={{ marginLeft: '6px', fontSize: '11px', color: '#dc2626', fontWeight: 'bold' }} title="Obbligatorio">*</span>
@@ -1500,12 +1500,12 @@ function Report() {
                           borderRadius: '4px'
                         }}></div>
                       </td>
-                      <td style={{ fontSize: '15px', textAlign: 'center' }}>
+                      <td style={{ textAlign: 'center' }}>
                         {currentPeriodicity === 'settimanale'
                           ? (item.settimana_precheck ? `Sett. ${item.settimana_precheck}` : 'N/D')
                           : (item.mese_precheck ? `Mese ${item.mese_precheck}` : 'N/D')}
                       </td>
-                      <td style={{ fontSize: '15px' }}>
+                      <td>
                         {item.data_esecuzione ? formatDateTime(item.data_esecuzione) : 'N/D'}
                       </td>
                       <td style={{ textAlign: 'center' }}>
@@ -1523,12 +1523,12 @@ function Report() {
                           borderRadius: '4px'
                         }}></div>
                       </td>
-                      <td style={{ fontSize: '15px', textAlign: 'center' }}>
+                      <td style={{ textAlign: 'center' }}>
                         {currentPeriodicity === 'settimanale'
                           ? (item.settimana_prod ? `Sett. ${item.settimana_prod}` : 'N/D')
                           : (item.mese_prod ? `Mese ${item.mese_prod}` : 'N/D')}
                       </td>
-                      <td style={{ fontSize: '15px' }}>
+                      <td>
                         {item.data_esecuzione_prod ? formatDateTime(item.data_esecuzione_prod) : 'N/D'}
                       </td>
                       <td className="text-xs" style={{
