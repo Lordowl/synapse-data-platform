@@ -254,7 +254,7 @@ const stabilizzaDate = (anno, settimana, lunedi) => {
 function Report() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  
+
   // Leggi la periodicità dai parametri URL o default a 'settimanale'
   const currentPeriodicity = searchParams.get('type') || 'settimanale';
   const periodicityConfig = PERIODICITY_CONFIG[currentPeriodicity] || PERIODICITY_CONFIG.settimanale;
@@ -360,55 +360,55 @@ function Report() {
     }
   }, []);
 
- const fetchSyncStatus = useCallback(async () => {
-  try {
-    // Usa l'endpoint /is-sync-running che ora include anche last_sync_info
+  const fetchSyncStatus = useCallback(async () => {
     try {
-      const response = await apiClient.get("/reportistica/is-sync-running");
-      console.log("Is sync running response:", response.data);
-      setSyncRunning(response.data?.is_running || false);
-      setSyncInterval(response.data?.update_interval || 5);
+      // Usa l'endpoint /is-sync-running che ora include anche last_sync_info
+      try {
+        const response = await apiClient.get("/reportistica/is-sync-running");
+        console.log("Is sync running response:", response.data);
+        setSyncRunning(response.data?.is_running || false);
+        setSyncInterval(response.data?.update_interval || 5);
 
-      // Aggiorna le informazioni sull'ultimo sync
-      if (response.data?.last_sync_time) {
-        setLastSyncInfo({
-          last_sync_time: response.data.last_sync_time,
-          last_sync_ago_seconds: response.data.last_sync_ago_seconds,
-          last_sync_ago_human: response.data.last_sync_ago_human
-        });
-      } else {
+        // Aggiorna le informazioni sull'ultimo sync
+        if (response.data?.last_sync_time) {
+          setLastSyncInfo({
+            last_sync_time: response.data.last_sync_time,
+            last_sync_ago_seconds: response.data.last_sync_ago_seconds,
+            last_sync_ago_human: response.data.last_sync_ago_human
+          });
+        } else {
+          setLastSyncInfo(null);
+        }
+
+        return; // Se funziona, usciamo dalla funzione
+      } catch (innerError) {
+        // Se l'errore è 422, ignoriamo e continuiamo con il fallback
+        console.log("Errore previsto, utilizzo fallback:", innerError.response?.status);
+
+        // Per qualsiasi errore, impostiamo semplicemente is_running a false
+        setSyncRunning(false);
+        setSyncInterval(5);
         setLastSyncInfo(null);
       }
-
-      return; // Se funziona, usciamo dalla funzione
-    } catch (innerError) {
-      // Se l'errore è 422, ignoriamo e continuiamo con il fallback
-      console.log("Errore previsto, utilizzo fallback:", innerError.response?.status);
-
-      // Per qualsiasi errore, impostiamo semplicemente is_running a false
+    } catch (error) {
+      // Questo catch esterno non dovrebbe mai essere raggiunto, ma per sicurezza
+      console.error("Errore critico nel verificare sync status:", error);
       setSyncRunning(false);
       setSyncInterval(5);
       setLastSyncInfo(null);
     }
-  } catch (error) {
-    // Questo catch esterno non dovrebbe mai essere raggiunto, ma per sicurezza
-    console.error("Errore critico nel verificare sync status:", error);
-    setSyncRunning(false);
-    setSyncInterval(5);
-    setLastSyncInfo(null);
-  }
-}, []);
+  }, []);
 
-const fetchPublishStatus = useCallback(async () => {
-  try {
-    const response = await apiClient.get("/reportistica/publish-status");
-    console.log("Publish status response:", response.data);
-    setPublishStatus(response.data);
-  } catch (error) {
-    console.error("Errore nel recupero publish status:", error);
-    setPublishStatus(null);
-  }
-}, []);
+  const fetchPublishStatus = useCallback(async () => {
+    try {
+      const response = await apiClient.get("/reportistica/publish-status");
+      console.log("Publish status response:", response.data);
+      setPublishStatus(response.data);
+    } catch (error) {
+      console.error("Errore nel recupero publish status:", error);
+      setPublishStatus(null);
+    }
+  }, []);
 
   // Funzione per caricare i data dalla tabella report_data
   // fetchPackagesReady rimosso - i dati arrivano via WebSocket
@@ -658,7 +658,7 @@ const fetchPublishStatus = useCallback(async () => {
       const matchesPeriodicity = task.tipo_reportistica?.toLowerCase() === currentPeriodicity.toLowerCase();
       return matchesBanca && matchesPeriodicity;
     });
-  }, [reportTasks, currentPeriodicity]); 
+  }, [reportTasks, currentPeriodicity]);
 
   // Filtra task per periodicità corrente + altri filtri (per la tabella)
   const filteredReportTasks = useMemo(() => {
@@ -723,7 +723,7 @@ const fetchPublishStatus = useCallback(async () => {
     // Fallback a muted
     return 'muted';
 
-  }, [tasksForSemaphore]); 
+  }, [tasksForSemaphore]);
 
   const handleTaskSelection = (taskId) => {
     setSelectedTaskIds(prev => {
@@ -744,7 +744,7 @@ const fetchPublishStatus = useCallback(async () => {
       setSelectedTaskIds(new Set());
     }
   };
-  
+
   const handleGlobalAction = async (actionName) => {
     if (actionName === 'esegui' && selectedTaskIds.size === 0) {
       showToast("Nessun task selezionato per l'esecuzione.", "warning");
@@ -964,7 +964,7 @@ const fetchPublishStatus = useCallback(async () => {
     const selectedItems = publicationData.filter(item => selectedPublishPackages.has(item.package));
 
     return selectedItems.length > 0 &&
-           selectedItems.every(item => item.pre_check === true);
+      selectedItems.every(item => item.pre_check === true);
   }, [publicationData, selectedPublishPackages]);
 
   // Trova i package con errori (pre_check o prod con errore/timeout)
@@ -1061,7 +1061,7 @@ const fetchPublishStatus = useCallback(async () => {
   return (
     <div className="report-container">
 
-      
+
       <div className="report-content-wrapper">
         <header className="report-header-container">
           <div className="report-header">
@@ -1229,7 +1229,7 @@ const fetchPublishStatus = useCallback(async () => {
                   }}
                   disabled={loadingActions.global !== null}
                 >
-                  {Array.from({length: 52}, (_, i) => (
+                  {Array.from({ length: 52 }, (_, i) => (
                     <option key={i + 1} value={i + 1}>Settimana {i + 1}</option>
                   ))}
                 </select>
@@ -1262,7 +1262,7 @@ const fetchPublishStatus = useCallback(async () => {
                   }}
                   disabled={loadingActions.global !== null}
                 >
-                  {Array.from({length: 12}, (_, i) => (
+                  {Array.from({ length: 12 }, (_, i) => (
                     <option key={i + 1} value={i + 1}>Mese {i + 1}</option>
                   ))}
                 </select>
@@ -1278,7 +1278,7 @@ const fetchPublishStatus = useCallback(async () => {
                 value={repoUpdateInfo.anno || ''}
                 onChange={async (e) => {
                   const newAnno = parseInt(e.target.value);
-                  setRepoUpdateInfo(prev => ({...prev, anno: newAnno}));
+                  setRepoUpdateInfo(prev => ({ ...prev, anno: newAnno }));
                   try {
                     await apiClient.put('/repo-update/', { anno: newAnno });
                     // I pacchetti vengono aggiornati automaticamente via WebSocket
@@ -1403,12 +1403,12 @@ const fetchPublishStatus = useCallback(async () => {
                         fontSize: '14px',
                         cursor: task.dettagli ? 'pointer' : 'default'
                       }}
-                      title="Clicca per vedere i dettagli completi"
-                      onClick={() => {
-                        if (task.dettagli) {
-                          showDetailsModal(`Dettagli - ${task.nome_file}`, task.dettagli);
-                        }
-                      }}>
+                        title="Clicca per vedere i dettagli completi"
+                        onClick={() => {
+                          if (task.dettagli) {
+                            showDetailsModal(`Dettagli - ${task.nome_file}`, task.dettagli);
+                          }
+                        }}>
                         {/* Mostra messaggio breve - dettagli completi nel popup */}
                         {task.disponibilita_server === true ? (
                           <span>File disponibile ✓</span>
@@ -1447,14 +1447,14 @@ const fetchPublishStatus = useCallback(async () => {
                         style={{ cursor: loadingActions.global !== null ? 'not-allowed' : 'pointer' }}
                       />
                     </th>
-                    <th style={{ width: '120px' }}>Package</th>
+                    <th style={{ width: '250px' }}>Package</th>
                     <th style={{ width: '60px', textAlign: 'center' }}>Pre-Check</th>
                     <th style={{ width: '80px' }}>{currentPeriodicity === 'settimanale' ? 'Settimana' : 'Mese'}</th>
                     <th style={{ width: '110px' }}>Data Pre-Check</th>
                     <th style={{ width: '60px', textAlign: 'center' }}>Prod</th>
                     <th style={{ width: '80px' }}>{currentPeriodicity === 'settimanale' ? 'Settimana' : 'Mese'}</th>
                     <th style={{ width: '110px' }}>Data Prod</th>
-                    <th style={{ width: '200px' }}>Dettagli</th>
+                    <th style={{ width: '150px' }}>Dettagli</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1479,7 +1479,7 @@ const fetchPublishStatus = useCallback(async () => {
                           }}
                         />
                       </td>
-                      <td style={{ fontSize: '15px' }}>
+                      <td style={{ fontSize: '15px', wordBreak: 'break-word' }}>
                         <strong>{item.package}</strong>
                         {item.obbligatorio && (
                           <span style={{ marginLeft: '6px', fontSize: '11px', color: '#dc2626', fontWeight: 'bold' }} title="Obbligatorio">*</span>
@@ -1491,9 +1491,9 @@ const fetchPublishStatus = useCallback(async () => {
                           height: '10px',
                           backgroundColor:
                             item.pre_check === true ? '#22c55e' :  // Verde - successo
-                            item.pre_check === 'error' ? '#ef4444' :  // Rosso - errore
-                            item.pre_check === 'timeout' ? '#f59e0b' :  // Arancione - timeout
-                            'transparent',  // Grigio - in attesa
+                              item.pre_check === 'error' ? '#ef4444' :  // Rosso - errore
+                                item.pre_check === 'timeout' ? '#f59e0b' :  // Arancione - timeout
+                                  'transparent',  // Grigio - in attesa
                           border: (item.pre_check !== true && item.pre_check !== 'error' && item.pre_check !== 'timeout')
                             ? '1px solid #9ca3af'
                             : 'none',
@@ -1514,9 +1514,9 @@ const fetchPublishStatus = useCallback(async () => {
                           height: '10px',
                           backgroundColor:
                             item.prod === true ? '#22c55e' :  // Verde - successo
-                            item.prod === 'error' ? '#ef4444' :  // Rosso - errore
-                            item.prod === 'timeout' ? '#f59e0b' :  // Arancione - timeout
-                            'transparent',  // Grigio - in attesa
+                              item.prod === 'error' ? '#ef4444' :  // Rosso - errore
+                                item.prod === 'timeout' ? '#f59e0b' :  // Arancione - timeout
+                                  'transparent',  // Grigio - in attesa
                           border: (item.prod !== true && item.prod !== 'error' && item.prod !== 'timeout')
                             ? '1px solid #9ca3af'
                             : 'none',
@@ -1532,42 +1532,42 @@ const fetchPublishStatus = useCallback(async () => {
                         {item.data_esecuzione_prod ? formatDateTime(item.data_esecuzione_prod) : 'N/D'}
                       </td>
                       <td className="text-xs" style={{
-                        maxWidth: '200px',
+                        maxWidth: '150px',
                         whiteSpace: 'pre-wrap',
                         fontSize: '14px',
                         cursor: item.dettagli || item.dettagli_prod || item.error_precheck || item.error_prod ? 'pointer' : 'default'
                       }}
-                      title="Clicca per vedere i dettagli completi"
-                      onClick={() => {
-                        // Costruisci il contenuto del popup con i dettagli completi
-                        if (item.dettagli || item.dettagli_prod || item.error_precheck || item.error_prod) {
-                          let content = `Pre-Check:\n${item.dettagli || 'N/D'}\n`;
+                        title="Clicca per vedere i dettagli completi"
+                        onClick={() => {
+                          // Costruisci il contenuto del popup con i dettagli completi
+                          if (item.dettagli || item.dettagli_prod || item.error_precheck || item.error_prod) {
+                            let content = `Pre-Check:\n${item.dettagli || 'N/D'}\n`;
 
-                          // Aggiungi errore pre-check se presente
-                          if (item.error_precheck) {
-                            try {
-                              const errorObj = JSON.parse(item.error_precheck);
-                              content += `\nErrore Pre-Check:\n${JSON.stringify(errorObj, null, 2)}\n`;
-                            } catch {
-                              content += `\nErrore Pre-Check:\n${item.error_precheck}\n`;
+                            // Aggiungi errore pre-check se presente
+                            if (item.error_precheck) {
+                              try {
+                                const errorObj = JSON.parse(item.error_precheck);
+                                content += `\nErrore Pre-Check:\n${JSON.stringify(errorObj, null, 2)}\n`;
+                              } catch {
+                                content += `\nErrore Pre-Check:\n${item.error_precheck}\n`;
+                              }
                             }
-                          }
 
-                          content += `\nProduction:\n${item.dettagli_prod || 'N/D'}\n`;
+                            content += `\nProduction:\n${item.dettagli_prod || 'N/D'}\n`;
 
-                          // Aggiungi errore production se presente
-                          if (item.error_prod) {
-                            try {
-                              const errorObj = JSON.parse(item.error_prod);
-                              content += `\nErrore Production:\n${JSON.stringify(errorObj, null, 2)}\n`;
-                            } catch {
-                              content += `\nErrore Production:\n${item.error_prod}\n`;
+                            // Aggiungi errore production se presente
+                            if (item.error_prod) {
+                              try {
+                                const errorObj = JSON.parse(item.error_prod);
+                                content += `\nErrore Production:\n${JSON.stringify(errorObj, null, 2)}\n`;
+                              } catch {
+                                content += `\nErrore Production:\n${item.error_prod}\n`;
+                              }
                             }
-                          }
 
-                          showDetailsModal(`Dettagli Pubblicazione - ${item.package}`, content);
-                        }
-                      }}>
+                            showDetailsModal(`Dettagli Pubblicazione - ${item.package}`, content);
+                          }
+                        }}>
                         {/* Mostra messaggio breve - dettagli completi nel popup */}
                         {item.prod === true ? (
                           <span style={{ color: '#22c55e' }}>Pubblicato ✓</span>
@@ -1594,7 +1594,7 @@ const fetchPublishStatus = useCallback(async () => {
               display: 'flex',
               flexDirection: 'column',
               gap: '1rem',
-              minWidth: '250px',
+              minWidth: '160px',
               paddingTop: '0.5rem',
               alignItems: 'stretch'
             }}>
@@ -1606,8 +1606,11 @@ const fetchPublishStatus = useCallback(async () => {
                 style={{
                   opacity: (!allFirstTableGreen || loadingActions.global !== null) ? '0.4' : '1',
                   cursor: (!allFirstTableGreen || loadingActions.global !== null) ? 'not-allowed' : 'pointer',
-                  padding: '0.75rem 1rem',
-                  whiteSpace: 'nowrap',
+                  padding: '0.5rem 0.75rem',
+                  whiteSpace: 'normal',
+                  fontSize: '13px',
+                  height: 'auto',
+                  lineHeight: '1.2',
                   width: '100%'
                 }}
               >
@@ -1620,14 +1623,17 @@ const fetchPublishStatus = useCallback(async () => {
                 disabled={!allFirstTableGreen || !allPreCheckGreen || loadingActions.global !== null}
                 title={
                   !allFirstTableGreen ? "Tutte le righe della prima tabella devono avere disponibilità file verde" :
-                  !allPreCheckGreen ? "Tutte le righe devono avere Pre-Check verde" :
-                  `Pubblica Report ${periodicityConfig.label}`
+                    !allPreCheckGreen ? "Tutte le righe devono avere Pre-Check verde" :
+                      `Pubblica Report ${periodicityConfig.label}`
                 }
                 style={{
                   opacity: (!allFirstTableGreen || !allPreCheckGreen || loadingActions.global !== null) ? '0.4' : '1',
                   cursor: (!allFirstTableGreen || !allPreCheckGreen || loadingActions.global !== null) ? 'not-allowed' : 'pointer',
-                  padding: '0.75rem 1rem',
-                  whiteSpace: 'nowrap',
+                  padding: '0.5rem 0.75rem',
+                  whiteSpace: 'normal',
+                  fontSize: '13px',
+                  height: 'auto',
+                  lineHeight: '1.2',
                   width: '100%'
                 }}
               >
@@ -1644,8 +1650,11 @@ const fetchPublishStatus = useCallback(async () => {
                   style={{
                     opacity: loadingActions.global !== null ? '0.4' : '1',
                     cursor: loadingActions.global !== null ? 'not-allowed' : 'pointer',
-                    padding: '0.75rem 1rem',
-                    whiteSpace: 'nowrap',
+                    padding: '0.5rem 0.75rem',
+                    whiteSpace: 'normal',
+                    fontSize: '13px',
+                    height: 'auto',
+                    lineHeight: '1.2',
                     width: '100%',
                     backgroundColor: '#fef2f2',
                     borderColor: '#fca5a5',
@@ -1670,8 +1679,8 @@ const fetchPublishStatus = useCallback(async () => {
                   <div className="loading-spinner" style={{ marginBottom: '0.5rem' }}></div>
                   <div style={{ fontSize: '14px', fontWeight: '500' }}>
                     {loadingActions.global === 'pubblica-pre-check' ? 'Pubblicazione Pre-Check in corso...' :
-                     loadingActions.global === 'pubblica-report' ? 'Pubblicazione Report in corso...' :
-                     'Operazione in corso...'}
+                      loadingActions.global === 'pubblica-report' ? 'Pubblicazione Report in corso...' :
+                        'Operazione in corso...'}
                   </div>
                   <div style={{ fontSize: '12px', color: '#64748b', marginTop: '0.25rem' }}>
                     La tabella si aggiornerà automaticamente al termine

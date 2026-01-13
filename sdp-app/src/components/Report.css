@@ -149,7 +149,7 @@
   }
   .report-table th,
   .report-table td {
-    padding: var(--space-3);
+    padding: var(--space-2);
     text-align: left;
     font-size: var(--text-sm);
     border-bottom: 1px solid var(--neomorphic-dark);
