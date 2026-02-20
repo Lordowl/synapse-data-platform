@@ -1157,9 +1157,11 @@ function Report() {
                 <button
                   onClick={async () => {
                     console.log("Refresh button clicked - triggering sync");
+                    const selectedBank = sessionStorage.getItem("selectedBank");
                     showToast("Avvio sincronizzazione...", "info");
                     try {
-                      const response = await apiClient.post("/reportistica/trigger-sync");
+                      const payload = selectedBank ? { bank: selectedBank } : {};
+                      const response = await apiClient.post("/reportistica/trigger-sync", payload);
                       console.log("Trigger sync response:", response.data);
 
                       if (response.data.success) {

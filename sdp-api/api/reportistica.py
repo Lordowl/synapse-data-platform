@@ -83,6 +83,27 @@ class PackageReady(BaseModel):
     prod: bool = False
     log: str = "In attesa di elaborazione"
 
+
+class TriggerSyncRequest(BaseModel):
+    bank: Optional[str] = None
+
+
+def normalize_bank_label(bank: Optional[str]) -> str:
+    """Normalize known bank labels to canonical casing used by reposync."""
+    if not bank:
+        return ""
+
+    cleaned = bank.strip()
+    if not cleaned:
+        return ""
+
+    canonical_map = {
+        "sparkasse": "Sparkasse",
+        "civibank": "CiviBank",
+    }
+    return canonical_map.get(cleaned.lower(), cleaned)
+
+
 @router.get("/")
 def get_reportistica_items(
     skip: int = Query(0, ge=0, description="Numero di record da saltare"),
@@ -805,11 +826,27 @@ def sync_debug(
 
 @router.post("/trigger-sync")
 def trigger_sync(
+      request: Optional[TriggerSyncRequest] = None,
       db: Session = Depends(get_db),
       current_user: User = Depends(get_current_user)
   ):
       try:
           from datetime import datetime
+
+          requested_bank = normalize_bank_label(request.bank) if request else ""
+          user_bank = normalize_bank_label(current_user.bank)
+
+          if requested_bank and user_bank and requested_bank.lower() != user_bank.lower():
+              logger.warning(
+                  "Mismatched bank in trigger-sync request: requested='%s', user_bank='%s', user='%s'. Using user bank.",
+                  requested_bank,
+                  user_bank,
+                  current_user.username,
+              )
+
+          effective_bank = user_bank or requested_bank
+          if not effective_bank:
+              raise HTTPException(status_code=400, detail="Nessuna banca disponibile per avviare il sync")
 
           # Path base per marker e configurazione
           from core.config import config_manager
@@ -850,7 +887,7 @@ def trigger_sync(
           with open(marker_file, "w") as f:
               f.write(f"timestamp:{datetime.now().isoformat()}\n")
               f.write(f"user:{current_user.username}\n")
-              f.write(f"bank:{current_user.bank}\n")
+              f.write(f"bank:{effective_bank}\n")
 
           logger.info(f"✓ Marker file created: {marker_file}")
 
@@ -911,6 +948,7 @@ def trigger_sync(
           sync_command = [
               reposync_exe,
               "-c",
+              "--bank", effective_bank,
               "--enable-file-logging",
               "--log-level", "DEBUG"
           ]
@@ -965,7 +1003,8 @@ def trigger_sync(
               "is_running": True,
               "pid": process_pid,
               "stdout_log": stdout_log,
-              "stderr_log": stderr_log
+              "stderr_log": stderr_log,
+              "bank": effective_bank
           }
 
       except HTTPException:
