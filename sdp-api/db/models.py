@@ -25,6 +25,7 @@ class SyncRun(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     operation_type = Column(String, index=True, nullable=True)  # Changed from 'status' to 'operation_type'
+    bank = Column(String, index=True, nullable=True)
     start_time = Column(DateTime(timezone=True), nullable=True)
     end_time = Column(DateTime(timezone=True), nullable=True)
     update_interval = Column(Integer, nullable=True)  # Added field

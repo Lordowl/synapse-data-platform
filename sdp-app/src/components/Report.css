@@ -137,15 +137,32 @@
     max-height: 400px; /* Altezza fissa per la tabella con scroll interno */
     border-radius: var(--rounded-base);
     background: var(--primary-bg);
+    position: relative;
+    isolation: isolate;
     box-shadow: inset calc(var(--shadow-distance) / 2) calc(var(--shadow-distance) / 2) var(--shadow-distance) var(--neomorphic-dark),
                 inset calc(var(--shadow-distance) / -2) calc(var(--shadow-distance) / -2) var(--shadow-distance) var(--neomorphic-light);
-    padding: var(--space-1);
+    padding: 0 var(--space-1) var(--space-1) var(--space-1);
   }
   .report-table {
     width: 100%;
     min-width: 1000px;
     border-collapse: separate;
     border-spacing: 0;
+    --report-table-head-bg: var(--primary-bg);
+    --report-table-body-bg: var(--primary-bg);
+  }
+  .report-table-head {
+    position: static;
+  }
+  .report-table-head th {
+    font-weight: 600;
+    background-color: var(--report-table-head-bg) !important;
+    background-clip: padding-box;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    transform: translateZ(0);
+    box-shadow: 0 1px 0 0 var(--neomorphic-dark);
   }
   .report-table th,
   .report-table td {
@@ -157,10 +174,9 @@
   }
   .report-table th {
     font-weight: 600;
-    background-color: var(--primary-bg);
-    position: sticky;
-    top: 0;
-    z-index: 1;
+  }
+  .report-table td {
+    background-color: var(--report-table-body-bg);
   }
   .report-table tr:last-child td {
     border-bottom: none;

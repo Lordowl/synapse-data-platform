@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+﻿from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func, desc
 from typing import List, Optional, Dict, Any, Set
@@ -104,6 +104,301 @@ def normalize_bank_label(bank: Optional[str]) -> str:
     return canonical_map.get(cleaned.lower(), cleaned)
 
 
+def _bank_to_token(bank: Optional[str]) -> str:
+    normalized = normalize_bank_label(bank)
+    token = re.sub(r"[^a-zA-Z0-9]+", "_", normalized).strip("_").lower()
+    return token or "default"
+
+
+def _parse_datetime_value(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        raw = str(value).strip()
+        if not raw:
+            return None
+
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+
+        try:
+            dt = datetime.fromisoformat(raw)
+        except ValueError:
+            parsed = None
+            for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+                try:
+                    parsed = datetime.strptime(raw, fmt)
+                    break
+                except ValueError:
+                    continue
+            if parsed is None:
+                return None
+            dt = parsed
+
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+    return dt
+
+
+def _build_last_sync_info(last_sync_time: Any, now: Optional[datetime] = None) -> Optional[dict]:
+    parsed = _parse_datetime_value(last_sync_time)
+    if not parsed:
+        return None
+
+    now_utc = now or datetime.utcnow()
+    time_diff = max(0.0, (now_utc - parsed).total_seconds())
+
+    if time_diff < 60:
+        last_sync_human = f"{int(time_diff)} secondi fa"
+    elif time_diff < 3600:
+        minutes = int(time_diff / 60)
+        last_sync_human = f"{minutes} minuto fa" if minutes == 1 else f"{minutes} minuti fa"
+    elif time_diff < 86400:
+        hours = int(time_diff / 3600)
+        last_sync_human = f"{hours} ora fa" if hours == 1 else f"{hours} ore fa"
+    else:
+        days = int(time_diff / 86400)
+        last_sync_human = f"{days} giorno fa" if days == 1 else f"{days} giorni fa"
+
+    return {
+        "last_sync_time": parsed.isoformat(),
+        "last_sync_ago_seconds": int(time_diff),
+        "last_sync_ago_human": last_sync_human
+    }
+
+
+def _get_sync_run_row(
+    db: Session,
+    bank: Optional[str],
+    columns: str = "end_time, update_interval",
+):
+    """
+    Fetch sync_runs row for a specific bank when available.
+    Falls back to legacy row ID=1 if bank filtering is unsupported.
+    """
+    normalized_bank = normalize_bank_label(bank)
+    if normalized_bank:
+        try:
+            return db.execute(
+                text(
+                    f"""
+                    SELECT {columns}
+                    FROM sync_runs
+                    WHERE operation_type = 'sync'
+                      AND LOWER(TRIM(bank)) = LOWER(TRIM(:bank))
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """
+                ),
+                {"bank": normalized_bank},
+            ).fetchone()
+        except Exception as e:
+            logger.debug(f"Bank-specific sync_runs lookup failed, using legacy fallback: {e}")
+
+    return db.execute(
+        text(f"SELECT {columns} FROM sync_runs WHERE id = 1")
+    ).fetchone()
+
+
+def _read_sync_metadata(path: Optional[str]) -> Dict[str, str]:
+    if not path or not os.path.exists(path):
+        return {}
+
+    data: Dict[str, str] = {}
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if ":" in line:
+                    key, value = line.split(":", 1)
+                    data[key.strip().lower()] = value.strip()
+    except Exception:
+        return {}
+    return data
+
+
+def _metadata_matches_bank(metadata: Dict[str, str], bank: Optional[str]) -> bool:
+    expected = normalize_bank_label(bank)
+    if not expected:
+        return True
+
+    file_bank = normalize_bank_label(metadata.get("bank"))
+    if not file_bank:
+        # File legacy senza banca esplicita: non usarlo per stato per-banca
+        return False
+
+    return file_bank.lower() == expected.lower()
+
+
+def _resolve_sync_files(base_folder: str, bank: Optional[str]) -> Dict[str, Optional[str]]:
+    sdp_folder = os.path.join(base_folder, ".sdp")
+    log_dir = os.path.join(base_folder, "App", "Dashboard", "sync_logs")
+    bank_token = _bank_to_token(bank)
+
+    marker_candidates = [
+        os.path.join(sdp_folder, f"sync_requested_{bank_token}.marker"),
+        os.path.join(sdp_folder, "sync_requested.marker"),
+    ]
+    pid_candidates = [
+        os.path.join(log_dir, f"current_sync_{bank_token}.pid"),
+        os.path.join(log_dir, "current_sync.pid"),
+    ]
+
+    marker_file = None
+    for candidate in marker_candidates:
+        metadata = _read_sync_metadata(candidate)
+        if metadata and _metadata_matches_bank(metadata, bank):
+            marker_file = candidate
+            break
+
+    pid_file = None
+    for candidate in pid_candidates:
+        metadata = _read_sync_metadata(candidate)
+        if metadata and _metadata_matches_bank(metadata, bank):
+            pid_file = candidate
+            break
+
+    return {
+        "sdp_folder": sdp_folder,
+        "log_dir": log_dir,
+        "bank_token": bank_token,
+        "marker_file": marker_file,
+        "pid_file": pid_file,
+        "marker_candidates": marker_candidates,
+        "pid_candidates": pid_candidates,
+    }
+
+
+def _read_pid_from_file(pid_file: Optional[str]) -> Optional[int]:
+    metadata = _read_sync_metadata(pid_file)
+    pid_raw = metadata.get("pid")
+    if not pid_raw:
+        return None
+    try:
+        return int(pid_raw)
+    except (ValueError, TypeError):
+        return None
+
+
+def _compute_sync_status(db: Session, bank: Optional[str]) -> dict:
+    from core.config import config_manager
+    import psutil
+
+    effective_bank = normalize_bank_label(bank)
+    now = datetime.utcnow()
+
+    base_folder = config_manager.get_setting("SETTINGS_PATH")
+    if not base_folder:
+        return {"is_running": False, "status": "idle", "bank": effective_bank}
+
+    paths = _resolve_sync_files(base_folder, effective_bank)
+    marker_file = paths["marker_file"]
+    pid_file = paths["pid_file"]
+    log_dir = paths["log_dir"]
+    bank_token = paths["bank_token"]
+    same_bank_activity = False
+
+    # 1) Marker + PID/log recenti -> starting
+    if marker_file and os.path.exists(marker_file):
+        same_bank_activity = True
+        marker_data = _read_sync_metadata(marker_file)
+        marker_time = _parse_datetime_value(marker_data.get("timestamp"))
+
+        if marker_time:
+            marker_age = (now - marker_time).total_seconds()
+            if marker_age < 300:
+                pid = _read_pid_from_file(pid_file)
+                if pid:
+                    try:
+                        proc = psutil.Process(pid)
+                        if proc.is_running():
+                            response = {"is_running": True, "status": "starting", "bank": effective_bank}
+                            last_sync_info = _build_last_sync_info(marker_data.get("timestamp"), now=now)
+                            if last_sync_info:
+                                response.update(last_sync_info)
+                            return response
+                    except psutil.NoSuchProcess:
+                        pass
+
+                if os.path.exists(log_dir):
+                    bank_logs = [f for f in os.listdir(log_dir) if f.startswith(f"sync_stdout_{bank_token}_")]
+                    if bank_logs:
+                        latest_log = max([os.path.join(log_dir, f) for f in bank_logs], key=os.path.getmtime)
+                        log_age = now.timestamp() - os.path.getmtime(latest_log)
+                        if log_age < 120:
+                            response = {"is_running": True, "status": "starting", "bank": effective_bank}
+                            last_sync_info = _build_last_sync_info(marker_data.get("timestamp"), now=now)
+                            if last_sync_info:
+                                response.update(last_sync_info)
+                            return response
+            elif marker_age >= 300:
+                try:
+                    os.remove(marker_file)
+                except Exception:
+                    pass
+
+    # 2) Processo attivo per banca -> starting
+    pid = _read_pid_from_file(pid_file)
+    if pid:
+        same_bank_activity = True
+        try:
+            proc = psutil.Process(pid)
+            if proc.is_running():
+                return {"is_running": True, "status": "starting", "bank": effective_bank}
+        except psutil.NoSuchProcess:
+            pass
+
+    # 3) Heartbeat DB globale + evidenza locale della banca -> running
+    heartbeat_active = False
+    update_interval = None
+    sync_end_time = None
+    sync_row = _get_sync_run_row(db, effective_bank, "end_time, update_interval")
+    if sync_row:
+        sync_end_time, update_interval = sync_row
+        parsed_end = _parse_datetime_value(sync_end_time)
+        if parsed_end and update_interval is not None:
+            interval_seconds = max(int(update_interval), 0) * 60
+            time_diff = (now - parsed_end).total_seconds()
+            if interval_seconds > 0 and time_diff < interval_seconds and same_bank_activity:
+                heartbeat_active = True
+
+    # Last sync per banca:
+    # 1) usa sync_runs.end_time (ora specifico per banca)
+    # 2) fallback legacy a repo_update_info.updated_at se sync_runs non è disponibile
+    sync_last_sync = _parse_datetime_value(sync_end_time)
+    repo_update_last_sync = None
+    if effective_bank:
+        bank_row = db.execute(
+            text(
+                "SELECT updated_at FROM repo_update_info "
+                "WHERE LOWER(TRIM(bank)) = LOWER(TRIM(:bank)) "
+                "ORDER BY id DESC LIMIT 1"
+            ),
+            {"bank": effective_bank}
+        ).fetchone()
+        if bank_row:
+            repo_update_last_sync = _parse_datetime_value(bank_row[0])
+
+    last_sync_reference = sync_last_sync or repo_update_last_sync
+    last_sync_info = _build_last_sync_info(last_sync_reference, now=now)
+
+    if heartbeat_active:
+        response = {"is_running": True, "status": "running", "bank": effective_bank}
+        if update_interval is not None:
+            response["update_interval"] = update_interval
+        if last_sync_info:
+            response.update(last_sync_info)
+        return response
+
+    response = {"is_running": False, "status": "idle", "bank": effective_bank}
+    if last_sync_info:
+        response.update(last_sync_info)
+    return response
+
+
 @router.get("/")
 def get_reportistica_items(
     skip: int = Query(0, ge=0, description="Numero di record da saltare"),
@@ -194,195 +489,13 @@ def is_sync_running(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Verifica se c'è un sync in corso con logica a 3 livelli:
-    1. Marker file (sync appena lanciato, fase iniziale)
-    2. Log files recenti (sync in avvio/inizializzazione)
-    3. Database sync_runs (sync attivo con heartbeat)
-
-    Restituisce {"is_running": true/false, "status": "starting"|"running"|"idle"}
+    Verifica lo stato del sync per la banca dell'utente loggato.
     """
     try:
-        from datetime import datetime, timedelta
-        import psutil
-        from core.config import config_manager
-
-        base_folder = config_manager.get_setting("SETTINGS_PATH")
-        if not base_folder:
-            return {"is_running": False, "status": "idle"}
-
-        # Path ai file di controllo
-        sdp_folder = os.path.join(base_folder, ".sdp")
-        marker_file = os.path.join(sdp_folder, "sync_requested.marker")
-        log_dir = os.path.join(base_folder, "App", "Dashboard", "sync_logs")
-        pid_file = os.path.join(log_dir, "current_sync.pid")
-
-        now = datetime.utcnow()
-
-        logger.debug(f"is-sync-running check: marker={os.path.exists(marker_file)}, pid_file={os.path.exists(pid_file)}, log_dir={os.path.exists(log_dir)}")
-
-        # LIVELLO 1: Controlla se esiste il marker file (sync appena richiesto)
-        if os.path.exists(marker_file):
-            # Leggi timestamp dal marker
-            try:
-                with open(marker_file, "r") as f:
-                    content = f.read()
-                    for line in content.split("\n"):
-                        if line.startswith("timestamp:"):
-                            marker_time_str = line.split(":", 1)[1]
-                            marker_time = datetime.fromisoformat(marker_time_str)
-                            time_since_marker = (now - marker_time).total_seconds()
-
-                            # Se il marker è recente (<5 minuti)
-                            if time_since_marker < 300:
-                                # Controlla se il processo PID esiste
-                                pid = None
-                                process_alive = False
-                                if os.path.exists(pid_file):
-                                    with open(pid_file, "r") as pf:
-                                        for pid_line in pf:
-                                            if pid_line.startswith("PID:"):
-                                                pid = int(pid_line.split(":")[1])
-                                                break
-
-                                # Se il processo è attivo, siamo in fase "starting"
-                                if pid:
-                                    try:
-                                        proc = psutil.Process(pid)
-                                        if proc.is_running():
-                                            process_alive = True
-                                            logger.debug(f"Marker file exists, PID {pid} is running - status: starting")
-                                            return {"is_running": True, "status": "starting"}
-                                    except psutil.NoSuchProcess:
-                                        logger.info(f"Process {pid} not found, but marker is recent")
-
-                                # Se il marker è recente MA il processo è morto, rimuovi il marker
-                                # (significa che il sync è crashato)
-                                logger.debug(f"Marker check: process_alive={process_alive}, time_since_marker={time_since_marker}s")
-                                if not process_alive and time_since_marker > 60:
-                                    logger.warning(f"AUTO-RECOVERY: Marker exists but process is dead (age: {time_since_marker}s) - removing marker and PID")
-                                    try:
-                                        os.remove(marker_file)
-                                        logger.info(f"✓ Marker file removed: {marker_file}")
-                                        # Rimuovi anche il PID file se esiste
-                                        if os.path.exists(pid_file):
-                                            os.remove(pid_file)
-                                            logger.info(f"✓ PID file removed: {pid_file}")
-                                    except Exception as e:
-                                        logger.error(f"Could not remove dead sync files: {e}")
-                                    # Continua con i controlli successivi invece di restituire subito
-                                    break  # Esci dal loop del marker
-
-                                # Controlla se ci sono log files recenti
-                                if os.path.exists(log_dir):
-                                    log_files = [f for f in os.listdir(log_dir) if f.startswith("sync_stdout_")]
-                                    if log_files:
-                                        # Prendi il file di log più recente
-                                        latest_log = max([os.path.join(log_dir, f) for f in log_files], key=os.path.getmtime)
-                                        log_age = (now.timestamp() - os.path.getmtime(latest_log))
-
-                                        # Se il log è molto recente (< 2 minuti), il sync sta partendo
-                                        if log_age < 120:
-                                            logger.debug(f"Marker file exists, recent log files - status: starting")
-                                            return {"is_running": True, "status": "starting"}
-
-                            # Se il marker è vecchio (>5 min) rimuovilo sempre
-                            # (o il processo è morto, o ha scritto nel DB e va rimosso)
-                            elif time_since_marker >= 300:
-                                logger.info(f"Removing stale marker file (age: {time_since_marker}s)")
-                                try:
-                                    os.remove(marker_file)
-                                except Exception as e:
-                                    logger.warning(f"Could not remove stale marker: {e}")
-            except Exception as e:
-                logger.warning(f"Error reading marker file: {e}")
-
-        # LIVELLO 2: Controlla log files recenti (sync in inizializzazione)
-        if os.path.exists(log_dir):
-            log_files = [f for f in os.listdir(log_dir) if f.startswith("sync_stdout_")]
-            if log_files:
-                latest_log = max([os.path.join(log_dir, f) for f in log_files], key=os.path.getmtime)
-                log_age = (now.timestamp() - os.path.getmtime(latest_log))
-
-                # Se log recente E processo attivo
-                if log_age < 180:  # 3 minuti
-                    pid = None
-                    if os.path.exists(pid_file):
-                        with open(pid_file, "r") as pf:
-                            for pid_line in pf:
-                                if pid_line.startswith("PID:"):
-                                    pid = int(pid_line.split(":")[1])
-                                    break
-
-                    if pid:
-                        try:
-                            proc = psutil.Process(pid)
-                            if proc.is_running():
-                                logger.debug(f"Recent log files, PID {pid} running - status: starting")
-                                return {"is_running": True, "status": "starting"}
-                        except psutil.NoSuchProcess:
-                            pass
-
-        # LIVELLO 3: Controlla database sync_runs (sync attivo con heartbeat)
-        sql = text("SELECT end_time, update_interval FROM sync_runs WHERE id = 1")
-        result = db.execute(sql).fetchone()
-
-        last_sync_info = None
-
-        if result:
-            end_time_str, update_interval = result
-
-            if end_time_str and update_interval:
-                end_time = datetime.fromisoformat(end_time_str)
-                time_diff = (now - end_time).total_seconds()
-                interval_seconds = update_interval * 60
-
-                # Calcola informazioni "last sync" per il frontend
-                if time_diff < 60:
-                    last_sync_human = f"{int(time_diff)} secondi fa"
-                elif time_diff < 3600:
-                    minutes = int(time_diff / 60)
-                    last_sync_human = f"{minutes} minuto fa" if minutes == 1 else f"{minutes} minuti fa"
-                elif time_diff < 86400:
-                    hours = int(time_diff / 3600)
-                    last_sync_human = f"{hours} ora fa" if hours == 1 else f"{hours} ore fa"
-                else:
-                    days = int(time_diff / 86400)
-                    last_sync_human = f"{days} giorno fa" if days == 1 else f"{days} giorni fa"
-
-                last_sync_info = {
-                    "last_sync_time": end_time_str,
-                    "last_sync_ago_seconds": int(time_diff),
-                    "last_sync_ago_human": last_sync_human
-                }
-
-                # Se il database mostra heartbeat attivo, rimuovi il marker
-                if time_diff < interval_seconds:
-                    # Rimuovi il marker se esiste (transizione a "running")
-                    if os.path.exists(marker_file):
-                        logger.info("Sync is now running in DB, removing marker file")
-                        try:
-                            os.remove(marker_file)
-                        except Exception as e:
-                            logger.warning(f"Could not remove marker: {e}")
-
-                    logger.debug(f"DB heartbeat active - status: running")
-                    return {
-                        "is_running": True,
-                        "status": "running",
-                        "update_interval": update_interval,
-                        **last_sync_info
-                    }
-
-        # Nessun sync attivo
-        logger.debug("No sync activity detected - status: idle")
-        response = {"is_running": False, "status": "idle"}
-        if last_sync_info:
-            response.update(last_sync_info)
-        return response
-
+        return _compute_sync_status(db, current_user.bank)
     except Exception as e:
         logger.error(f"Errore nel verificare sync status: {e}", exc_info=True)
-        return {"is_running": False, "status": "idle"}
+        return {"is_running": False, "status": "idle", "bank": normalize_bank_label(current_user.bank)}
 
 
 @router.get("/last-sync-info")
@@ -397,14 +510,13 @@ def get_last_sync_info(
     - last_sync_time: Timestamp dell'ultimo sync (ISO format)
     - last_sync_ago_seconds: Secondi trascorsi dall'ultimo sync
     - last_sync_ago_human: Stringa human-readable (es. "2 ore fa", "5 minuti fa")
-    - never_synced: True se non c'è mai stato un sync
+    - never_synced: True se non c'Ã¨ mai stato un sync
     """
     try:
         from datetime import datetime
 
-        # Prendi il record ID=1 (quello usato da reposync)
-        sql = text("SELECT end_time FROM sync_runs WHERE id = 1")
-        result = db.execute(sql).fetchone()
+        # Prendi il record sync della banca utente (fallback legacy a ID=1)
+        result = _get_sync_run_row(db, current_user.bank, "end_time")
 
         if not result or not result[0]:
             return {
@@ -414,8 +526,16 @@ def get_last_sync_info(
                 "last_sync_ago_human": "Mai sincronizzato"
             }
 
-        end_time_str = result[0]
-        end_time = datetime.fromisoformat(end_time_str)
+        end_time = _parse_datetime_value(result[0])
+        if not end_time:
+            return {
+                "never_synced": True,
+                "last_sync_time": None,
+                "last_sync_ago_seconds": None,
+                "last_sync_ago_human": "Mai sincronizzato"
+            }
+
+        end_time_str = end_time.isoformat()
         now = datetime.utcnow()
 
         # Calcola differenza in secondi
@@ -482,11 +602,13 @@ def get_sync_status(
                 "message": "SETTINGS_PATH non configurato"
             }
 
-        # Path ai file di controllo
-        sdp_folder = os.path.join(base_folder, ".sdp")
-        marker_file = os.path.join(sdp_folder, "sync_requested.marker")
-        log_dir = os.path.join(base_folder, "App", "Dashboard", "sync_logs")
-        pid_file = os.path.join(log_dir, "current_sync.pid")
+        # Path ai file di controllo (specifici per banca)
+        effective_bank = normalize_bank_label(current_user.bank)
+        paths = _resolve_sync_files(base_folder, effective_bank)
+        marker_file = paths.get("marker_file")
+        log_dir = paths.get("log_dir")
+        pid_file = paths.get("pid_file")
+        bank_token = paths.get("bank_token")
 
         now = datetime.utcnow()
 
@@ -494,15 +616,16 @@ def get_sync_status(
         result = {
             "status": "idle",
             "is_running": False,
-            "marker_exists": os.path.exists(marker_file),
-            "pid_file_exists": os.path.exists(pid_file),
+            "bank": effective_bank,
+            "marker_exists": os.path.exists(marker_file) if marker_file else False,
+            "pid_file_exists": os.path.exists(pid_file) if pid_file else False,
             "process_alive": False,
             "db_heartbeat_active": False,
             "details": {}
         }
 
         # Controlla marker file
-        if os.path.exists(marker_file):
+        if marker_file and os.path.exists(marker_file):
             try:
                 with open(marker_file, "r") as f:
                     content = f.read()
@@ -521,7 +644,7 @@ def get_sync_status(
                 logger.warning(f"Error reading marker file: {e}")
 
         # Controlla PID file e processo
-        if os.path.exists(pid_file):
+        if pid_file and os.path.exists(pid_file):
             try:
                 with open(pid_file, "r") as f:
                     pid_data = {}
@@ -547,8 +670,9 @@ def get_sync_status(
                 logger.warning(f"Error reading PID file: {e}")
 
         # Controlla log files
-        if os.path.exists(log_dir):
-            log_files = [f for f in os.listdir(log_dir) if f.startswith("sync_stdout_")]
+        if log_dir and os.path.exists(log_dir):
+            log_prefix = f"sync_stdout_{bank_token}_" if bank_token else "sync_stdout_"
+            log_files = [f for f in os.listdir(log_dir) if f.startswith(log_prefix)]
             if log_files:
                 latest_log = max([os.path.join(log_dir, f) for f in log_files], key=os.path.getmtime)
                 log_age = (now.timestamp() - os.path.getmtime(latest_log))
@@ -556,18 +680,19 @@ def get_sync_status(
                 result["details"]["latest_log_age_seconds"] = round(log_age, 2)
 
         # Controlla database sync_runs
-        sql = text("SELECT end_time, update_interval FROM sync_runs WHERE id = 1")
-        db_result = db.execute(sql).fetchone()
+        db_result = _get_sync_run_row(db, current_user.bank, "end_time, update_interval")
 
         if db_result:
             end_time_str, update_interval = db_result
 
             if end_time_str and update_interval:
-                end_time = datetime.fromisoformat(end_time_str)
+                end_time = _parse_datetime_value(end_time_str)
+                if not end_time:
+                    end_time = now
                 time_diff = (now - end_time).total_seconds()
                 interval_seconds = update_interval * 60
 
-                result["details"]["db_end_time"] = end_time_str
+                result["details"]["db_end_time"] = end_time.isoformat()
                 result["details"]["db_update_interval_minutes"] = update_interval
                 result["details"]["db_last_update_seconds_ago"] = round(time_diff, 2)
 
@@ -592,7 +717,7 @@ def get_sync_status(
             result["is_running"] = True
             result["message"] = "Processo sync attivo, in attesa di heartbeat"
         else:
-            # Controlla se c'è stato un sync recente completato
+            # Controlla se c'Ã¨ stato un sync recente completato
             if "latest_log_age_seconds" in result["details"] and result["details"]["latest_log_age_seconds"] < 600:
                 result["status"] = "completed"
                 result["message"] = "Sync completato di recente"
@@ -641,10 +766,10 @@ def get_publish_status(
 
         start_time_str, end_time_str, update_interval, files_processed, files_copied, files_skipped, files_failed, error_details = result
 
-        # Determina se il publish è in corso
+        # Determina se il publish Ã¨ in corso
         is_running = end_time_str is None
 
-        # Se il publish è in corso, error_details contiene la fase (precheck/production)
+        # Se il publish Ã¨ in corso, error_details contiene la fase (precheck/production)
         # Altrimenti contiene eventuali errori
         phase = None
         actual_error = None
@@ -699,12 +824,15 @@ def sync_debug_paths(
         from core.config import config_manager
 
         base_folder = config_manager.get_setting("SETTINGS_PATH")
-        sdp_folder = os.path.join(base_folder, ".sdp") if base_folder else None
-        marker_file = os.path.join(sdp_folder, "sync_requested.marker") if sdp_folder else None
-        log_dir = os.path.join(base_folder, "App", "Dashboard", "sync_logs") if base_folder else None
-        pid_file = os.path.join(log_dir, "current_sync.pid") if log_dir else None
+        effective_bank = normalize_bank_label(current_user.bank)
+        paths = _resolve_sync_files(base_folder, effective_bank) if base_folder else {}
+        sdp_folder = paths.get("sdp_folder")
+        log_dir = paths.get("log_dir")
+        marker_file = paths.get("marker_file")
+        pid_file = paths.get("pid_file")
 
         return {
+            "bank": effective_bank,
             "SETTINGS_PATH": base_folder,
             "sdp_folder": sdp_folder,
             "marker_file": marker_file,
@@ -728,9 +856,12 @@ def sync_debug(
     from sqlalchemy import text
 
     try:
-        # Leggi info dal database (gestito da reposync)
-        sql = text("SELECT operation_type, start_time, end_time, update_interval FROM sync_runs WHERE id = 1")
-        result = db.execute(sql).fetchone()
+        # Leggi info dal database (gestito da reposync), banca-specifico con fallback legacy
+        result = _get_sync_run_row(
+            db,
+            current_user.bank,
+            "operation_type, start_time, end_time, update_interval"
+        )
 
         if not result:
             return {"error": "Nessun record sync_runs trovato"}
@@ -740,7 +871,8 @@ def sync_debug(
         # Leggi PID dal file
         from core.config import config_manager
         base_folder = config_manager.get_setting("SETTINGS_PATH")
-        pid_file = os.path.join(base_folder, "App", "Dashboard", "sync_logs", "current_sync.pid")
+        paths = _resolve_sync_files(base_folder, current_user.bank) if base_folder else {}
+        pid_file = paths.get("pid_file")
 
         pid = None
         stdout_log = None
@@ -748,7 +880,7 @@ def sync_debug(
         user = None
         sync_start_time = None
 
-        if os.path.exists(pid_file):
+        if pid_file and os.path.exists(pid_file):
             with open(pid_file, "r") as f:
                 for line in f:
                     line = line.strip()
@@ -763,7 +895,7 @@ def sync_debug(
                     elif line.startswith("StartTime:"):
                         sync_start_time = line.split(":", 1)[1]
 
-        # Verifica se il processo è ancora attivo
+        # Verifica se il processo Ã¨ ancora attivo
         process_alive = False
         process_info = None
 
@@ -854,42 +986,43 @@ def trigger_sync(
           if not base_folder:
               raise HTTPException(status_code=500, detail="SETTINGS_PATH non configurato")
 
-          # Controlla SOLO il record ID=1 (quello che usa reposync)
-          # Un sync è attivo se la differenza tra ora e end_time è minore di update_interval
-          sql = text("SELECT end_time, update_interval FROM sync_runs WHERE id = 1")
-          result = db.execute(sql).fetchone()
+          # Controlla il record sync della banca utente (fallback legacy a ID=1)
+          result = _get_sync_run_row(db, effective_bank, "end_time, update_interval")
 
           if result:
               end_time_str, update_interval = result
 
               if end_time_str and update_interval:
-                  end_time = datetime.fromisoformat(end_time_str)
+                  end_time = _parse_datetime_value(end_time_str)
+                  if not end_time:
+                      end_time = datetime.utcnow()
                   # Usa UTC per confrontare con timestamp salvati in UTC
                   now = datetime.utcnow()
                   time_diff = (now - end_time).total_seconds()
 
-                  # update_interval è in MINUTI, convertiamo in secondi
+                  # update_interval Ã¨ in MINUTI, convertiamo in secondi
                   interval_seconds = update_interval * 60
 
-                  # Se la differenza è minore di update_interval (in secondi), il sync è già attivo
+                  # Se la differenza Ã¨ minore di update_interval (in secondi), il sync Ã¨ giÃ  attivo
                   if time_diff < interval_seconds:
                       return {
                           "success": False,
-                          "message": "Un sync è già in corso",
+                          "message": "Un sync Ã¨ giÃ  in corso",
                           "is_running": True
                       }
 
-          # ✅ CREA IL MARKER FILE IMMEDIATAMENTE per feedback istantaneo
+          # âœ… CREA IL MARKER FILE IMMEDIATAMENTE per feedback istantaneo
+          bank_token = _bank_to_token(effective_bank)
           sdp_folder = os.path.join(base_folder, ".sdp")
           os.makedirs(sdp_folder, exist_ok=True)
-          marker_file = os.path.join(sdp_folder, "sync_requested.marker")
+          marker_file = os.path.join(sdp_folder, f"sync_requested_{bank_token}.marker")
 
           with open(marker_file, "w") as f:
               f.write(f"timestamp:{datetime.now().isoformat()}\n")
               f.write(f"user:{current_user.username}\n")
               f.write(f"bank:{effective_bank}\n")
 
-          logger.info(f"✓ Marker file created: {marker_file}")
+          logger.info(f"âœ“ Marker file created: {marker_file}")
 
           # Cerca reposync.exe in path centralizzato o standard
           logger.info(f"sys.frozen = {getattr(sys, 'frozen', False)}")
@@ -899,7 +1032,7 @@ def trigger_sync(
           reposync_exe = config_manager.get_setting("REPOSYNC_PATH")
 
           if reposync_exe and os.path.exists(reposync_exe):
-              logger.info(f"✓ Usando reposync.exe da configurazione: {reposync_exe}")
+              logger.info(f"âœ“ Usando reposync.exe da configurazione: {reposync_exe}")
           else:
               # 2. Cerca in posizioni standard
               possible_locations = []
@@ -929,11 +1062,11 @@ def trigger_sync(
                   logger.info(f"Cercando reposync.exe in: {location}")
                   if os.path.exists(location):
                       reposync_exe = location
-                      logger.info(f"✓ Trovato reposync.exe: {reposync_exe}")
+                      logger.info(f"âœ“ Trovato reposync.exe: {reposync_exe}")
                       break
 
               if not reposync_exe:
-                  logger.error(f"✗ reposync.exe non trovato in nessuna posizione")
+                  logger.error(f"âœ— reposync.exe non trovato in nessuna posizione")
                   logger.error(f"Posizioni cercate: {possible_locations}")
                   # Rimuovi il marker se reposync non viene trovato
                   if os.path.exists(marker_file):
@@ -955,22 +1088,22 @@ def trigger_sync(
 
           logger.info(f"Comando reposync: {' '.join(sync_command)}")
 
-          # ❌ RIMUOVI QUESTA PARTE - NON creare il record!
+          # âŒ RIMUOVI QUESTA PARTE - NON creare il record!
           # sql_insert = text("""
           #     INSERT INTO sync_runs ...
           # """)
           # db.execute(sql_insert, {"bank": current_user.bank})
           # db.commit()
 
-          # Lancia il comando (reposync aggiornerà automaticamente sync_runs)
+          # Lancia il comando (reposync aggiornerÃ  automaticamente sync_runs)
           work_dir = os.path.join(base_folder, "App", "Dashboard")
 
           # Crea file di log per stdout/stderr
           log_dir = os.path.join(work_dir, "sync_logs")
           os.makedirs(log_dir, exist_ok=True)
           timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-          stdout_log = os.path.join(log_dir, f"sync_stdout_{timestamp}.log")
-          stderr_log = os.path.join(log_dir, f"sync_stderr_{timestamp}.log")
+          stdout_log = os.path.join(log_dir, f"sync_stdout_{bank_token}_{timestamp}.log")
+          stderr_log = os.path.join(log_dir, f"sync_stderr_{bank_token}_{timestamp}.log")
 
           # Lancia reposync.exe come subprocess (sia in sviluppo che in produzione)
           with open(stdout_log, "w") as out_file, open(stderr_log, "w") as err_file:
@@ -983,7 +1116,7 @@ def trigger_sync(
               )
 
           # Salva PID in un file per il monitoring
-          pid_file = os.path.join(log_dir, "current_sync.pid")
+          pid_file = os.path.join(log_dir, f"current_sync_{bank_token}.pid")
           with open(pid_file, "w") as f:
               f.write(f"PID:{process.pid}\n")
               f.write(f"User:{current_user.username}\n")
@@ -1011,13 +1144,14 @@ def trigger_sync(
           raise
       except Exception as e:
           logger.error(f"Errore sync: {e}", exc_info=True)
-          # Rimuovi il marker file se c'è stato un errore
+          # Rimuovi il marker file se c'Ã¨ stato un errore
           try:
               from core.config import config_manager
               base_folder = config_manager.get_setting("SETTINGS_PATH")
               if base_folder:
                   sdp_folder = os.path.join(base_folder, ".sdp")
-                  marker_file = os.path.join(sdp_folder, "sync_requested.marker")
+                  bank_token = _bank_to_token(normalize_bank_label(current_user.bank))
+                  marker_file = os.path.join(sdp_folder, f"sync_requested_{bank_token}.marker")
                   if os.path.exists(marker_file):
                       os.remove(marker_file)
                       logger.info(f"Marker file rimosso dopo errore generico: {marker_file}")
@@ -1070,7 +1204,7 @@ async def publish_data_factory(
         if not publish_tracker.start_publish_run(db, update_interval=5, phase="data_factory"):
             raise HTTPException(
                 status_code=409,
-                detail="Un'operazione di pubblicazione è già in corso. Attendere il completamento."
+                detail="Un'operazione di pubblicazione Ã¨ giÃ  in corso. Attendere il completamento."
             )
 
         # 3. Query workspace from report_mapping
@@ -1097,7 +1231,7 @@ async def publish_data_factory(
                     from scripts import data_factory
                     status = data_factory.main(year_month_values, workspace)
 
-                    # Controlla se c'è un errore nel risultato di data_factory
+                    # Controlla se c'Ã¨ un errore nel risultato di data_factory
                     if isinstance(status, dict) and "error" in status:
                         stderr_capture.write(f"Data factory error: {status['error']}\n")
                         print("\n[RESULT]")
@@ -1249,11 +1383,11 @@ def get_latest_publication_logs(
             if not rows:
                 return []
 
-            # Raggruppa per package (più recente per package)
+            # Raggruppa per package (piÃ¹ recente per package)
             latest_by_package = {}
             for r in rows:
                 workspace, _, ptype, status, output, error, packages, ts, anno, settimana, mese = r
-                # packages può essere JSON string → normalizza
+                # packages puÃ² essere JSON string â†’ normalizza
                 pkg_list = []
                 try:
                     if isinstance(packages, str):
@@ -1264,7 +1398,7 @@ def get_latest_publication_logs(
                     pkg_list = []
 
                 for package in pkg_list or []:
-                    # Se non presente, memorizza la riga più recente
+                    # Se non presente, memorizza la riga piÃ¹ recente
                     if package not in latest_by_package:
                         latest_by_package[package] = {
                             "workspace": workspace,
@@ -1283,7 +1417,7 @@ def get_latest_publication_logs(
                 log_text = info["output"] if info["status"] == "success" else info["error"]
                 package_message = log_text
 
-                # Prova a estrarre il messaggio specifico per package se log è JSON
+                # Prova a estrarre il messaggio specifico per package se log Ã¨ JSON
                 if log_text:
                     try:
                         log_dict = json.loads(log_text) if isinstance(log_text, str) else log_text
@@ -1457,7 +1591,7 @@ def get_packages_ready(
         # Per ogni package, cerca l'ultimo log in publication_logs
         packages_with_status = []
         for r in results:
-            if not r[0]:  # Skip se package è None
+            if not r[0]:  # Skip se package Ã¨ None
                 continue
 
             package_name = r[0]
@@ -1543,7 +1677,7 @@ def get_packages_ready(
                                 dettagli_precheck = message if message else "Errore durante l'aggiornamento"
                                 logger.warning(f"Package {package_name}: status=FALSE (log.status={log.status})")
 
-                        # Abbiamo trovato il log per questo package, usiamo il più recente
+                        # Abbiamo trovato il log per questo package, usiamo il piÃ¹ recente
                         break
                 except Exception as e:
                     logger.warning(f"Error parsing precheck log for {package_name}: {e}")
@@ -1587,7 +1721,7 @@ def get_packages_ready(
                                 prod_status = False
                                 dettagli_prod = message if message else "Errore durante la pubblicazione in produzione"
 
-                        # Abbiamo trovato il log per questo package, usiamo il più recente
+                        # Abbiamo trovato il log per questo package, usiamo il piÃ¹ recente
                         break
                 except Exception as e:
                     logger.warning(f"Error parsing production log for {package_name}: {e}")
@@ -1598,7 +1732,7 @@ def get_packages_ready(
             is_settimanale = type_reportistica == "Settimanale"
             is_mensile = type_reportistica == "Mensile"
 
-            # Controlla se la pubblicazione PRE-CHECK è del periodo corrente
+            # Controlla se la pubblicazione PRE-CHECK Ã¨ del periodo corrente
             if pre_check_status and pre_check_status != False:
                 if is_settimanale:
                     # Per settimanale: confronta anno + settimana
@@ -1613,7 +1747,7 @@ def get_packages_ready(
                         pre_check_status = False
                         dettagli_precheck = "Pubblicazione di un periodo precedente"
 
-            # Controlla se la pubblicazione PRODUCTION è del periodo corrente
+            # Controlla se la pubblicazione PRODUCTION Ã¨ del periodo corrente
             if prod_status and prod_status != False:
                 if is_settimanale:
                     # Per settimanale: confronta anno + settimana
@@ -1668,13 +1802,13 @@ def get_reportistica_item(
     Recupera un elemento di reportistica specifico per ID della propria banca.
 
     Note:
-        - Può visualizzare solo elementi della propria banca
+        - PuÃ² visualizzare solo elementi della propria banca
     """
     item = crud.get_reportistica_by_id(db=db, reportistica_id=reportistica_id)
     if not item:
         raise HTTPException(status_code=404, detail="Elemento reportistica non trovato")
 
-    # ✅ Verifica che l'elemento appartenga alla banca dell'utente
+    # âœ… Verifica che l'elemento appartenga alla banca dell'utente
     if item.banca != current_user.bank:
         raise HTTPException(
             status_code=403,
@@ -1698,23 +1832,23 @@ def create_reportistica_item(
     """
     logger.info(f"Creating reportistica item for bank: {current_user.bank}, file: {reportistica.nome_file}")
 
-    # ✅ Verifica che la coppia (nome_file, banca utente) non esista già
+    # âœ… Verifica che la coppia (nome_file, banca utente) non esista giÃ 
     existing_item = crud.get_reportistica_by_nome_file(
         db=db,
         nome_file=reportistica.nome_file,
-        banca=current_user.bank  # ✅ Usa la banca dell'utente loggato
+        banca=current_user.bank  # âœ… Usa la banca dell'utente loggato
     )
     if existing_item:
         raise HTTPException(
             status_code=400,
-            detail=f"Un elemento con nome file '{reportistica.nome_file}' esiste già per la tua banca"
+            detail=f"Un elemento con nome file '{reportistica.nome_file}' esiste giÃ  per la tua banca"
         )
 
-    # ✅ Passa la banca dell'utente loggato
+    # âœ… Passa la banca dell'utente loggato
     return crud.create_reportistica(
         db=db,
         reportistica=reportistica,
-        banca=current_user.bank  # ✅ Automatico
+        banca=current_user.bank  # âœ… Automatico
     )
 
 @router.put("/{reportistica_id}", response_model=schemas.ReportisticaInDB)
@@ -1728,31 +1862,31 @@ def update_reportistica_item(
     Aggiorna un elemento di reportistica della banca dell'utente loggato.
 
     Note:
-        - Può modificare solo elementi della propria banca
-        - Se viene modificato nome_file, verifica che non esista già nella banca
+        - PuÃ² modificare solo elementi della propria banca
+        - Se viene modificato nome_file, verifica che non esista giÃ  nella banca
     """
     existing_item = crud.get_reportistica_by_id(db=db, reportistica_id=reportistica_id)
     if not existing_item:
         raise HTTPException(status_code=404, detail="Elemento reportistica non trovato")
 
-    # ✅ Verifica che l'elemento appartenga alla banca dell'utente (case-insensitive)
+    # âœ… Verifica che l'elemento appartenga alla banca dell'utente (case-insensitive)
     if existing_item.banca.lower() != current_user.bank.lower():
         raise HTTPException(
             status_code=403,
             detail="Non hai i permessi per modificare questo elemento (appartiene a un'altra banca)"
         )
 
-    # ✅ Se il nome file viene cambiato, verifica che non esista già nella stessa banca
+    # âœ… Se il nome file viene cambiato, verifica che non esista giÃ  nella stessa banca
     if reportistica_data.nome_file and reportistica_data.nome_file != existing_item.nome_file:
         existing_with_name = crud.get_reportistica_by_nome_file(
             db=db,
             nome_file=reportistica_data.nome_file,
-            banca=current_user.bank  # ✅ Verifica solo nella banca dell'utente
+            banca=current_user.bank  # âœ… Verifica solo nella banca dell'utente
         )
         if existing_with_name and existing_with_name.id != reportistica_id:
             raise HTTPException(
                 status_code=400,
-                detail=f"Un elemento con nome file '{reportistica_data.nome_file}' esiste già per la tua banca"
+                detail=f"Un elemento con nome file '{reportistica_data.nome_file}' esiste giÃ  per la tua banca"
             )
 
     return crud.update_reportistica(db=db, reportistica_id=reportistica_id, reportistica_data=reportistica_data)
@@ -1767,14 +1901,14 @@ def delete_reportistica_item(
     Elimina un elemento di reportistica della banca dell'utente loggato.
 
     Note:
-        - Può eliminare solo elementi della propria banca
+        - PuÃ² eliminare solo elementi della propria banca
     """
-    # ✅ Prima verifica che l'elemento esista e appartenga alla banca dell'utente
+    # âœ… Prima verifica che l'elemento esista e appartenga alla banca dell'utente
     existing_item = crud.get_reportistica_by_id(db=db, reportistica_id=reportistica_id)
     if not existing_item:
         raise HTTPException(status_code=404, detail="Elemento reportistica non trovato")
 
-    # ✅ Verifica che l'elemento appartenga alla banca dell'utente
+    # âœ… Verifica che l'elemento appartenga alla banca dell'utente
     if existing_item.banca != current_user.bank:
         raise HTTPException(
             status_code=403,
@@ -1792,16 +1926,16 @@ def toggle_disponibilita_server(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Aggiorna solo lo stato di disponibilità server per un elemento della propria banca.
+    Aggiorna solo lo stato di disponibilitÃ  server per un elemento della propria banca.
 
     Note:
-        - Può modificare solo elementi della propria banca
+        - PuÃ² modificare solo elementi della propria banca
     """
     existing_item = crud.get_reportistica_by_id(db=db, reportistica_id=reportistica_id)
     if not existing_item:
         raise HTTPException(status_code=404, detail="Elemento reportistica non trovato")
 
-    # ✅ Verifica che l'elemento appartenga alla banca dell'utente (case-insensitive)
+    # âœ… Verifica che l'elemento appartenga alla banca dell'utente (case-insensitive)
     if existing_item.banca.lower() != current_user.bank.lower():
         raise HTTPException(
             status_code=403,
@@ -1813,7 +1947,7 @@ def toggle_disponibilita_server(
 
 @router.post("/publish-precheck")
 async def publish_precheck(
-    periodicity: str = Query(..., description="Periodicità: 'settimanale' o 'mensile'"),
+    periodicity: str = Query(..., description="PeriodicitÃ : 'settimanale' o 'mensile'"),
     selected_packages: Optional[List[str]] = Query(None, description="Lista dei package selezionati (opzionale)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -1825,7 +1959,7 @@ async def publish_precheck(
     logger.info(f"publish_precheck called for user: {current_user.username}, bank: {current_user.bank}, periodicity: {periodicity}, selected_packages: {selected_packages}")
 
     try:
-        # Normalizza periodicità
+        # Normalizza periodicitÃ 
         is_mensile = periodicity.lower() == "mensile"
         periodicity_db = "Mensile" if is_mensile else "Settimanale"
 
@@ -1844,10 +1978,10 @@ async def publish_precheck(
         if not publish_tracker.start_publish_run(db, update_interval=5, phase="precheck"):
             raise HTTPException(
                 status_code=409,
-                detail="Un'operazione di pubblicazione è già in corso. Attendere il completamento."
+                detail="Un'operazione di pubblicazione Ã¨ giÃ  in corso. Attendere il completamento."
             )
 
-        # Prendi i dati dalla tabella report_mapping filtrati per banca e periodicità
+        # Prendi i dati dalla tabella report_mapping filtrati per banca e periodicitÃ 
         # Usa raw SQL con ORDER BY rowid per mantenere l'ordine del database
         from sqlalchemy import text
         sql = text("""
@@ -1879,7 +2013,7 @@ async def publish_precheck(
         # Estrai lista dei package
         all_packages = [row[1] for row in results if row[1]]
 
-        # Se selected_packages è fornito, filtra solo quelli selezionati
+        # Se selected_packages Ã¨ fornito, filtra solo quelli selezionati
         if selected_packages:
             pbi_packages = [pkg for pkg in all_packages if pkg in selected_packages]
             logger.info(f"Filtered packages based on selection: {pbi_packages} (from {len(all_packages)} total)")
@@ -1925,7 +2059,7 @@ async def publish_precheck(
                                 df_status = data_factory.main(year_month_values, workspace_datafactory)
                                 logger.info(f"Data Factory result: {df_status}")
 
-                                # Controlla se c'è un errore nel risultato di data_factory
+                                # Controlla se c'Ã¨ un errore nel risultato di data_factory
                                 if isinstance(df_status, dict) and "error" in df_status:
                                     error_msg = f"FASE 1 FALLITA - Data Factory error: {df_status['error']}"
                                     logger.error(error_msg)
@@ -2052,7 +2186,7 @@ async def publish_precheck(
         except Exception as e:
             logger.warning(f"Error parsing packages details: {e}")
 
-        # Salva log in base alla periodicità
+        # Salva log in base alla periodicitÃ 
         if is_mensile:
             # MENSILE: Salva log per entrambe le fasi
             logger.info("Salvando log per pubblicazione mensile (2 fasi)")
@@ -2067,7 +2201,7 @@ async def publish_precheck(
             phase_1_success = True  # Default True se skippata
             phase_2_success = False
 
-            # Controlla se Data Factory è stata eseguita o skippata
+            # Controlla se Data Factory Ã¨ stata eseguita o skippata
             if phase_1_result == "Skipped" or (isinstance(phase_1_result, dict) and len(phase_1_result) == 0):
                 phase_1_success = True  # Se skippata, considerala come successo
                 logger.info("FASE 1 Data Factory: Skipped")
@@ -2099,7 +2233,7 @@ async def publish_precheck(
 
                 log_entry = models.PublicationLog(
                     bank=current_user.bank,
-                    workspace=workspace_powerbi,  # Usa sempre workspace Power BI perché i package sono lì
+                    workspace=workspace_powerbi,  # Usa sempre workspace Power BI perchÃ© i package sono lÃ¬
                     packages=[package_name],  # Un package per volta (come settimanale)
                     publication_type="precheck",
                     status="success" if (phase_1_success and package_success) else "error",
@@ -2179,7 +2313,7 @@ async def publish_precheck(
         }
 
     except HTTPException as http_exc:
-        # Chiudi la publish run con errore se è stata avviata
+        # Chiudi la publish run con errore se Ã¨ stata avviata
         try:
             publish_tracker.end_publish_run(db=db, error_details=str(http_exc.detail)[:500])
         except:
@@ -2219,7 +2353,7 @@ async def publish_precheck(
 
 @router.post("/publish-production")
 async def publish_production(
-    periodicity: str = Query(..., description="Periodicità: 'settimanale' o 'mensile'"),
+    periodicity: str = Query(..., description="PeriodicitÃ : 'settimanale' o 'mensile'"),
     selected_packages: Optional[List[str]] = Query(None, description="Lista dei package selezionati (opzionale)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -2231,7 +2365,7 @@ async def publish_production(
     logger.info(f"publish_production called for user: {current_user.username}, bank: {current_user.bank}, periodicity: {periodicity}, selected_packages: {selected_packages}")
 
     try:
-        # Normalizza periodicità
+        # Normalizza periodicitÃ 
         is_mensile = periodicity.lower() == "mensile"
         periodicity_db = "Mensile" if is_mensile else "Settimanale"
 
@@ -2250,9 +2384,9 @@ async def publish_production(
         if not publish_tracker.start_publish_run(db, update_interval=5, phase="production"):
             raise HTTPException(
                 status_code=409,
-                detail="Un'operazione di pubblicazione è già in corso. Attendere il completamento."
+                detail="Un'operazione di pubblicazione Ã¨ giÃ  in corso. Attendere il completamento."
             )
-        # Prendi i dati dalla tabella report_mapping filtrati per banca e periodicità
+        # Prendi i dati dalla tabella report_mapping filtrati per banca e periodicitÃ 
         # Usa ws_production invece di ws_precheck
         # Usa raw SQL con ORDER BY rowid per mantenere l'ordine del database
         from sqlalchemy import text
@@ -2285,7 +2419,7 @@ async def publish_production(
         # Estrai lista dei package
         all_packages = [row[1] for row in results if row[1]]
 
-        # Se selected_packages è fornito, filtra solo quelli selezionati
+        # Se selected_packages Ã¨ fornito, filtra solo quelli selezionati
         if selected_packages:
             pbi_packages = [pkg for pkg in all_packages if pkg in selected_packages]
             logger.info(f"Filtered packages based on selection: {pbi_packages} (from {len(all_packages)} total)")
@@ -2312,7 +2446,7 @@ async def publish_production(
 
                     if is_mensile:
                         # ==========================================
-                        # MENSILE PRODUCTION: Solo Power BI (Data Factory già eseguito in precheck)
+                        # MENSILE PRODUCTION: Solo Power BI (Data Factory giÃ  eseguito in precheck)
                         # ==========================================
                         logger.info("="*80)
                         logger.info("PRODUCTION FASE 2: Pubblicazione Power BI")
@@ -2410,7 +2544,7 @@ async def publish_production(
         except Exception as e:
             logger.warning(f"Error parsing packages details: {e}")
 
-        # Salva log in base alla periodicità
+        # Salva log in base alla periodicitÃ 
         # IMPORTANTE: publication_type = "production"
         if is_mensile:
             # MENSILE PRODUCTION: Salva log per entrambe le fasi
@@ -2454,7 +2588,7 @@ async def publish_production(
 
                 log_entry = models.PublicationLog(
                     bank=current_user.bank,
-                    workspace=workspace_powerbi,  # Usa sempre workspace Power BI perché i package sono lì
+                    workspace=workspace_powerbi,  # Usa sempre workspace Power BI perchÃ© i package sono lÃ¬
                     packages=[package_name],  # Un package per volta (come settimanale)
                     publication_type="production",
                     status="success" if (phase_1_success and package_success) else "error",
@@ -2534,7 +2668,7 @@ async def publish_production(
         }
 
     except HTTPException as http_exc:
-        # Chiudi la publish run con errore se è stata avviata
+        # Chiudi la publish run con errore se Ã¨ stata avviata
         try:
             publish_tracker.end_publish_run(db=db, error_details=str(http_exc.detail)[:500])
         except:
@@ -2634,7 +2768,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = Query(
 
                 # 1. Sync Status
                 try:
-                    sync_status_data = await get_sync_status_data()
+                    sync_status_data = await get_sync_status_data(bank=bank)
                     update_data["sync_status"] = sync_status_data
                 except Exception as e:
                     logger.error(f"Error getting sync status: {e}")
@@ -2698,7 +2832,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = Query(
 
             except Exception as e:
                 logger.error(f"Error in WebSocket update loop: {e}", exc_info=True)
-                # Se c'è un errore, esci dal loop per evitare di inviare a una connessione chiusa
+                # Se c'Ã¨ un errore, esci dal loop per evitare di inviare a una connessione chiusa
                 break
 
     except WebSocketDisconnect:
@@ -2709,97 +2843,20 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = Query(
         await ws_manager.disconnect(websocket)
 
 
-async def get_sync_status_data() -> dict:
+async def get_sync_status_data(bank: Optional[str] = None) -> dict:
     """Helper per ottenere lo stato del sync"""
-    from core.config import config_manager
-    import psutil
-
     try:
-        # Ottieni una sessione DB
         db_gen = get_db()
         db = next(db_gen)
 
         try:
-            base_folder = config_manager.get_setting("SETTINGS_PATH")
-            if not base_folder:
-                return {"is_running": False, "status": "idle"}
-
-            log_dir = os.path.join(base_folder, "App", "Dashboard", "sync_logs")
-            pid_file = os.path.join(log_dir, "current_sync.pid")
-            now = datetime.utcnow()
-
-            # Controlla se c'è un PID file attivo
-            if os.path.exists(pid_file):
-                try:
-                    with open(pid_file, "r") as pf:
-                        for pid_line in pf:
-                            if pid_line.startswith("PID:"):
-                                pid = int(pid_line.split(":")[1])
-                                try:
-                                    proc = psutil.Process(pid)
-                                    if proc.is_running():
-                                        return {"is_running": True, "status": "running"}
-                                except psutil.NoSuchProcess:
-                                    pass
-                except Exception as e:
-                    logger.warning(f"Error reading PID file: {e}")
-
-            # Controlla database sync_runs (heartbeat)
-            sql = text("SELECT end_time, update_interval FROM sync_runs WHERE id = 1")
-            result = db.execute(sql).fetchone()
-
-            last_sync_info = None
-
-            if result:
-                end_time_str, update_interval = result
-
-                if end_time_str:
-                    end_time = datetime.fromisoformat(end_time_str)
-                    time_diff = (now - end_time).total_seconds()
-
-                    # Calcola last sync info SEMPRE (anche se il sync è vecchio)
-                    if time_diff < 60:
-                        last_sync_human = f"{int(time_diff)} secondi fa"
-                    elif time_diff < 3600:
-                        minutes = int(time_diff / 60)
-                        last_sync_human = f"{minutes} minuto fa" if minutes == 1 else f"{minutes} minuti fa"
-                    elif time_diff < 86400:
-                        hours = int(time_diff / 3600)
-                        last_sync_human = f"{hours} ora fa" if hours == 1 else f"{hours} ore fa"
-                    else:
-                        days = int(time_diff / 86400)
-                        last_sync_human = f"{days} giorno fa" if days == 1 else f"{days} giorni fa"
-
-                    last_sync_info = {
-                        "last_sync_time": end_time_str,
-                        "last_sync_ago_seconds": int(time_diff),
-                        "last_sync_ago_human": last_sync_human
-                    }
-
-                    # Se heartbeat attivo (sync in corso)
-                    if update_interval:
-                        interval_seconds = update_interval * 60
-                        if time_diff < interval_seconds:
-                            return {
-                                "is_running": True,
-                                "status": "running",
-                                "update_interval": update_interval,
-                                **last_sync_info
-                            }
-
-            # Nessun sync attivo
-            response = {"is_running": False, "status": "idle"}
-            if last_sync_info:
-                response.update(last_sync_info)
-            return response
-
+            return _compute_sync_status(db, bank)
         finally:
             db.close()
 
     except Exception as e:
         logger.error(f"Error in get_sync_status_data: {e}")
-        return {"is_running": False, "status": "idle"}
-
+        return {"is_running": False, "status": "idle", "bank": normalize_bank_label(bank)}
 
 async def get_publish_status_data() -> Optional[dict]:
     """Helper per ottenere lo stato della pubblicazione dalla tabella sync_runs"""
@@ -2832,7 +2889,7 @@ async def get_publish_status_data() -> Optional[dict]:
 
             start_time, end_time, update_interval, files_processed, files_copied, files_skipped, files_failed, error_details = result
 
-            # Se end_time è NULL, publish è in corso
+            # Se end_time Ã¨ NULL, publish Ã¨ in corso
             is_running = end_time is None
 
             if is_running:
@@ -2915,7 +2972,7 @@ async def get_reportistica_data(bank: Optional[str] = None) -> List[dict]:
                         import json
                         dettagli = json.loads(dettagli)
                     except:
-                        pass  # Mantieni come stringa se non è JSON valido
+                        pass  # Mantieni come stringa se non Ã¨ JSON valido
 
                 data.append({
                     "id": row[0],
@@ -3002,7 +3059,7 @@ async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = 
             # Crea un dizionario per tracciare lo stato di ogni package
             # Usa SOLO log con singolo package, ignora completamente log multi-package
             package_status = {}  # {package_name: {"precheck": status, "prod": status, "anno": int, "settimana": int, "mese": int}}
-            seen_combinations = {}  # {(pkg_name, pub_type): True} per tracciare cosa abbiamo già processato
+            seen_combinations = {}  # {(pkg_name, pub_type): True} per tracciare cosa abbiamo giÃ  processato
 
             logger.debug(f"Processing {len(pub_logs_result)} publication logs")
 
@@ -3036,12 +3093,12 @@ async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = 
                     logger.debug(f"    Skipping multi-package log (contains {len(pkg_list)} packages)")
                     continue
 
-                # Per ogni package nel log (in questo caso sarà sempre 1)
+                # Per ogni package nel log (in questo caso sarÃ  sempre 1)
                 for pkg_name in pkg_list:
                     # Chiave per identificare univocamente package + tipo
                     combo_key = (pkg_name, pub_type)
 
-                    # Salta se già processato (prendiamo solo il primo = più recente)
+                    # Salta se giÃ  processato (prendiamo solo il primo = piÃ¹ recente)
                     if combo_key in seen_combinations:
                         continue
 
@@ -3091,12 +3148,12 @@ async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = 
                         status_value = "error"  # Rosso (default per status != success)
 
                     # Prepara dettagli e error
-                    # Se c'è output, usa quello per dettagli
-                    # Se c'è solo error, NON metterlo in dettagli (andrà in error_precheck/error_prod)
+                    # Se c'Ã¨ output, usa quello per dettagli
+                    # Se c'Ã¨ solo error, NON metterlo in dettagli (andrÃ  in error_precheck/error_prod)
                     dettagli_message = log_output if log_output else None
                     error_message = log_error if log_error else None
 
-                    # Aggiorna lo stato del package (solo per il primo log = più recente)
+                    # Aggiorna lo stato del package (solo per il primo log = piÃ¹ recente)
                     if pub_type == "precheck":
                         package_status[pkg_name]["precheck"] = status_value
                         package_status[pkg_name]["anno_precheck"] = log_anno
@@ -3122,7 +3179,7 @@ async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = 
                 pkg_type = row[4]
                 obbligatorio = row[5] if len(row) > 5 else None
 
-                # Determina se è settimanale o mensile
+                # Determina se Ã¨ settimanale o mensile
                 is_weekly = 'settimanale' in (pkg_type or '').lower()
 
                 # Default values - NON impostare anno/settimana/mese se non ci sono log
@@ -3193,7 +3250,7 @@ async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = 
 
                     from datetime import datetime, timedelta
 
-                    # Se è stringa, parsala
+                    # Se Ã¨ stringa, parsala
                     if isinstance(ts, str):
                         ts_clean = ts.replace('Z', '').replace('+00:00', '').split('.')[0]
                         try:
@@ -3243,3 +3300,5 @@ async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = 
     except Exception as e:
         logger.error(f"Error in get_packages_ready_data: {e}")
         return []
+
+

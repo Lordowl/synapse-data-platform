@@ -1,4 +1,4 @@
-from sqlalchemy import label
+from sqlalchemy import label, func
 from sqlalchemy.orm import Session
 from . import models, schemas
 from core.security import get_password_hash
@@ -257,7 +257,13 @@ def get_repo_update_info(db: Session):
 
 def get_repo_update_info_by_bank(db: Session, bank: str):
     """Recupera le informazioni di repo_update per una specifica banca."""
-    return db.query(models.RepoUpdateInfo).filter(models.RepoUpdateInfo.bank == bank).first()
+    bank_normalized = (bank or "").strip().lower()
+    return (
+        db.query(models.RepoUpdateInfo)
+        .filter(func.lower(func.trim(models.RepoUpdateInfo.bank)) == bank_normalized)
+        .order_by(models.RepoUpdateInfo.id.desc())
+        .first()
+    )
 
 def create_repo_update_info(db: Session, repo_info: schemas.RepoUpdateInfoCreate):
     """Crea un nuovo record repo_update_info."""
@@ -313,7 +319,9 @@ def update_repo_update_info_by_bank(db: Session, bank: str, repo_info_data: sche
     logger.info(f"CRUD update_repo_update_info_by_bank - Dati da scrivere nel DB: {update_data}")
 
     if update_data:
-        db.query(models.RepoUpdateInfo).filter(models.RepoUpdateInfo.bank == bank).update(
+        db.query(models.RepoUpdateInfo).filter(
+            models.RepoUpdateInfo.id == existing_repo_info.id
+        ).update(
             values=update_data,
             synchronize_session=False
         )

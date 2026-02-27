@@ -49,7 +49,13 @@ def get_repo_update_info(
         logger.info(f"Colonne disponibili: {col_names}")
         logger.info(f"Colonne selezionate: {select_cols}")
 
-        sel_sql = f"SELECT {', '.join(select_cols)} FROM repo_update_info WHERE bank = :bank LIMIT 1"
+        sel_sql = (
+            f"SELECT {', '.join(select_cols)} "
+            "FROM repo_update_info "
+            "WHERE LOWER(TRIM(bank)) = LOWER(TRIM(:bank)) "
+            "ORDER BY id DESC "
+            "LIMIT 1"
+        )
         logger.info(f"Query SQL: {sel_sql}")
         row = db.execute(text(sel_sql), {"bank": current_user.bank}).fetchone()
 

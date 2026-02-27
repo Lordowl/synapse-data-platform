@@ -216,6 +216,40 @@ const formatDate = (dateString) => {
   }
 };
 
+const decodeJwtPayload = (token) => {
+  if (!token) return null;
+  try {
+    const payloadPart = token.split(".")[1];
+    if (!payloadPart) return null;
+    const base64 = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+    return JSON.parse(atob(padded));
+  } catch (e) {
+    return null;
+  }
+};
+
+const getBankFromToken = () => {
+  const token = sessionStorage.getItem("accessToken");
+  const payload = decodeJwtPayload(token);
+  return typeof payload?.bank === "string" ? payload.bank : "";
+};
+
+const getEffectiveSelectedBank = () => {
+  return getBankFromToken() || sessionStorage.getItem("selectedBank") || "";
+};
+
+const normalizeBank = (bank) => (bank || "").trim().toLowerCase();
+
+const isMatchingBank = (selectedBank, responseBank) => {
+  const selected = normalizeBank(selectedBank);
+  const response = normalizeBank(responseBank);
+  if (!selected || !response) {
+    return true;
+  }
+  return selected === response;
+};
+
 // Funzione per stabilizzare le date (sottrae 1 settimana)
 const stabilizzaDate = (anno, settimana, lunedi) => {
   // Crea oggetto datetime dal lunedì
@@ -254,6 +288,7 @@ const stabilizzaDate = (anno, settimana, lunedi) => {
 function Report() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const selectedBank = getEffectiveSelectedBank();
 
   // Leggi la periodicità dai parametri URL o default a 'settimanale'
   const currentPeriodicity = searchParams.get('type') || 'settimanale';
@@ -329,6 +364,15 @@ function Report() {
     console.log("syncRunning changed to:", syncRunning);
   }, [syncRunning]);
 
+  // Mantieni selectedBank allineata alla banca presente nel token JWT
+  useEffect(() => {
+    const tokenBank = getBankFromToken();
+    if (!tokenBank) return;
+    if (normalizeBank(sessionStorage.getItem("selectedBank")) !== normalizeBank(tokenBank)) {
+      sessionStorage.setItem("selectedBank", tokenBank);
+    }
+  }, [selectedBank]);
+
   // Estrai valori univoci per i dropdown dai dati
   const uniquePackages = useMemo(() => {
     const packages = [...new Set(reportTasks.map(task => task.package).filter(Boolean))];
@@ -364,8 +408,21 @@ function Report() {
     try {
       // Usa l'endpoint /is-sync-running che ora include anche last_sync_info
       try {
-        const response = await apiClient.get("/reportistica/is-sync-running");
+        const response = await apiClient.get("/reportistica/is-sync-running", {
+          params: selectedBank ? { bank: selectedBank } : {}
+        });
         console.log("Is sync running response:", response.data);
+
+        if (!isMatchingBank(selectedBank, response.data?.bank)) {
+          console.warn(
+            `[SyncStatus] Risposta ignorata: banca selezionata=${selectedBank}, banca risposta=${response.data?.bank}`
+          );
+          setSyncRunning(false);
+          setSyncInterval(5);
+          setLastSyncInfo(null);
+          return;
+        }
+
         setSyncRunning(response.data?.is_running || false);
         setSyncInterval(response.data?.update_interval || 5);
 
@@ -454,6 +511,7 @@ function Report() {
 
         console.log('Mapped Data:', mappedData);
         setReportTasks(mappedData);
+        await fetchSyncStatus();
         await fetchRepoUpdateInfo();
         // packagesReady, syncStatus e publishStatus vengono aggiornati automaticamente via WebSocket
 
@@ -530,6 +588,14 @@ function Report() {
             if (data.type === 'status_update') {
               // Aggiorna sync status
               if (data.sync_status) {
+                if (!isMatchingBank(selectedBank, data.sync_status.bank)) {
+                  console.warn(
+                    `[WebSocket] sync_status ignorato: banca selezionata=${selectedBank}, banca payload=${data.sync_status.bank}`
+                  );
+                  setSyncRunning(false);
+                  setSyncInterval(5);
+                  setLastSyncInfo(null);
+                } else {
                 setSyncRunning(data.sync_status.is_running || false);
                 setSyncInterval(data.sync_status.update_interval || 5);
 
@@ -544,6 +610,7 @@ function Report() {
                 } else {
                   console.log('[WebSocket] No last_sync_time, clearing lastSyncInfo');
                   setLastSyncInfo(null);
+                }
                 }
               }
 
@@ -651,23 +718,21 @@ function Report() {
 
   // Task filtrati per periodicità E banca (per il semaforo)
   const tasksForSemaphore = useMemo(() => {
-    const selectedBanca = sessionStorage.getItem("selectedBank");
     return reportTasks.filter(task => {
       // Confronto case-insensitive per la banca
-      const matchesBanca = !selectedBanca || task.banca?.toLowerCase() === selectedBanca.toLowerCase();
+      const matchesBanca = !selectedBank || task.banca?.toLowerCase() === selectedBank.toLowerCase();
       const matchesPeriodicity = task.tipo_reportistica?.toLowerCase() === currentPeriodicity.toLowerCase();
       return matchesBanca && matchesPeriodicity;
     });
-  }, [reportTasks, currentPeriodicity]);
+  }, [reportTasks, currentPeriodicity, selectedBank]);
 
   // Filtra task per periodicità corrente + altri filtri (per la tabella)
   const filteredReportTasks = useMemo(() => {
     console.log("Esempio task:", reportTasks[0]);
-    const selectedBanca = sessionStorage.getItem("selectedBank");
 
     const filtered = reportTasks.filter(task => {
       // Filtro per banca selezionata (case-insensitive)
-      const matchesBanca = !selectedBanca || task.banca?.toLowerCase() === selectedBanca.toLowerCase();
+      const matchesBanca = !selectedBank || task.banca?.toLowerCase() === selectedBank.toLowerCase();
 
       // Filtro per periodicità basato sul tab selezionato (case-insensitive)
       const matchesPeriodicity = task.tipo_reportistica?.toLowerCase() === currentPeriodicity.toLowerCase();
@@ -692,7 +757,7 @@ function Report() {
     console.log('Sample task tipo_reportistica:', reportTasks[0]?.tipo_reportistica);
     console.log('All task tipos:', reportTasks);
     return filtered;
-  }, [reportTasks, currentPeriodicity, filters]);
+  }, [reportTasks, currentPeriodicity, filters, selectedBank]);
 
   // Status basato SOLO sui task della periodicità corrente (non sui filtri)
   const semaphoreStatus = useMemo(() => {
@@ -1073,7 +1138,7 @@ function Report() {
                 <h1 className="report-header-title">
                   Cruscotto Reportistica
                 </h1>
-                <p className="report-header-subtitle">Banca: {sessionStorage.getItem("selectedBank") || "N/A"}</p>
+                <p className="report-header-subtitle">Banca: {selectedBank || "N/A"}</p>
               </div>
             </div>
 
@@ -1157,7 +1222,6 @@ function Report() {
                 <button
                   onClick={async () => {
                     console.log("Refresh button clicked - triggering sync");
-                    const selectedBank = sessionStorage.getItem("selectedBank");
                     showToast("Avvio sincronizzazione...", "info");
                     try {
                       const payload = selectedBank ? { bank: selectedBank } : {};
@@ -1349,7 +1413,7 @@ function Report() {
         <section className="report-tasks-section">
           <div className="report-table-wrapper">
             <table className="report-table">
-              <thead>
+              <thead className="report-table-head">
                 <tr>
                   <th>Finalità</th>
                   <th>Package</th>
@@ -1436,8 +1500,17 @@ function Report() {
           <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
             {/* Tabella compatta */}
             <div className="report-table-wrapper" style={{ flex: '1', minWidth: '820px' }}>
-              <table className="report-table" style={{ backgroundColor: 'white', width: '100%', tableLayout: 'fixed' }}>
-                <thead>
+              <table
+                className="report-table"
+                style={{
+                  backgroundColor: 'white',
+                  width: '100%',
+                  tableLayout: 'fixed',
+                  '--report-table-head-bg': '#ffffff',
+                  '--report-table-body-bg': '#ffffff'
+                }}
+              >
+                <thead className="report-table-head">
                   <tr>
                     <th style={{ width: '50px', textAlign: 'center' }}>
                       <input
