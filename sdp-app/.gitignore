@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Chiavi di firma Tauri (non committare la chiave privata)
+src-tauri/tauri_keys
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
