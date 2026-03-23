@@ -10,7 +10,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, StaleElementReferenceException, NoSuchElementException
+from selenium.common.exceptions import TimeoutException, StaleElementReferenceException, NoSuchElementException, InvalidSessionIdException
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ def main(workspace: str, PBI_packages: list):
     for package in PBI_packages:
         logger.info(f"=== Aggiornamento package: {package} ===")
         x_path_ms = f'//span[@data-value="{package}"]'
-        x_path_updt = f'//span[@data-value="{package}"]//button[@aria-label="Aggiorna adesso"]//mat-icon[@data-mat-icon-name="pbi-glyph-refresh"]'
+        x_path_updt = f'//span[@data-value="{package}"]//button[@aria-label="Aggiorna adesso"]'
         workbook["Aggiorna MS"]["B3"].value = x_path_ms    # da modificare
         workbook["Aggiorna MS"]["B4"].value = x_path_updt    # da modificare
         data_chains["chains"] = {chain: data[chain] for chain in update_chain}
@@ -175,14 +175,15 @@ def main(workspace: str, PBI_packages: list):
             continue
         
         driver = actions.driver
-        row_xpath = f"//a[@aria-label='{package}']/ancestor::div[@data-testid='workspace-list-content-view-row']"
+        row_xpath = f"//a[@aria-label='{package}']/ancestor::tr[@data-testid='workspace-list-content-view-row']"
         spinner_xpath = "//div[@class='powerbi-spinner xsmall shown']" # //div[@class='spinner']//div[@class='circle']"
         update_error = './/i[@class="warning glyphicon pbi-glyph-warning glyph-small"]'
 
         try:
             # Identifico la riga del modello semantico
             logger.info(f"Ricerca della riga per {package}...")
-            wait = WebDriverWait(driver, 10)
+            time.sleep(2)  # Attendo che Power BI completi il re-render post-click
+            wait = WebDriverWait(driver, 30)
 
             # Salvo la riga in una variabile
             ms_row = wait.until(EC.presence_of_element_located((By.XPATH, row_xpath)))
@@ -275,8 +276,21 @@ def main(workspace: str, PBI_packages: list):
         except TimeoutException:
             packages_status[package] = f"Timeout! Non è stato possibile trovare la riga per '{package}'."
             logger.error(f"Timeout! Non è stato possibile trovare la riga per '{package}'.")
+        except InvalidSessionIdException:
+            packages_status[package] = f"Sessione browser chiusa inaspettatamente durante l'aggiornamento di '{package}'."
+            logger.error(f"InvalidSessionIdException durante l'aggiornamento di '{package}': sessione browser terminata.")
+            break
 
         logger.debug(f"Log dettagliato: {log}")
+
+    successful_packages = [pkg for pkg, status in packages_status.items() if "successo" in str(status).lower()]
+    if not successful_packages:
+        error_msg = "Pubblicazione bloccata: il modello semantico non risulta aggiornato alla data odierna."
+        logger.error(error_msg)
+        for pkg in PBI_packages:
+            if pkg not in packages_status:
+                packages_status[pkg] = error_msg
+        return packages_status
 
     logger.info("Aggiornamento app in corso...")
     data_chains["chains"] = {chain: data[chain] for chain in app_chain}

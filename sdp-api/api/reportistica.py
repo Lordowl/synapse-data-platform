@@ -1018,7 +1018,7 @@ def trigger_sync(
           marker_file = os.path.join(sdp_folder, f"sync_requested_{bank_token}.marker")
 
           with open(marker_file, "w") as f:
-              f.write(f"timestamp:{datetime.now().isoformat()}\n")
+              f.write(f"timestamp:{datetime.utcnow().isoformat()}\n")
               f.write(f"user:{current_user.username}\n")
               f.write(f"bank:{effective_bank}\n")
 
@@ -1120,9 +1120,10 @@ def trigger_sync(
           with open(pid_file, "w") as f:
               f.write(f"PID:{process.pid}\n")
               f.write(f"User:{current_user.username}\n")
+              f.write(f"bank:{effective_bank}\n")
               f.write(f"Stdout:{stdout_log}\n")
               f.write(f"Stderr:{stderr_log}\n")
-              f.write(f"StartTime:{datetime.now().isoformat()}\n")
+              f.write(f"StartTime:{datetime.utcnow().isoformat()}\n")
 
           logger.info(f"Sync avviato da {current_user.username}, PID: {process.pid}")
           process_pid = process.pid
