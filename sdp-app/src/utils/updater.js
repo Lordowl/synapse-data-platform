@@ -23,8 +23,21 @@ export async function autoUpdate() {
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       console.log("📦 Download in corso...");
-      await update.downloadAndInstall();
-      console.log("✅ Download completato, riavvio...");
+      let downloaded = 0;
+      let total = 0;
+      await update.downloadAndInstall((progress) => {
+        if (progress.event === 'Started') {
+          total = progress.data.contentLength ?? 0;
+          console.log(`📦 Download avviato, dimensione: ${total} bytes`);
+        } else if (progress.event === 'Progress') {
+          downloaded += progress.data.chunkLength;
+          const pct = total > 0 ? Math.round((downloaded / total) * 100) : '?';
+          console.log(`⬇️ Download: ${pct}% (${downloaded}/${total})`);
+        } else if (progress.event === 'Finished') {
+          console.log("✅ Download completato, installazione in corso...");
+        }
+      });
+      console.log("🔄 Riavvio...");
       await relaunch();
     } else {
       console.log("✅ Nessun aggiornamento disponibile.");

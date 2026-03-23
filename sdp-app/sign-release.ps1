@@ -16,15 +16,8 @@ $Password = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
     [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecurePassword)
 )
 
-$PrivateKey = [System.IO.File]::ReadAllText($KeyFile)
-$env:TAURI_SIGNING_PRIVATE_KEY          = $PrivateKey
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $Password
-
 Write-Host "Firmo l'installer $Version..." -ForegroundColor Cyan
-npx tauri signer sign "$Installer"
-
-$env:TAURI_SIGNING_PRIVATE_KEY          = ""
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
+npx tauri signer sign -f "$KeyFile" -p "$Password" "$Installer"
 
 $SigFile = "$Installer.sig"
 if (-not (Test-Path $SigFile)) {

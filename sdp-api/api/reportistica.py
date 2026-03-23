@@ -3024,14 +3024,15 @@ async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = 
 
             results = db.execute(sql, params).fetchall()
 
-            # Ottieni periodo corrente da repo_update_info
+            # Ottieni periodo corrente da repo_update_info filtrato per banca
             repo_info_query = """
                 SELECT anno, settimana, mese
                 FROM repo_update_info
+                WHERE LOWER(bank) = LOWER(:bank)
                 ORDER BY updated_at DESC
                 LIMIT 1
             """
-            repo_info_result = db.execute(text(repo_info_query)).fetchone()
+            repo_info_result = db.execute(text(repo_info_query), {"bank": bank}).fetchone()
 
             current_anno = None
             current_settimana = None
