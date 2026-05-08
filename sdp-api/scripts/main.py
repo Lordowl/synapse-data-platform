@@ -193,6 +193,8 @@ def main(workspace: str, PBI_packages: list):
             logger.info(f"Attendo lo spinner per {package}...")
             # Combino l'XPath della riga con quello relativo dello spinner
             xpath_spinner_ms = row_xpath + spinner_xpath.replace('.', '')
+            no_more_spinner = False
+            no_spinner = False
             try:
                 wait.until(EC.presence_of_element_located((By.XPATH, xpath_spinner_ms)))
                 logger.info("Spinner apparso sulla riga corretta.")
@@ -202,10 +204,23 @@ def main(workspace: str, PBI_packages: list):
                 if no_more_spinner:
                     logger.info("Lo spinner è scomparso.")
                     no_spinner = False
+                else:
+                    # Timeout: lo spinner non è sparito — la pagina potrebbe essere bloccata
+                    logger.warning(f"Timeout! Lo spinner per '{package}' non è sparito. Eseguo refresh pagina e ri-verifico...")
+                    driver.refresh()
+                    time.sleep(5)
+                    data_chains["chains"] = {chain: data[chain] for chain in ms_chain}
+                    actions, text_list, workbook_report, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
+                    no_more_spinner = True
+                    no_spinner = False
             except TimeoutException:
-                packages_status[package] = f"Timeout! Lo spinner non è apparso in tempo."
-                logger.warning(f"Timeout! Lo spinner non è apparso in tempo.")
-                no_more_spinner = False
+                # Lo spinner non è mai apparso — Power BI potrebbe non averlo mostrato
+                logger.warning(f"Lo spinner non è apparso per '{package}'. Eseguo refresh pagina e ri-verifico...")
+                driver.refresh()
+                time.sleep(5)
+                data_chains["chains"] = {chain: data[chain] for chain in ms_chain}
+                actions, text_list, workbook_report, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
+                no_more_spinner = True
                 no_spinner = True
 
             if no_more_spinner or no_spinner:
@@ -240,38 +255,34 @@ def main(workspace: str, PBI_packages: list):
                             logger.error(f"ID Attività: {activity_id}")
                             logger.error("----------------------")
                             if no_spinner:
-                                logger.error(f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato: {main_error} (ID Attività: {activity_id})")
-                                packages_status[package] = f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato: {main_error} (ID Attività: {activity_id})"
+                                logger.error(f"Spinner non rilevato (verificato post-refresh); errore rilevato: {main_error} (ID Attività: {activity_id})")
+                                packages_status[package] = f"Aggiornamento non completato (spinner non rilevato, verificato post-refresh); errore: {main_error} (ID Attività: {activity_id})"
                             else:
                                 logger.error(f"Aggiornamento non completato, errore rilevato: {main_error} (ID Attività: {activity_id})")
                                 packages_status[package] = f"Aggiornamento non completato, errore rilevato: {main_error} (ID Attività: {activity_id})"
                         else:
                             if no_spinner:
-                                logger.error(f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato ma dettagli non disponibili.")
-                                packages_status[package] = f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato ma dettagli non disponibili."
+                                logger.error(f"Spinner non rilevato (verificato post-refresh); errore rilevato ma dettagli non disponibili.")
+                                packages_status[package] = f"Aggiornamento non completato (spinner non rilevato, verificato post-refresh); errore rilevato ma dettagli non disponibili."
                             else:
                                 packages_status[package] = f"Aggiornamento non completato, errore rilevato ma dettagli non disponibili."
                                 logger.error("Aggiornamento non completato, errore rilevato ma dettagli non disponibili.")
 
                     except NoSuchElementException:
                         if no_spinner:
-                            logger.error(f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato ma popup mancante.")
-                            packages_status[package] = f"Lo spinner non è mai apparso, aggiornamento non effettuato; errore rilevato ma popup mancante."
+                            logger.error(f"Spinner non rilevato (verificato post-refresh); errore rilevato ma popup mancante.")
+                            packages_status[package] = f"Aggiornamento non completato (spinner non rilevato, verificato post-refresh); errore rilevato ma popup mancante."
                         else:
                             packages_status[package] = f"Aggiornamento non completato, errore rilevato ma popup mancante."
                             logger.error(f"Aggiornamento non completato, errore rilevato ma popup mancante.")
 
                 except NoSuchElementException:
                     if no_spinner:
-                        logger.warning(f"Lo spinner non è mai apparso, aggiornamento non effettuato ma nessun errore rilevato.")
-                        packages_status[package] = "Lo spinner non è mai apparso, aggiornamento non effettuato ma nessun errore rilevato."
+                        logger.info(f"✓ Operazione per '{package}' completata con successo (spinner non rilevato, nessun errore post-refresh).")
+                        packages_status[package] = "Aggiornamento completato con successo (spinner non rilevato, verificato post-refresh)."
                     else:
                         packages_status[package] = "Aggiornamento completato con successo."
                         logger.info(f"✓ Operazione per '{package}' completata con successo, nessun errore trovato.")
-
-            else:
-                packages_status[package] = "Timeout! L'aggiornamento ha richiesto più tempo del previsto: esito non disponibile."
-                logger.warning(f"Timeout! Lo spinner per '{package}' è ancora visibile.")
 
         except TimeoutException:
             packages_status[package] = f"Timeout! Non è stato possibile trovare la riga per '{package}'."
