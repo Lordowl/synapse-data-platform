@@ -97,6 +97,15 @@ def estrai_dettagli_errore(driver):
         return None
 
 
+def _wait_page_ready(driver: webdriver.Chrome, row_xpath: str, timeout: int = 30) -> None:
+    """Attende che la pagina sia pronta dopo un refresh: riga presente + icone di stato caricate."""
+    wait = WebDriverWait(driver, timeout)
+    # Attende che la riga sia nel DOM
+    wait.until(EC.presence_of_element_located((By.XPATH, row_xpath)))
+    # Piccola attesa aggiuntiva per il rendering delle icone di stato (spinner, warning)
+    time.sleep(3)
+
+
 def main(workspace: str, PBI_packages: list):
     logger.info(f"=== INIZIO ELABORAZIONE ===")
     logger.info(f"Workspace: {workspace}")
@@ -208,7 +217,7 @@ def main(workspace: str, PBI_packages: list):
                     # Timeout: lo spinner non è sparito — la pagina potrebbe essere bloccata
                     logger.warning(f"Timeout! Lo spinner per '{package}' non è sparito. Eseguo refresh pagina e ri-verifico...")
                     driver.refresh()
-                    time.sleep(5)
+                    _wait_page_ready(driver, row_xpath)
                     data_chains["chains"] = {chain: data[chain] for chain in ms_chain}
                     actions, text_list, workbook_report, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
                     no_more_spinner = True
@@ -217,7 +226,7 @@ def main(workspace: str, PBI_packages: list):
                 # Lo spinner non è mai apparso — Power BI potrebbe non averlo mostrato
                 logger.warning(f"Lo spinner non è apparso per '{package}'. Eseguo refresh pagina e ri-verifico...")
                 driver.refresh()
-                time.sleep(5)
+                _wait_page_ready(driver, row_xpath)
                 data_chains["chains"] = {chain: data[chain] for chain in ms_chain}
                 actions, text_list, workbook_report, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
                 no_more_spinner = True
@@ -226,8 +235,9 @@ def main(workspace: str, PBI_packages: list):
             if no_more_spinner or no_spinner:
                 logger.info("Controllo la riga per eventuali errori...")
 
-                # Ritrovo la riga (per evitare StaleElementReferenceException) e controllo se ha generato errori
-                updt_row = driver.find_element(By.XPATH, row_xpath)
+                # Ritrovo la riga aspettando che sia presente e che le icone di stato siano caricate
+                wait_row = WebDriverWait(driver, 30)
+                updt_row = wait_row.until(EC.presence_of_element_located((By.XPATH, row_xpath)))
 
                 try:
                     error_msg = updt_row.find_element(By.XPATH, update_error)

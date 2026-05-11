@@ -26,6 +26,13 @@ try:
 except ImportError:
     HAS_REPO_UPDATE_INIT = False
     init_repo_update_from_file = None
+
+try:
+    from db.init_report_mapping import init_report_mapping_from_file
+    HAS_REPORT_MAPPING_INIT = True
+except ImportError:
+    HAS_REPORT_MAPPING_INIT = False
+    init_report_mapping_from_file = None
 # Import api modules directly for PyInstaller compatibility
 import api.auth as auth
 import api.users as users
@@ -143,7 +150,7 @@ def create_default_admin_if_not_exists():
 app = FastAPI(
     title="Cruscotto Operativo API",
     description="API per il Cruscotto Operativo.",
-    version="0.2.38",
+    version="0.2.39",
 )
 
 
@@ -340,6 +347,14 @@ def startup_event():
                 print(f"[STARTUP] Repo update info inizializzate correttamente")
             else:
                 logging.warning("[STARTUP] Modulo init_repo_update non disponibile, skip inizializzazione repo_update_info")
+
+            # Sincronizza report_mapping dal file Excel (replace completo ad ogni avvio)
+            if HAS_REPORT_MAPPING_INIT:
+                settings_path = config_manager.get_setting("SETTINGS_PATH")
+                init_report_mapping_from_file(settings_path)
+                logging.info("[STARTUP] report_mapping sincronizzato dal file Excel")
+            else:
+                logging.warning("[STARTUP] Modulo init_report_mapping non disponibile, skip sincronizzazione report_mapping")
         except Exception as e:
             logging.error(
                 f"[STARTUP] Errore nell'inizializzazione banche/admin: {e}", exc_info=True

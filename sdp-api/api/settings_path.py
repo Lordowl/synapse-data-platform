@@ -150,6 +150,14 @@ async def update_folder_path(data: FolderUpdate):
 
         logging.info(f"[Settings] Folder, DB e file Ingestion aggiornati")
 
+        # Sincronizza report_mapping dal file Excel di mappatura
+        try:
+            from db.init_report_mapping import init_report_mapping_from_file
+            init_report_mapping_from_file(folder)
+            logging.info(f"[Settings] report_mapping sincronizzato da {folder}")
+        except Exception as e:
+            logging.warning(f"[Settings] Sincronizzazione report_mapping fallita (non bloccante): {e}")
+
         # Prepara la lista degli admin creati per la risposta
         admin_accounts = [
             {
