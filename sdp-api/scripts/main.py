@@ -294,10 +294,10 @@ def main(workspace: str, PBI_packages: list):
 
         logger.debug(f"Log dettagliato: {log}")
 
-    successful_packages = [pkg for pkg, status in packages_status.items() if "successo" in str(status).lower()]
-    if not successful_packages:
-        error_msg = "Pubblicazione bloccata: il modello semantico non risulta aggiornato alla data odierna."
-        logger.error(error_msg)
+    failed_packages = [pkg for pkg, status in packages_status.items() if "successo" not in str(status).lower()]
+    if failed_packages:
+        error_msg = "Pubblicazione bloccata: uno o più modelli semantici non risultano aggiornati."
+        logger.error(f"{error_msg} Package con errori: {failed_packages}")
         for pkg in PBI_packages:
             if pkg not in packages_status:
                 packages_status[pkg] = error_msg
