@@ -31,9 +31,16 @@ fn stop_backend() -> String {
             }
         }
     }
-    // Fallback: kill per porta nel caso il PID non fosse salvato
+    // Fallback 1: kill per porta
     kill_process_on_port(9123);
-    "Backend stopped (by port fallback)".to_string()
+    // Fallback 2: kill per nome processo
+    let _ = StdCommand::new("taskkill")
+        .args(["/IM", "sdp-api-x86_64-pc-windows-msvc.exe", "/F"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    log_to_file("Backend stopped (by port/name fallback)");
+    "Backend stopped (by port/name fallback)".to_string()
 }
 
 fn kill_process_on_port(port: u16) {

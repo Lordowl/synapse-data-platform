@@ -19,8 +19,8 @@ export async function autoUpdate() {
         console.warn("⚠️ Errore arresto backend (continuo comunque):", stopError);
       }
 
-      // Piccola pausa per assicurarsi che il processo sia terminato
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Pausa per assicurarsi che il processo sia completamente terminato
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
       console.log("📦 Download in corso...");
       let downloaded = 0;
