@@ -140,20 +140,25 @@ pub fn run() {
             log_to_file("=== SETUP TAURI STARTED ===");
 
             let backend_path = if cfg!(debug_assertions) {
-                "C:\\Users\\EmanueleDeFeo\\Documents\\Projects\\Synapse-Data-Platform\\sdp-app\\src-tauri\\binaries\\sdp-api-x86_64-pc-windows-msvc.exe"
+                "C:\\Users\\EmanueleDeFeo\\Documents\\Projects\\Synapse-Data-Platform\\sdp-app\\src-tauri\\binaries\\sdp-api-x86_64-pc-windows-msvc.exe".to_string()
             } else {
-                "binaries/sdp-api-x86_64-pc-windows-msvc.exe"
+                // In release il sidecar è nella stessa cartella del main exe
+                std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(|d| d.join("sdp-api-x86_64-pc-windows-msvc.exe")))
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "sdp-api-x86_64-pc-windows-msvc.exe".to_string())
             };
 
             log_to_file(&format!("Backend path: {}", backend_path));
 
-            if !Path::new(backend_path).exists() {
+            if !Path::new(&backend_path).exists() {
                 log_to_file("ERROR: Backend exe NOT FOUND!");
                 eprintln!("Backend exe not found at: {}", backend_path);
                 return Ok(());
             }
 
-            start_backend(backend_path);
+            start_backend(&backend_path);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![greet, stop_backend])
