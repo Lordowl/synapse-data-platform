@@ -3250,9 +3250,12 @@ async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = 
                     if ts is None:
                         return None
 
-                    from datetime import datetime, timedelta
+                    from datetime import datetime, timezone
+                    try:
+                        from zoneinfo import ZoneInfo
+                    except ImportError:
+                        from backports.zoneinfo import ZoneInfo
 
-                    # Se Ã¨ stringa, parsala
                     if isinstance(ts, str):
                         ts_clean = ts.replace('Z', '').replace('+00:00', '').split('.')[0]
                         try:
@@ -3260,13 +3263,11 @@ async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = 
                         except:
                             return ts_clean
 
-                    # Converti da UTC (salvato da func.now()) a ora locale italiana
-                    # SQLite func.now() restituisce UTC, quindi aggiungiamo offset per Italy
                     if hasattr(ts, 'isoformat'):
-                        # Aggiungi 1 ora per timezone italiano (UTC+1)
-                        ts_local = ts + timedelta(hours=1)
-                        # Usa .isoformat() come per ultima_modifica
-                        return ts_local.isoformat() if hasattr(ts_local, 'isoformat') else str(ts_local)
+                        # Converti da UTC a ora italiana (gestisce automaticamente ora legale)
+                        ts_utc = ts.replace(tzinfo=timezone.utc)
+                        ts_local = ts_utc.astimezone(ZoneInfo('Europe/Rome'))
+                        return ts_local.replace(tzinfo=None).isoformat()
 
                     return str(ts)
 

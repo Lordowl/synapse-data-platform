@@ -20,21 +20,30 @@ def _wait_spinner_gone(driver: webdriver.Chrome, package_name: str, timeout: int
     Attende che lo spinner di aggiornamento scompaia dalla riga del package.
     Usa un polling loop che ri-scrolla attivamente per mantenere la riga nel DOM
     (CDK virtual scroll rimuove dal DOM le righe fuori viewport).
+    Doppia verifica: lo spinner deve essere assente per 2 check consecutivi
+    prima di dichiarare l'aggiornamento completato.
     Restituisce True se lo spinner è sparito, False se timeout.
     """
     row_xpath = f'//span[@data-value="{package_name}"]/ancestor::*[@data-testid="workspace-list-content-view-row"]'
     spinner_xpath = row_xpath + '//spinner'
     start = time.time()
+    gone_count = 0  # contatore check consecutivi senza spinner
 
     while time.time() - start < timeout:
         _scroll_to_package(driver, package_name)  # mantieni la riga nel DOM
         time.sleep(1)
         try:
             driver.find_element(By.XPATH, spinner_xpath)
-            time.sleep(4)  # spinner ancora presente, aspetta
+            gone_count = 0  # spinner ancora presente, reset contatore
+            time.sleep(4)
         except NoSuchElementException:
-            time.sleep(2)  # attendi che Power BI renderizzi lo stato finale (icona errore o successo)
-            return True  # riga nel DOM e spinner assente = aggiornamento completato
+            gone_count += 1
+            if gone_count >= 2:
+                # Spinner assente per 2 check consecutivi: aggiornamento completato
+                # Attesa extra per dare a Power BI il tempo di renderizzare lo stato finale
+                time.sleep(3)
+                return True
+            time.sleep(2)  # attendi prima del secondo check
     return False
 
 
@@ -303,8 +312,10 @@ def main(workspace: str, PBI_packages: list):
                 logger.error(f"Timeout riga post-aggiornamento per '{package}'.")
                 continue
 
+            # Attendi fino a 20s che Power BI renderizzi l'icona errore (appare qualche secondo dopo lo spinner)
+            error_icon_xpath = row_xpath + '//button[.//i[contains(@class, "pbi-glyph-warning")]]'
             try:
-                err_btn = row_el.find_element(By.XPATH, './/i[contains(@class, "pbi-glyph-warning")]')
+                err_btn = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, error_icon_xpath)))
                 err_btn.click()
                 details = estrai_dettagli_errore(driver)
                 if details:
@@ -315,7 +326,7 @@ def main(workspace: str, PBI_packages: list):
                 else:
                     packages_status[package] = "Aggiornamento non completato, errore rilevato ma dettagli non disponibili."
                     logger.error(f"Errore per '{package}': dettagli non disponibili.")
-            except NoSuchElementException:
+            except TimeoutException:
                 packages_status[package] = "Aggiornamento completato con successo."
                 logger.info(f"✓ '{package}' completato con successo.")
 
