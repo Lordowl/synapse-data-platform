@@ -543,7 +543,17 @@ function Report() {
   useEffect(() => {
     let ws = null;
     let reconnectTimeout = null;
+    let heartbeatTimeout = null;
     let isUnmounting = false;
+    const HEARTBEAT_MS = 45000; // chiudi e riconnetti se silenzio per 45s (VDI screensaver)
+
+    const resetHeartbeat = () => {
+      if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+      heartbeatTimeout = setTimeout(() => {
+        console.warn('WebSocket silence for 45s (VDI screensaver?), forcing reconnect...');
+        if (ws) ws.close();
+      }, HEARTBEAT_MS);
+    };
 
     const connectWebSocket = () => {
       if (isUnmounting) return;
@@ -577,9 +587,11 @@ function Report() {
 
         ws.onopen = () => {
           console.log('WebSocket connected');
+          resetHeartbeat();
         };
 
         ws.onmessage = (event) => {
+          resetHeartbeat();
           try {
             const data = JSON.parse(event.data);
             console.log('WebSocket message received:', data);
@@ -695,14 +707,9 @@ function Report() {
     // Cleanup alla smontatura del componente
     return () => {
       isUnmounting = true;
-
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-      }
-
-      if (ws) {
-        ws.close();
-      }
+      if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (ws) ws.close();
     };
   }, []); // Vuoto perché vogliamo connetterci una sola volta
 

@@ -23,7 +23,7 @@ function Login({ setIsAuthenticated }) {
   useEffect(() => {
     let mounted = true;
     let retryCount = 0;
-    const maxRetries = 10; // Prova per 10 volte (5 secondi)
+    const maxRetries = 60; // Prova per 60 volte (30 secondi) — PyInstaller impiega 10-30s al primo avvio
 
     const fetchInitialData = async () => {
       if (!mounted) return;

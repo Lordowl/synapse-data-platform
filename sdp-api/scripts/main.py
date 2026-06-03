@@ -30,20 +30,20 @@ def _wait_spinner_gone(driver: webdriver.Chrome, package_name: str, timeout: int
     gone_count = 0  # contatore check consecutivi senza spinner
 
     while time.time() - start < timeout:
-        _scroll_to_package(driver, package_name)  # mantieni la riga nel DOM
-        time.sleep(1)
+        _scroll_to_package(driver, package_name)  # mantieni la riga nel DOM (no-op se già visibile)
+        time.sleep(2)  # attesa post-scroll per stabilizzare il render Angular
         try:
             driver.find_element(By.XPATH, spinner_xpath)
             gone_count = 0  # spinner ancora presente, reset contatore
             time.sleep(4)
         except NoSuchElementException:
             gone_count += 1
-            if gone_count >= 2:
-                # Spinner assente per 2 check consecutivi: aggiornamento completato
+            if gone_count >= 4:
+                # Spinner assente per 4 check consecutivi (~24s): aggiornamento completato
                 # Attesa extra per dare a Power BI il tempo di renderizzare lo stato finale
                 time.sleep(3)
                 return True
-            time.sleep(2)  # attendi prima del secondo check
+            time.sleep(4)  # attendi prima del check successivo
     return False
 
 
@@ -111,12 +111,21 @@ def _scroll_to_package(driver: webdriver.Chrome, package_name: str, timeout: int
     """
     Porta il package nella viewport del CDK virtual scroll di Power BI.
     Power BI usa virtual scrolling: gli elementi fuori dalla viewport non esistono nel DOM.
-    Scrolla incrementalmente il contenitore finché l'elemento non appare.
+    Tenta prima senza scrollare (l'elemento potrebbe già essere visibile); solo se non trovato
+    riparte dalla cima e scrolla incrementalmente. Questo evita di rimettere in DOM
+    da capo l'elemento ad ogni chiamata, che causa falsi positivi nel check spinner.
     Restituisce True se trovato, False se non trovato entro il timeout.
     """
     xpath = f'//span[@data-value="{package_name}"]'
 
-    # Prima scrolla in cima alla lista per partire da uno stato consistente
+    # Prima tenta senza scrollare: evita di rimuovere il row dal DOM inutilmente
+    try:
+        driver.find_element(By.XPATH, xpath)
+        return True
+    except NoSuchElementException:
+        pass
+
+    # Elemento non in viewport: riparte dalla cima e scrolla incrementalmente
     driver.execute_script("""
         var vp = document.querySelector('cdk-virtual-scroll-viewport');
         if (vp) vp.scrollTop = 0;
@@ -139,7 +148,6 @@ def _scroll_to_package(driver: webdriver.Chrome, package_name: str, timeout: int
             """, scroll_step)
             time.sleep(0.3)
             if at_bottom:
-                # Ultimo tentativo a fine lista
                 try:
                     driver.find_element(By.XPATH, xpath)
                     return True
@@ -149,12 +157,27 @@ def _scroll_to_package(driver: webdriver.Chrome, package_name: str, timeout: int
     return False
 
 
+def _log_debug_html(driver: webdriver.Chrome, package_name: str, context: str) -> None:
+    """Logga l'HTML della riga del package (o del viewport) per diagnosticare rotture UI di Power BI."""
+    row_xpath = f'//span[@data-value="{package_name}"]/ancestor::*[@data-testid="workspace-list-content-view-row"]'
+    try:
+        row_el = driver.find_element(By.XPATH, row_xpath)
+        html = row_el.get_attribute("outerHTML") or ""
+        logger.debug(f"[DEBUG HTML] {context} | riga '{package_name}': {html[:1000]}")
+    except NoSuchElementException:
+        try:
+            vp = driver.find_element(By.CSS_SELECTOR, "cdk-virtual-scroll-viewport")
+            html = vp.get_attribute("innerHTML") or ""
+            logger.debug(f"[DEBUG HTML] {context} | riga '{package_name}' non in DOM, viewport: {html[:1000]}")
+        except Exception:
+            logger.debug(f"[DEBUG HTML] {context} | viewport non trovato")
+
+
 def _wait_page_ready(driver: webdriver.Chrome, timeout: int = 30) -> None:
     """Attende che la pagina sia pronta dopo un refresh: contenitore lista presente + rendering icone."""
     wait = WebDriverWait(driver, timeout)
-    # Attende il contenitore della lista workspace (stabile, sempre nel DOM dopo caricamento)
     wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "cdk-virtual-scroll-viewport")))
-    time.sleep(2)
+    time.sleep(3)
 
 
 def main(workspace: str, PBI_packages: list):
@@ -252,55 +275,136 @@ def main(workspace: str, PBI_packages: list):
                 logger.debug(f"Log dettagliato: {log}")
 
                 if log["Aggiorna MS"]["Aggiorna MS"]["Cerco riga MS"]["status"] == "error":
-                    logger.warning(f"Non sono riuscito a trovare la riga per '{package}'.")
-                    packages_status[package] = "Modello Semantico non trovato."
-                    continue
-                if log["Aggiorna MS"]["Aggiorna MS"]["Aggiorno MS"]["status"] == "error":
-                    logger.warning(f"Non sono riuscito ad aggiornare '{package}'.")
-                    packages_status[package] = "Modello Semantico non aggiornato."
-                    continue
+                    # Virtual scroll potrebbe aver spostato la riga — riprova con scroll
+                    logger.warning(f"Riga non trovata per '{package}', riprovo con scroll...")
+                    _scroll_to_package(driver, package)
+                    time.sleep(1)
+                    actions, _, _, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
+                    driver = actions.driver
+                    if log["Aggiorna MS"]["Aggiorna MS"]["Cerco riga MS"]["status"] == "error":
+                        # Controlla se side-effect spinner già attivo
+                        try:
+                            driver.find_element(By.XPATH, spinner_xpath)
+                            logger.info(f"Side-effect spinner rilevato per '{package}' dopo fallimento ricerca riga. Attendo completamento...")
+                            already_spinning = True
+                        except NoSuchElementException:
+                            logger.warning(f"Riga '{package}' non trovata dopo retry.")
+                            _log_debug_html(driver, package, "Cerco riga MS fallito dopo retry")
+                            packages_status[package] = "Modello Semantico non trovato."
+                            continue
 
-                # Attendi che lo spinner appaia (conferma che Power BI ha preso in carico)
+                if not already_spinning and log["Aggiorna MS"]["Aggiorna MS"]["Aggiorno MS"]["status"] == "error":
+                    # Click fallito — potrebbe essere race condition con side-effect refresh
+                    logger.warning(f"Click 'Aggiorna adesso' fallito per '{package}', controllo side-effect spinner...")
+                    _scroll_to_package(driver, package)
+                    time.sleep(2)
+                    try:
+                        driver.find_element(By.XPATH, spinner_xpath)
+                        logger.info(f"Side-effect spinner rilevato per '{package}' dopo fallimento click. Attendo completamento...")
+                        already_spinning = True
+                    except NoSuchElementException:
+                        # Nessuno spinner — il side-effect refresh potrebbe essere già completato
+                        # prima che lo script arrivasse a questo package. Non interrompere:
+                        # procedi al controllo icona errore per determinare l'esito reale.
+                        logger.warning(f"Nessuno spinner per '{package}' dopo fallimento click — possibile side-effect già completato, verifico icona errore...")
+                        _log_debug_html(driver, package, "Aggiorno MS fallito, nessun spinner — verifico icona errore")
+
+                # Attendi che lo spinner appaia con polling attivo (mantiene la riga nel DOM)
+                # WebDriverWait statico non funziona: CDK virtual scroll può rimuovere la riga
+                # dal DOM durante l'attesa, rendendo lo spinner invisibile alla query.
                 time.sleep(2)
-                _scroll_to_package(driver, package)
                 spinner_appeared = False
-                try:
-                    WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, spinner_xpath)))
-                    spinner_appeared = True
-                    logger.info(f"Spinner apparso per '{package}'.")
-                except TimeoutException:
-                    logger.warning(f"Spinner non apparso per '{package}' entro 30s. Eseguo refresh e verifico...")
+                spinner_wait_start = time.time()
+                while time.time() - spinner_wait_start < 60:
+                    _scroll_to_package(driver, package)
+                    time.sleep(1)
+                    try:
+                        driver.find_element(By.XPATH, spinner_xpath)
+                        spinner_appeared = True
+                        logger.info(f"Spinner apparso per '{package}'.")
+                        break
+                    except NoSuchElementException:
+                        pass
+                if not spinner_appeared:
+                    logger.warning(f"Spinner non apparso per '{package}' entro 60s. Eseguo refresh e verifico...")
 
                 if not spinner_appeared:
-                    # Spinner non comparso: refresh e verifica diretta
+                    # Spinner non comparso entro 60s: refresh pagina e ri-verifica
                     driver.refresh()
                     _wait_page_ready(driver)
                     data_chains["chains"] = {chain: data[chain] for chain in ms_chain}
                     actions, _, _, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
                     driver = actions.driver
                     _scroll_to_package(driver, package)
+                    # Se lo spinner è ora visibile il refresh era già in corso: attendi completamento
+                    try:
+                        driver.find_element(By.XPATH, spinner_xpath)
+                        logger.info(f"Spinner visibile per '{package}' post-refresh: attendo completamento...")
+                        finished = _wait_spinner_gone(driver, package, timeout=86400)
+                        if not finished:
+                            logger.warning(f"Timeout 24h per '{package}' (rilevato post-refresh).")
+                        _scroll_to_package(driver, package)
+                    except NoSuchElementException:
+                        pass  # nessuno spinner post-refresh, procedi al check icona errore
+                    # Controlla icona errore e vai al prossimo package (sempre continue)
                     try:
                         row_el = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, row_xpath)))
-                        row_el.find_element(By.XPATH, './/i[contains(@class, "pbi-glyph-warning")]')
-                        packages_status[package] = "Aggiornamento non completato (spinner non rilevato, verificato post-refresh); errore rilevato."
-                        logger.error(f"Errore rilevato per '{package}' post-refresh (spinner non apparso).")
-                    except (NoSuchElementException, TimeoutException):
-                        packages_status[package] = "Aggiornamento completato con successo (spinner non rilevato, verificato post-refresh)."
-                        logger.info(f"✓ '{package}' completato (spinner non rilevato, nessun errore post-refresh).")
+                    except TimeoutException:
+                        packages_status[package] = f"Timeout: riga '{package}' non trovata dopo aggiornamento post-refresh."
+                        logger.error(f"Timeout riga post-aggiornamento per '{package}'.")
+                        continue
+                    error_icon_xpath = row_xpath + '//button[.//i[contains(@class, "pbi-glyph-warning")]]'
+                    try:
+                        err_btn = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, error_icon_xpath)))
+                        err_btn.click()
+                        details = estrai_dettagli_errore(driver)
+                        if details:
+                            main_error = details.get("Errore dell'origine dati", "sconosciuto")
+                            activity_id = details.get("ID attività", "N/D")
+                            packages_status[package] = f"Aggiornamento non completato, errore: {main_error} (ID Attività: {activity_id})"
+                            logger.error(f"Errore per '{package}': {main_error} (ID: {activity_id})")
+                        else:
+                            packages_status[package] = "Aggiornamento non completato, errore rilevato ma dettagli non disponibili."
+                            logger.error(f"Errore per '{package}': dettagli non disponibili.")
+                    except TimeoutException:
+                        _log_debug_html(driver, package, "check icona errore post-refresh: nessuna icona → successo")
+                        packages_status[package] = "Aggiornamento completato con successo (verificato post-refresh)."
+                        logger.info(f"✓ '{package}' completato con successo (verificato post-refresh).")
                     continue
 
-            # Attendi la fine dello spinner con polling loop (mantiene la riga nel DOM)
+            # Attendi la fine dello spinner con refresh periodico ogni 5 minuti.
+            # Evita sessioni Chrome morte su refresh lunghi (>30min).
             logger.info(f"Attendo la fine dello spinner per '{package}'...")
-            finished = _wait_spinner_gone(driver, package, timeout=86400)
+            refresh_interval = 300  # secondi tra un refresh e l'altro
+            total_timeout = 86400
+            total_start = time.time()
+            finished = False
 
-            if not finished:
-                # Timeout 24h: situazione anomala, refresh e verifica
-                logger.warning(f"Timeout 24h per '{package}'. Eseguo refresh e verifico...")
+            while time.time() - total_start < total_timeout:
+                chunk = min(refresh_interval, total_timeout - (time.time() - total_start))
+                if chunk <= 0:
+                    break
+                done = _wait_spinner_gone(driver, package, timeout=int(chunk))
+                if done:
+                    finished = True
+                    break
+                # Chunk scaduto, spinner ancora presente: refresh per tenere viva la sessione
+                logger.info(f"Refresh periodico (keep-alive) per '{package}'...")
                 driver.refresh()
                 _wait_page_ready(driver)
                 data_chains["chains"] = {chain: data[chain] for chain in ms_chain}
                 actions, _, _, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
                 driver = actions.driver
+                _scroll_to_package(driver, package)
+                try:
+                    driver.find_element(By.XPATH, spinner_xpath)
+                    logger.info(f"Spinner ancora presente per '{package}' post-refresh periodico, continuo...")
+                except NoSuchElementException:
+                    finished = True
+                    break
+
+            if not finished:
+                logger.warning(f"Timeout 24h per '{package}'.")
 
             # Riporta la riga nel DOM e controlla icona errore
             logger.info(f"Controllo la riga per eventuali errori per '{package}'...")
@@ -327,6 +431,7 @@ def main(workspace: str, PBI_packages: list):
                     packages_status[package] = "Aggiornamento non completato, errore rilevato ma dettagli non disponibili."
                     logger.error(f"Errore per '{package}': dettagli non disponibili.")
             except TimeoutException:
+                _log_debug_html(driver, package, "check icona errore: nessuna icona dopo 20s → successo")
                 packages_status[package] = "Aggiornamento completato con successo."
                 logger.info(f"✓ '{package}' completato con successo.")
 

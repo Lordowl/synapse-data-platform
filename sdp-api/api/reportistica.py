@@ -3049,7 +3049,7 @@ async def get_packages_ready_data(bank: str, type_reportistica: Optional[str] = 
             pub_logs_query = """
                 SELECT id, packages, publication_type, status, anno, settimana, mese, output, error, timestamp
                 FROM publication_logs
-                WHERE bank = :bank
+                WHERE LOWER(bank) = LOWER(:bank)
                 AND anno = :anno
                 ORDER BY timestamp DESC, id DESC
             """

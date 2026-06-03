@@ -17,7 +17,8 @@ def init_db(db_url: str = None):
 
     engine = create_engine(
         db_url,
-        connect_args={"check_same_thread": False} if db_url.startswith("sqlite") else {}
+        connect_args={"check_same_thread": False, "timeout": 30} if db_url.startswith("sqlite") else {},
+        pool_pre_ping=True
     )
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

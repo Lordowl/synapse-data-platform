@@ -49,6 +49,12 @@ from core.config import settings, config_manager
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
+_log_dir = os.path.join(os.path.expanduser("~"), ".sdp-api")
+os.makedirs(_log_dir, exist_ok=True)
+_file_handler = logging.FileHandler(os.path.join(_log_dir, "sdp-api.log"), encoding="utf-8")
+_file_handler.setLevel(logging.DEBUG)
+_file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+logging.getLogger().addHandler(_file_handler)
 logger = logging.getLogger(__name__)
 
 # ----------------- Funzioni aggiornamento ----------------- #
