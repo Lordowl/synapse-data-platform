@@ -41,5 +41,5 @@ $LatestJson = [ordered]@{
     }
 } | ConvertTo-Json -Depth 5
 
-$LatestJson | Set-Content "$BundleDir\latest.json" -Encoding UTF8
+[System.IO.File]::WriteAllText("$BundleDir\latest.json", $LatestJson, [System.Text.UTF8Encoding]::new($false))
 Write-Host "latest.json generato per la versione $Version" -ForegroundColor Green
