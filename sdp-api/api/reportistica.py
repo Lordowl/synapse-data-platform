@@ -1946,6 +1946,94 @@ def toggle_disponibilita_server(
     update_data = schemas.ReportisticaUpdate(disponibilita_server=disponibilita)
     return crud.update_reportistica(db=db, reportistica_id=reportistica_id, reportistica_data=update_data)
 
+def _resolve_log_status(log_status, log_output, log_error):
+    """
+    Traduce un record di publication_logs in True (verde) / "error" (rosso).
+    Stessa regola usata da get_packages_ready_data(), cosi' il blocco della Homepage
+    coincide con i pallini rossi mostrati in tabella.
+    """
+    full_message = ""
+    if log_output:
+        full_message += str(log_output) + " "
+    if log_error:
+        full_message += str(log_error)
+    full_message_lower = full_message.lower()
+
+    if "errore" in full_message_lower or "error" in full_message_lower or "timeout" in full_message_lower:
+        return "error"
+    if "successo" in full_message_lower or log_status == "success":
+        return True
+    return "error"
+
+
+def _compute_blocked_packages(
+    db: Session,
+    bank: str,
+    publication_type: str,
+    anno: Optional[int],
+    settimana: Optional[int],
+    mese: Optional[int],
+    is_weekly: bool,
+    candidates: List[str],
+    packages_in_run: List[str],
+) -> List[str]:
+    """
+    Package che risultano in ERRORE a DB per il periodo corrente e che NON fanno parte
+    di questa esecuzione. Bloccano l'aggiornamento dei package finali (Homepage).
+
+    Due regole importanti:
+    - un package senza alcun log non blocca: non e' "in errore", semplicemente non e'
+      ancora stato eseguito (caso normale quando si pubblica solo una selezione);
+    - conta solo l'ultimo log a package singolo del periodo corrente, esattamente come
+      fa la tabella in UI.
+    """
+    in_run = set(packages_in_run)
+    to_check = [pkg for pkg in candidates if pkg not in in_run]
+    if not to_check:
+        return []
+
+    rows = db.execute(
+        text(
+            """
+            SELECT packages, status, output, error, anno, settimana, mese
+            FROM publication_logs
+            WHERE LOWER(bank) = LOWER(:bank)
+              AND publication_type = :pub_type
+              AND anno = :anno
+            ORDER BY timestamp DESC, id DESC
+            """
+        ),
+        {"bank": bank, "pub_type": publication_type, "anno": anno},
+    ).fetchall()
+
+    latest: Dict[str, Any] = {}
+    for row in rows:
+        raw_packages, log_status, log_output, log_error, log_anno, log_settimana, log_mese = row
+        try:
+            pkg_list = json.loads(raw_packages) if isinstance(raw_packages, str) else raw_packages
+        except Exception:
+            continue
+        # I log multi-package non sono attribuibili a un singolo package: ignorati.
+        if not pkg_list or len(pkg_list) != 1:
+            continue
+        pkg_name = pkg_list[0]
+        if pkg_name not in to_check or pkg_name in latest:
+            continue
+        # Il semaforo vale solo per il periodo corrente.
+        if is_weekly and log_settimana != settimana:
+            continue
+        if not is_weekly and log_mese != mese:
+            continue
+        latest[pkg_name] = _resolve_log_status(log_status, log_output, log_error)
+
+    blocked = [pkg for pkg in to_check if latest.get(pkg) == "error"]
+    if blocked:
+        logger.info(
+            f"Package gia' in errore a DB per il periodo corrente (bloccano i package finali): {blocked}"
+        )
+    return blocked
+
+
 @router.post("/publish-precheck")
 async def publish_precheck(
     periodicity: str = Query(..., description="PeriodicitÃ : 'settimanale' o 'mensile'"),
@@ -1986,7 +2074,7 @@ async def publish_precheck(
         # Usa raw SQL con ORDER BY rowid per mantenere l'ordine del database
         from sqlalchemy import text
         sql = text("""
-            SELECT ws_precheck, package, datafactory
+            SELECT ws_precheck, package, datafactory, obbligatorio
             FROM report_mapping
             WHERE Type_reportisica = :periodicity
             AND LOWER(bank) = LOWER(:bank)
@@ -2020,6 +2108,38 @@ async def publish_precheck(
             logger.info(f"Filtered packages based on selection: {pbi_packages} (from {len(all_packages)} total)")
         else:
             pbi_packages = all_packages
+
+        # Package "finali": Obbligatorio = Y nella mappatura (oggi solo 'Homepage').
+        # Aggregano i dati degli altri, quindi vanno aggiornati per ultimi e solo se
+        # tutto il resto e' andato a buon fine.
+        mandatory_packages = {
+            row[1] for row in results
+            if row[1] and len(row) > 3 and str(row[3] or "").strip().upper() == "Y"
+        }
+        final_packages = [pkg for pkg in pbi_packages if pkg in mandatory_packages]
+        normal_packages = [pkg for pkg in pbi_packages if pkg not in mandatory_packages]
+
+        # Package gia' rossi a DB per questo periodo e non rilanciati ora: bloccano
+        # comunque i package finali.
+        try:
+            blocked_by = _compute_blocked_packages(
+                db=db,
+                bank=current_user.bank,
+                publication_type="precheck",
+                anno=anno,
+                settimana=settimana,
+                mese=mese,
+                is_weekly=not is_mensile,
+                candidates=[pkg for pkg in all_packages if pkg not in mandatory_packages],
+                packages_in_run=normal_packages,
+            )
+        except Exception as e:
+            logger.warning(f"Impossibile calcolare i package bloccanti da DB: {e}")
+            blocked_by = []
+
+        logger.info(f"Package normali: {normal_packages}")
+        logger.info(f"Package finali: {final_packages}")
+        logger.info(f"Package bloccanti (errori pregressi a DB): {blocked_by}")
 
         logger.info(f"Workspace Power BI: {workspace_powerbi}")
         logger.info(f"Workspace Data Factory: {workspace_datafactory}")
@@ -2096,10 +2216,14 @@ async def publish_precheck(
                         logger.info("="*80)
 
                         from scripts import main as script_main
-                        logger.info(f"Calling scripts.main.main with workspace_powerbi={workspace_powerbi}, packages={pbi_packages}")
+                        logger.info(f"Calling scripts.main.main with workspace_powerbi={workspace_powerbi}, packages={normal_packages}, final={final_packages}, blocked_by={blocked_by}")
 
                         try:
-                            pbi_status = script_main.main(workspace_powerbi, pbi_packages)
+                            pbi_status = script_main.main(
+                                workspace_powerbi, normal_packages,
+                                final_packages=final_packages, blocked_by=blocked_by,
+                                bank=current_user.bank
+                            )
                             logger.info(f"Power BI result: {pbi_status}")
 
                             # Combina i risultati di entrambe le fasi
@@ -2138,9 +2262,13 @@ async def publish_precheck(
                         # ==========================================
                         from scripts import main as script_main
 
-                        logger.info(f"Calling scripts.main.main with workspace_powerbi={workspace_powerbi}, packages={pbi_packages}")
+                        logger.info(f"Calling scripts.main.main with workspace_powerbi={workspace_powerbi}, packages={normal_packages}, final={final_packages}, blocked_by={blocked_by}")
                         try:
-                            status = script_main.main(workspace_powerbi, pbi_packages)
+                            status = script_main.main(
+                                workspace_powerbi, normal_packages,
+                                final_packages=final_packages, blocked_by=blocked_by,
+                                bank=current_user.bank
+                            )
                         except SystemExit as e:
                             error_msg = f"Script Power BI terminato con errore: {str(e)}"
                             logger.error(error_msg)
@@ -2392,7 +2520,7 @@ async def publish_production(
         # Usa raw SQL con ORDER BY rowid per mantenere l'ordine del database
         from sqlalchemy import text
         sql = text("""
-            SELECT ws_production, package, datafactory
+            SELECT ws_production, package, datafactory, obbligatorio
             FROM report_mapping
             WHERE Type_reportisica = :periodicity
             AND LOWER(bank) = LOWER(:bank)
@@ -2427,6 +2555,38 @@ async def publish_production(
         else:
             pbi_packages = all_packages
 
+        # Package "finali": Obbligatorio = Y nella mappatura (oggi solo 'Homepage').
+        # Aggregano i dati degli altri, quindi vanno aggiornati per ultimi e solo se
+        # tutto il resto e' andato a buon fine.
+        mandatory_packages = {
+            row[1] for row in results
+            if row[1] and len(row) > 3 and str(row[3] or "").strip().upper() == "Y"
+        }
+        final_packages = [pkg for pkg in pbi_packages if pkg in mandatory_packages]
+        normal_packages = [pkg for pkg in pbi_packages if pkg not in mandatory_packages]
+
+        # Package gia' rossi a DB per questo periodo e non rilanciati ora: bloccano
+        # comunque i package finali.
+        try:
+            blocked_by = _compute_blocked_packages(
+                db=db,
+                bank=current_user.bank,
+                publication_type="production",
+                anno=anno,
+                settimana=settimana,
+                mese=mese,
+                is_weekly=not is_mensile,
+                candidates=[pkg for pkg in all_packages if pkg not in mandatory_packages],
+                packages_in_run=normal_packages,
+            )
+        except Exception as e:
+            logger.warning(f"Impossibile calcolare i package bloccanti da DB: {e}")
+            blocked_by = []
+
+        logger.info(f"Package normali: {normal_packages}")
+        logger.info(f"Package finali: {final_packages}")
+        logger.info(f"Package bloccanti (errori pregressi a DB): {blocked_by}")
+
         logger.info(f"Production Workspace Power BI: {workspace_powerbi}")
         logger.info(f"Production Workspace Data Factory: {workspace_datafactory}")
         logger.info(f"Packages to publish: {pbi_packages}")
@@ -2454,10 +2614,14 @@ async def publish_production(
                         logger.info("="*80)
 
                         from scripts import main as script_main
-                        logger.info(f"Calling scripts.main.main (PRODUCTION) with workspace_powerbi={workspace_powerbi}, packages={pbi_packages}")
+                        logger.info(f"Calling scripts.main.main (PRODUCTION) with workspace_powerbi={workspace_powerbi}, packages={normal_packages}, final={final_packages}, blocked_by={blocked_by}")
 
                         try:
-                            pbi_status = script_main.main(workspace_powerbi, pbi_packages)
+                            pbi_status = script_main.main(
+                                workspace_powerbi, normal_packages,
+                                final_packages=final_packages, blocked_by=blocked_by,
+                                bank=current_user.bank
+                            )
                             logger.info(f"Power BI result (PRODUCTION): {pbi_status}")
 
                             # Combina i risultati di entrambe le fasi
@@ -2496,9 +2660,13 @@ async def publish_production(
                         # ==========================================
                         from scripts import main as script_main
 
-                        logger.info(f"Calling scripts.main.main (PRODUCTION) with workspace_powerbi={workspace_powerbi}, packages={pbi_packages}")
+                        logger.info(f"Calling scripts.main.main (PRODUCTION) with workspace_powerbi={workspace_powerbi}, packages={normal_packages}, final={final_packages}, blocked_by={blocked_by}")
                         try:
-                            status = script_main.main(workspace_powerbi, pbi_packages)
+                            status = script_main.main(
+                                workspace_powerbi, normal_packages,
+                                final_packages=final_packages, blocked_by=blocked_by,
+                                bank=current_user.bank
+                            )
                         except SystemExit as e:
                             error_msg = f"PRODUCTION Script Power BI terminato con errore: {str(e)}"
                             logger.error(error_msg)

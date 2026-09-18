@@ -10,6 +10,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException, NoSuchElementException, InvalidSessionIdException
 
 logger = logging.getLogger(__name__)
@@ -173,6 +174,149 @@ def _log_debug_html(driver: webdriver.Chrome, package_name: str, context: str) -
             logger.debug(f"[DEBUG HTML] {context} | viewport non trovato")
 
 
+# Tolleranza per lo sfasamento fra orologio locale e timestamp restituiti da Power BI.
+_CLOCK_SKEW_MS = 5 * 60 * 1000
+
+
+def _fmt_ts(epoch_ms) -> str:
+    """Formatta un timestamp epoch in millisecondi in data/ora leggibile."""
+    if not epoch_ms:
+        return "N/D"
+    try:
+        return time.strftime("%d/%m/%Y %H:%M:%S", time.localtime(epoch_ms / 1000))
+    except (TypeError, ValueError, OSError):
+        return str(epoch_ms)
+
+
+def _click_refresh_button(driver: webdriver.Chrome, package: str, attempts: int = 3) -> bool:
+    """
+    Clicca "Aggiorna adesso" sulla riga del package usando Selenium diretto.
+
+    Serve come rete di sicurezza quando il click pilotato da FluentX fallisce: i
+    pulsanti quick-action di Power BI compaiono all'hover, e fra il MOVE TO sulla riga
+    e il CLICK sul pulsante l'hover puo' perdersi o il pulsante puo' non aver finito di
+    renderizzare. Qui hover e click sono consecutivi, si attende che il pulsante sia
+    cliccabile (non solo presente) e si ripiega sul click JavaScript se un overlay lo
+    intercetta.
+
+    Restituisce True se il click e' andato a segno.
+    """
+    name_xpath = f'//span[@data-value="{package}"]'
+    button_xpath = name_xpath + '//button[@aria-label="Aggiorna adesso"]'
+
+    for attempt in range(1, attempts + 1):
+        try:
+            _scroll_to_package(driver, package)
+            name_el = driver.find_element(By.XPATH, name_xpath)
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block: 'center', behavior: 'instant'});", name_el
+            )
+            time.sleep(0.5)
+
+            # L'hover fa comparire i pulsanti quick-action sulla riga.
+            ActionChains(driver).move_to_element(name_el).perform()
+            time.sleep(0.5)
+
+            button = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, button_xpath))
+            )
+            try:
+                button.click()
+            except Exception as click_err:
+                # Overlay o tooltip sopra il pulsante: click via JS, che li ignora.
+                logger.debug(f"Click diretto fallito per '{package}' ({click_err}), provo via JavaScript.")
+                driver.execute_script("arguments[0].click();", button)
+
+            logger.info(f"Click 'Aggiorna adesso' riuscito per '{package}' al tentativo {attempt}.")
+            return True
+
+        except (TimeoutException, NoSuchElementException, StaleElementReferenceException) as e:
+            logger.warning(
+                f"Tentativo {attempt}/{attempts} di click su '{package}' non riuscito: {type(e).__name__}."
+            )
+            time.sleep(2)
+
+    _log_debug_html(driver, package, "click di recupero fallito su tutti i tentativi")
+    return False
+
+
+def _read_last_refresh(driver: webdriver.Chrome, package_name: str):
+    """
+    Legge il timestamp (epoch ms) dell'ultimo aggiornamento dalla riga del package.
+    Power BI lo espone nell'attributo data-value della cella 'fluentListCell.lastRefresh'.
+    Restituisce None se la riga non e' nel DOM o il valore non e' leggibile.
+    """
+    xpath = (
+        f'//span[@data-value="{package_name}"]'
+        '/ancestor::*[@data-testid="workspace-list-content-view-row"]'
+        '//span[@data-testid="fluentListCell.lastRefresh"]'
+    )
+    try:
+        raw = driver.find_element(By.XPATH, xpath).get_attribute("data-value")
+    except (NoSuchElementException, StaleElementReferenceException):
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _verify_refresh(driver: webdriver.Chrome, package: str, baseline_ts, run_start_ms: int, context: str) -> str:
+    """
+    Determina l'esito REALE dell'aggiornamento di un package.
+
+    Il successo richiede una prova positiva: assenza di icona di errore E avanzamento
+    del timestamp di ultimo aggiornamento. Controllare solo l'icona di errore, come
+    faceva la versione precedente, marcava "completato con successo" anche i package
+    il cui refresh non era mai partito: nessun errore da mostrare, perche' l'ultimo
+    aggiornamento riuscito risaliva a settimane prima.
+    """
+    row_xpath = f'//span[@data-value="{package}"]/ancestor::*[@data-testid="workspace-list-content-view-row"]'
+    error_icon_xpath = row_xpath + '//button[.//i[contains(@class, "pbi-glyph-warning")]]'
+
+    # 1. Icona di errore: se presente, l'esito e' gia' deciso.
+    try:
+        err_btn = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, error_icon_xpath)))
+        err_btn.click()
+        details = estrai_dettagli_errore(driver)
+        if details:
+            main_error = details.get("Errore dell'origine dati", "sconosciuto")
+            activity_id = details.get("ID attività", "N/D")
+            logger.error(f"Errore per '{package}': {main_error} (ID: {activity_id})")
+            return f"Aggiornamento non completato, errore: {main_error} (ID Attività: {activity_id})"
+        logger.error(f"Errore per '{package}': dettagli non disponibili.")
+        return "Aggiornamento non completato, errore rilevato ma dettagli non disponibili."
+    except TimeoutException:
+        pass  # nessuna icona di errore: non basta, serve la prova che il refresh sia avvenuto
+
+    # 2. Timestamp di ultimo aggiornamento.
+    _scroll_to_package(driver, package)
+    current_ts = _read_last_refresh(driver, package)
+    logger.info(
+        f"[{package}] ultimo aggiornamento: prima={_fmt_ts(baseline_ts)} dopo={_fmt_ts(current_ts)} "
+        f"(inizio run={_fmt_ts(run_start_ms)})"
+    )
+
+    if current_ts is None:
+        _log_debug_html(driver, package, f"{context}: timestamp ultimo aggiornamento non leggibile")
+        return "Esito non verificabile: timestamp di ultimo aggiornamento non leggibile."
+
+    # Confronto fra due timestamp Power BI: immune allo sfasamento di orologio.
+    advanced = baseline_ts is not None and current_ts > baseline_ts
+    # Fallback: baseline non letta, oppure refresh gia' concluso prima del nostro arrivo.
+    within_run = current_ts >= (run_start_ms - _CLOCK_SKEW_MS)
+
+    if not advanced and not within_run:
+        _log_debug_html(driver, package, f"{context}: timestamp invariato")
+        return (
+            f"Refresh non eseguito: timestamp di ultimo aggiornamento invariato "
+            f"({_fmt_ts(current_ts)}). Il modello semantico non risulta aggiornato."
+        )
+
+    logger.info(f"OK: '{package}' aggiornato realmente ({_fmt_ts(current_ts)}).")
+    return f"Aggiornamento completato con successo ({_fmt_ts(current_ts)})."
+
+
 def _wait_page_ready(driver: webdriver.Chrome, timeout: int = 30) -> None:
     """Attende che la pagina sia pronta dopo un refresh: contenitore lista presente + rendering icone."""
     wait = WebDriverWait(driver, timeout)
@@ -180,10 +324,56 @@ def _wait_page_ready(driver: webdriver.Chrome, timeout: int = 30) -> None:
     time.sleep(3)
 
 
-def main(workspace: str, PBI_packages: list):
+def _resolve_flow_path(bank: str = None):
+    """
+    Percorso del flusso FluentX da usare: App/Flows/<banca>.xlsm.
+    Fallback su 'Sparkasse.xlsm' se il flusso specifico della banca non esiste, cosi'
+    le installazioni con un solo flusso continuano a funzionare.
+    Restituisce (percorso, nome_flusso_effettivo).
+    """
+    tried = []
+    for name in ([bank] if bank else []) + ["Sparkasse"]:
+        if not name or name in tried:
+            continue
+        tried.append(name)
+        try:
+            return get_flow_path(name), name
+        except FileNotFoundError:
+            logger.warning(f"Flusso FluentX '{name}.xlsm' non trovato in App/Flows.")
+    raise FileNotFoundError(
+        f"Nessun flusso FluentX utilizzabile in App/Flows (provati: {tried})"
+    )
+
+
+def main(workspace: str, PBI_packages: list, final_packages: list = None, blocked_by: list = None, bank: str = None):
+    """
+    Aggiorna i modelli semantici Power BI del workspace indicato.
+
+    PBI_packages   : package "normali", aggiornati per primi.
+    final_packages : package che aggregano i dati degli altri (Obbligatorio = Y nella
+                     mappatura, oggi solo 'Homepage'). Vengono aggiornati SOLO se tutti
+                     i package normali sono andati a buon fine.
+    blocked_by     : package gia' in errore a DB per lo stesso periodo e non rilanciati
+                     in questa run. Bloccano i final_packages come un errore corrente.
+    """
     logger.info(f"=== INIZIO ELABORAZIONE ===")
     logger.info(f"Workspace: {workspace}")
+    logger.info(f"Banca: {bank or 'non specificata'}")
+
+    # I due elenchi devono essere disgiunti: se un chiamante passa la lista completa
+    # in PBI_packages, i final_packages vengono comunque estratti da li'.
+    final_packages = list(final_packages or [])
+    PBI_packages = [pkg for pkg in PBI_packages if pkg not in final_packages]
+    blocked_by = list(blocked_by or [])
+
     logger.info(f"Packages: {PBI_packages}")
+    logger.info(f"Packages finali (dopo gli altri): {final_packages}")
+    if blocked_by:
+        logger.warning(f"Package gia' in errore a DB per questo periodo: {blocked_by}")
+
+    # Istante di avvio: soglia per stabilire se un timestamp di ultimo aggiornamento
+    # appartiene a questa esecuzione.
+    run_start_ms = int(time.time() * 1000)
     modules = ["web", "windows app", "file", "sharepoint"]
     # modelli_semantici = ["Breve_Termine", "Flussi Esterni", "Flussi Netti", "Impieghi", "ML_Termine", "Raccolta Indiretta", "Raccolta_Diretta"]   # "Bonifico_istantaneo", "Homepage_Pre_Check",
     login_chain = ["Login"]
@@ -192,14 +382,17 @@ def main(workspace: str, PBI_packages: list):
     app_chain = ["Aggiorna app"]
     workspace_chain = ["Cambia workspace"]
 
-    # Carica il flusso .xlsx o .xlsm per FluentX dalla cartella App/Flows
-    try:
-        _FLOW_PATH = get_flow_path("Sparkasse")
-        _FLOW_NAME = basename(_FLOW_PATH).split(".")[0]
-        workbook = load_workbook(_FLOW_PATH, data_only=True)
-        logger.info(f"Flusso FluentX caricato: {_FLOW_PATH}")
-    except Exception as e:
-        logger.error(f'Problema con il caricamento del flusso FluentX: {e}')
+    # Carica il flusso .xlsx o .xlsm per FluentX dalla cartella App/Flows.
+    # Nessun try/except: senza workbook le righe successive fallirebbero comunque,
+    # con un NameError che nasconde la causa reale.
+    _FLOW_PATH, _flow_bank = _resolve_flow_path(bank)
+    _FLOW_NAME = basename(_FLOW_PATH).split(".")[0]
+    workbook = load_workbook(_FLOW_PATH, data_only=True)
+    logger.info(f"Flusso FluentX caricato: {_FLOW_PATH}")
+    if bank and _flow_bank != bank:
+        logger.warning(
+            f"Flusso specifico per '{bank}' non presente in App/Flows: uso '{_flow_bank}.xlsm'."
+        )
 
     data, data_chains = get_general_config(workbook)
     logger.debug(f"Data: {data}")
@@ -239,218 +432,233 @@ def main(workspace: str, PBI_packages: list):
 
     packages_status = {}
 
-    for package in PBI_packages:
-        logger.info(f"=== Aggiornamento package: {package} ===")
+    def _process_packages(pkg_list):
+        # 'actions' viene riassegnato dai run_flow interni e deve sopravvivere
+        # fra la chiamata sui package normali e quella sui package finali.
+        nonlocal actions
+        for package in pkg_list:
+            logger.info(f"=== Aggiornamento package: {package} ===")
 
-        row_xpath = f'//span[@data-value="{package}"]/ancestor::*[@data-testid="workspace-list-content-view-row"]'
-        spinner_xpath = row_xpath + '//spinner'
+            row_xpath = f'//span[@data-value="{package}"]/ancestor::*[@data-testid="workspace-list-content-view-row"]'
+            spinner_xpath = row_xpath + '//spinner'
 
-        # Porta il package nel DOM (virtual scroll)
-        found = _scroll_to_package(actions.driver, package)
-        if not found:
-            logger.warning(f"Package '{package}' non trovato nella lista dopo scrolling completo.")
-            packages_status[package] = "Modello Semantico non trovato."
-            continue
+            # Porta il package nel DOM (virtual scroll)
+            found = _scroll_to_package(actions.driver, package)
+            if not found:
+                logger.warning(f"Package '{package}' non trovato nella lista dopo scrolling completo.")
+                packages_status[package] = "Modello Semantico non trovato."
+                continue
 
-        driver = actions.driver
+            driver = actions.driver
 
-        try:
-            # Controlla se il package è già in aggiornamento (side-effect da package precedente)
+            # Timestamp di partenza: serve a provare che il refresh sia davvero avvenuto.
+            baseline_ts = _read_last_refresh(driver, package)
+            logger.info(f"[{package}] ultimo aggiornamento prima del refresh: {_fmt_ts(baseline_ts)}")
+
             try:
-                driver.find_element(By.XPATH, spinner_xpath)
-                logger.info(f"Package '{package}' già in aggiornamento (side-effect). Skip click, attendo completamento...")
-                already_spinning = True
-            except NoSuchElementException:
-                already_spinning = False
+                # Controlla se il package è già in aggiornamento (side-effect da package precedente)
+                try:
+                    driver.find_element(By.XPATH, spinner_xpath)
+                    logger.info(f"Package '{package}' già in aggiornamento (side-effect). Skip click, attendo completamento...")
+                    already_spinning = True
+                except NoSuchElementException:
+                    already_spinning = False
 
-            if not already_spinning:
-                # Clicca "Aggiorna adesso" via FluentX
-                x_path_ms = f'//span[@data-value="{package}"]'
-                x_path_updt = f'//span[@data-value="{package}"]//button[@aria-label="Aggiorna adesso"]'
-                workbook["Aggiorna MS"]["B3"].value = x_path_ms
-                workbook["Aggiorna MS"]["B4"].value = x_path_updt
-                data_chains["chains"] = {chain: data[chain] for chain in update_chain}
-                actions, _, _, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
-                driver = actions.driver
-                logger.debug(f"Log dettagliato: {log}")
-
-                if log["Aggiorna MS"]["Aggiorna MS"]["Cerco riga MS"]["status"] == "error":
-                    # Virtual scroll potrebbe aver spostato la riga — riprova con scroll
-                    logger.warning(f"Riga non trovata per '{package}', riprovo con scroll...")
-                    _scroll_to_package(driver, package)
-                    time.sleep(1)
+                if not already_spinning:
+                    # Clicca "Aggiorna adesso" via FluentX
+                    x_path_ms = f'//span[@data-value="{package}"]'
+                    x_path_updt = f'//span[@data-value="{package}"]//button[@aria-label="Aggiorna adesso"]'
+                    workbook["Aggiorna MS"]["B3"].value = x_path_ms
+                    workbook["Aggiorna MS"]["B4"].value = x_path_updt
+                    data_chains["chains"] = {chain: data[chain] for chain in update_chain}
                     actions, _, _, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
                     driver = actions.driver
+                    logger.debug(f"Log dettagliato: {log}")
+
                     if log["Aggiorna MS"]["Aggiorna MS"]["Cerco riga MS"]["status"] == "error":
-                        # Controlla se side-effect spinner già attivo
+                        # Virtual scroll potrebbe aver spostato la riga — riprova con scroll
+                        logger.warning(f"Riga non trovata per '{package}', riprovo con scroll...")
+                        _scroll_to_package(driver, package)
+                        time.sleep(1)
+                        actions, _, _, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
+                        driver = actions.driver
+                        if log["Aggiorna MS"]["Aggiorna MS"]["Cerco riga MS"]["status"] == "error":
+                            # Controlla se side-effect spinner già attivo
+                            try:
+                                driver.find_element(By.XPATH, spinner_xpath)
+                                logger.info(f"Side-effect spinner rilevato per '{package}' dopo fallimento ricerca riga. Attendo completamento...")
+                                already_spinning = True
+                            except NoSuchElementException:
+                                logger.warning(f"Riga '{package}' non trovata dopo retry.")
+                                _log_debug_html(driver, package, "Cerco riga MS fallito dopo retry")
+                                packages_status[package] = "Modello Semantico non trovato."
+                                continue
+
+                    if not already_spinning and log["Aggiorna MS"]["Aggiorna MS"]["Aggiorno MS"]["status"] == "error":
+                        # Click fallito — potrebbe essere race condition con side-effect refresh
+                        logger.warning(f"Click 'Aggiorna adesso' fallito per '{package}', controllo side-effect spinner...")
+                        _scroll_to_package(driver, package)
+                        time.sleep(2)
                         try:
                             driver.find_element(By.XPATH, spinner_xpath)
-                            logger.info(f"Side-effect spinner rilevato per '{package}' dopo fallimento ricerca riga. Attendo completamento...")
+                            logger.info(f"Side-effect spinner rilevato per '{package}' dopo fallimento click. Attendo completamento...")
                             already_spinning = True
                         except NoSuchElementException:
-                            logger.warning(f"Riga '{package}' non trovata dopo retry.")
-                            _log_debug_html(driver, package, "Cerco riga MS fallito dopo retry")
-                            packages_status[package] = "Modello Semantico non trovato."
-                            continue
+                            # Nessuno spinner: il refresh non e' partito. Prima di arrendersi,
+                            # riprova il click con Selenium diretto (hover + attesa di
+                            # cliccabilita' + fallback JS), che gestisce i casi in cui il
+                            # pulsante quick-action non era ancora interagibile.
+                            logger.warning(f"Nessuno spinner per '{package}' dopo fallimento click, riprovo con click diretto...")
+                            if _click_refresh_button(driver, package):
+                                time.sleep(2)
+                            else:
+                                # Il refresh non e' partito nemmeno cosi': prosegui comunque,
+                                # la verifica del timestamp stabilira' l'esito reale.
+                                logger.error(f"Impossibile avviare il refresh di '{package}': click non riuscito.")
+                                _log_debug_html(driver, package, "click di recupero fallito — verifico timestamp")
 
-                if not already_spinning and log["Aggiorna MS"]["Aggiorna MS"]["Aggiorno MS"]["status"] == "error":
-                    # Click fallito — potrebbe essere race condition con side-effect refresh
-                    logger.warning(f"Click 'Aggiorna adesso' fallito per '{package}', controllo side-effect spinner...")
-                    _scroll_to_package(driver, package)
+                    # Attendi che lo spinner appaia con polling attivo (mantiene la riga nel DOM)
+                    # WebDriverWait statico non funziona: CDK virtual scroll può rimuovere la riga
+                    # dal DOM durante l'attesa, rendendo lo spinner invisibile alla query.
                     time.sleep(2)
-                    try:
-                        driver.find_element(By.XPATH, spinner_xpath)
-                        logger.info(f"Side-effect spinner rilevato per '{package}' dopo fallimento click. Attendo completamento...")
-                        already_spinning = True
-                    except NoSuchElementException:
-                        # Nessuno spinner — il side-effect refresh potrebbe essere già completato
-                        # prima che lo script arrivasse a questo package. Non interrompere:
-                        # procedi al controllo icona errore per determinare l'esito reale.
-                        logger.warning(f"Nessuno spinner per '{package}' dopo fallimento click — possibile side-effect già completato, verifico icona errore...")
-                        _log_debug_html(driver, package, "Aggiorno MS fallito, nessun spinner — verifico icona errore")
+                    spinner_appeared = False
+                    spinner_wait_start = time.time()
+                    while time.time() - spinner_wait_start < 60:
+                        _scroll_to_package(driver, package)
+                        time.sleep(1)
+                        try:
+                            driver.find_element(By.XPATH, spinner_xpath)
+                            spinner_appeared = True
+                            logger.info(f"Spinner apparso per '{package}'.")
+                            break
+                        except NoSuchElementException:
+                            pass
+                    if not spinner_appeared:
+                        logger.warning(f"Spinner non apparso per '{package}' entro 60s. Eseguo refresh e verifico...")
 
-                # Attendi che lo spinner appaia con polling attivo (mantiene la riga nel DOM)
-                # WebDriverWait statico non funziona: CDK virtual scroll può rimuovere la riga
-                # dal DOM durante l'attesa, rendendo lo spinner invisibile alla query.
-                time.sleep(2)
-                spinner_appeared = False
-                spinner_wait_start = time.time()
-                while time.time() - spinner_wait_start < 60:
-                    _scroll_to_package(driver, package)
-                    time.sleep(1)
-                    try:
-                        driver.find_element(By.XPATH, spinner_xpath)
-                        spinner_appeared = True
-                        logger.info(f"Spinner apparso per '{package}'.")
+                    if not spinner_appeared:
+                        # Spinner non comparso entro 60s: refresh pagina e ri-verifica
+                        driver.refresh()
+                        _wait_page_ready(driver)
+                        data_chains["chains"] = {chain: data[chain] for chain in ms_chain}
+                        actions, _, _, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
+                        driver = actions.driver
+                        _scroll_to_package(driver, package)
+                        # Se lo spinner è ora visibile il refresh era già in corso: attendi completamento
+                        try:
+                            driver.find_element(By.XPATH, spinner_xpath)
+                            logger.info(f"Spinner visibile per '{package}' post-refresh: attendo completamento...")
+                            finished = _wait_spinner_gone(driver, package, timeout=86400)
+                            if not finished:
+                                logger.warning(f"Timeout 24h per '{package}' (rilevato post-refresh).")
+                            _scroll_to_package(driver, package)
+                        except NoSuchElementException:
+                            pass  # nessuno spinner post-refresh, procedi al check icona errore
+                        # Controlla icona errore e vai al prossimo package (sempre continue)
+                        try:
+                            row_el = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, row_xpath)))
+                        except TimeoutException:
+                            packages_status[package] = f"Timeout: riga '{package}' non trovata dopo aggiornamento post-refresh."
+                            logger.error(f"Timeout riga post-aggiornamento per '{package}'.")
+                            continue
+                        packages_status[package] = _verify_refresh(
+                            driver, package, baseline_ts, run_start_ms, "post-refresh"
+                        )
+                        continue
+
+                # Attendi la fine dello spinner con refresh periodico ogni 5 minuti.
+                # Evita sessioni Chrome morte su refresh lunghi (>30min).
+                logger.info(f"Attendo la fine dello spinner per '{package}'...")
+                refresh_interval = 300  # secondi tra un refresh e l'altro
+                total_timeout = 86400
+                total_start = time.time()
+                finished = False
+
+                while time.time() - total_start < total_timeout:
+                    chunk = min(refresh_interval, total_timeout - (time.time() - total_start))
+                    if chunk <= 0:
                         break
-                    except NoSuchElementException:
-                        pass
-                if not spinner_appeared:
-                    logger.warning(f"Spinner non apparso per '{package}' entro 60s. Eseguo refresh e verifico...")
-
-                if not spinner_appeared:
-                    # Spinner non comparso entro 60s: refresh pagina e ri-verifica
+                    done = _wait_spinner_gone(driver, package, timeout=int(chunk))
+                    if done:
+                        finished = True
+                        break
+                    # Chunk scaduto, spinner ancora presente: refresh per tenere viva la sessione
+                    logger.info(f"Refresh periodico (keep-alive) per '{package}'...")
                     driver.refresh()
                     _wait_page_ready(driver)
                     data_chains["chains"] = {chain: data[chain] for chain in ms_chain}
                     actions, _, _, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
                     driver = actions.driver
                     _scroll_to_package(driver, package)
-                    # Se lo spinner è ora visibile il refresh era già in corso: attendi completamento
                     try:
                         driver.find_element(By.XPATH, spinner_xpath)
-                        logger.info(f"Spinner visibile per '{package}' post-refresh: attendo completamento...")
-                        finished = _wait_spinner_gone(driver, package, timeout=86400)
-                        if not finished:
-                            logger.warning(f"Timeout 24h per '{package}' (rilevato post-refresh).")
-                        _scroll_to_package(driver, package)
+                        logger.info(f"Spinner ancora presente per '{package}' post-refresh periodico, continuo...")
                     except NoSuchElementException:
-                        pass  # nessuno spinner post-refresh, procedi al check icona errore
-                    # Controlla icona errore e vai al prossimo package (sempre continue)
-                    try:
-                        row_el = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, row_xpath)))
-                    except TimeoutException:
-                        packages_status[package] = f"Timeout: riga '{package}' non trovata dopo aggiornamento post-refresh."
-                        logger.error(f"Timeout riga post-aggiornamento per '{package}'.")
-                        continue
-                    error_icon_xpath = row_xpath + '//button[.//i[contains(@class, "pbi-glyph-warning")]]'
-                    try:
-                        err_btn = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, error_icon_xpath)))
-                        err_btn.click()
-                        details = estrai_dettagli_errore(driver)
-                        if details:
-                            main_error = details.get("Errore dell'origine dati", "sconosciuto")
-                            activity_id = details.get("ID attività", "N/D")
-                            packages_status[package] = f"Aggiornamento non completato, errore: {main_error} (ID Attività: {activity_id})"
-                            logger.error(f"Errore per '{package}': {main_error} (ID: {activity_id})")
-                        else:
-                            packages_status[package] = "Aggiornamento non completato, errore rilevato ma dettagli non disponibili."
-                            logger.error(f"Errore per '{package}': dettagli non disponibili.")
-                    except TimeoutException:
-                        _log_debug_html(driver, package, "check icona errore post-refresh: nessuna icona → successo")
-                        packages_status[package] = "Aggiornamento completato con successo (verificato post-refresh)."
-                        logger.info(f"✓ '{package}' completato con successo (verificato post-refresh).")
-                    continue
+                        finished = True
+                        break
 
-            # Attendi la fine dello spinner con refresh periodico ogni 5 minuti.
-            # Evita sessioni Chrome morte su refresh lunghi (>30min).
-            logger.info(f"Attendo la fine dello spinner per '{package}'...")
-            refresh_interval = 300  # secondi tra un refresh e l'altro
-            total_timeout = 86400
-            total_start = time.time()
-            finished = False
+                if not finished:
+                    logger.warning(f"Timeout 24h per '{package}'.")
 
-            while time.time() - total_start < total_timeout:
-                chunk = min(refresh_interval, total_timeout - (time.time() - total_start))
-                if chunk <= 0:
-                    break
-                done = _wait_spinner_gone(driver, package, timeout=int(chunk))
-                if done:
-                    finished = True
-                    break
-                # Chunk scaduto, spinner ancora presente: refresh per tenere viva la sessione
-                logger.info(f"Refresh periodico (keep-alive) per '{package}'...")
-                driver.refresh()
-                _wait_page_ready(driver)
-                data_chains["chains"] = {chain: data[chain] for chain in ms_chain}
-                actions, _, _, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
-                driver = actions.driver
+                # Riporta la riga nel DOM e controlla icona errore
+                logger.info(f"Controllo la riga per eventuali errori per '{package}'...")
                 _scroll_to_package(driver, package)
                 try:
-                    driver.find_element(By.XPATH, spinner_xpath)
-                    logger.info(f"Spinner ancora presente per '{package}' post-refresh periodico, continuo...")
-                except NoSuchElementException:
-                    finished = True
-                    break
+                    row_el = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, row_xpath)))
+                except TimeoutException:
+                    packages_status[package] = f"Timeout: riga '{package}' non trovata dopo aggiornamento."
+                    logger.error(f"Timeout riga post-aggiornamento per '{package}'.")
+                    continue
 
-            if not finished:
-                logger.warning(f"Timeout 24h per '{package}'.")
+                # Verifica l'esito reale: icona di errore + avanzamento del timestamp.
+                packages_status[package] = _verify_refresh(
+                    driver, package, baseline_ts, run_start_ms, "ramo principale"
+                )
 
-            # Riporta la riga nel DOM e controlla icona errore
-            logger.info(f"Controllo la riga per eventuali errori per '{package}'...")
-            _scroll_to_package(driver, package)
-            try:
-                row_el = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, row_xpath)))
             except TimeoutException:
-                packages_status[package] = f"Timeout: riga '{package}' non trovata dopo aggiornamento."
-                logger.error(f"Timeout riga post-aggiornamento per '{package}'.")
-                continue
+                packages_status[package] = f"Timeout durante l'aggiornamento di '{package}'."
+                logger.error(f"Timeout per '{package}'.")
+            except InvalidSessionIdException:
+                packages_status[package] = f"Sessione browser chiusa inaspettatamente durante '{package}'."
+                logger.error(f"InvalidSessionIdException per '{package}': sessione browser terminata.")
+                break
 
-            # Attendi fino a 20s che Power BI renderizzi l'icona errore (appare qualche secondo dopo lo spinner)
-            error_icon_xpath = row_xpath + '//button[.//i[contains(@class, "pbi-glyph-warning")]]'
-            try:
-                err_btn = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, error_icon_xpath)))
-                err_btn.click()
-                details = estrai_dettagli_errore(driver)
-                if details:
-                    main_error = details.get("Errore dell'origine dati", "sconosciuto")
-                    activity_id = details.get("ID attività", "N/D")
-                    packages_status[package] = f"Aggiornamento non completato, errore: {main_error} (ID Attività: {activity_id})"
-                    logger.error(f"Errore per '{package}': {main_error} (ID: {activity_id})")
-                else:
-                    packages_status[package] = "Aggiornamento non completato, errore rilevato ma dettagli non disponibili."
-                    logger.error(f"Errore per '{package}': dettagli non disponibili.")
-            except TimeoutException:
-                _log_debug_html(driver, package, "check icona errore: nessuna icona dopo 20s → successo")
-                packages_status[package] = "Aggiornamento completato con successo."
-                logger.info(f"✓ '{package}' completato con successo.")
-
-        except TimeoutException:
-            packages_status[package] = f"Timeout durante l'aggiornamento di '{package}'."
-            logger.error(f"Timeout per '{package}'.")
-        except InvalidSessionIdException:
-            packages_status[package] = f"Sessione browser chiusa inaspettatamente durante '{package}'."
-            logger.error(f"InvalidSessionIdException per '{package}': sessione browser terminata.")
-            break
+    # 1) Package normali.
+    _process_packages(PBI_packages)
 
     failed_packages = [pkg for pkg, status in packages_status.items() if "successo" not in str(status).lower()]
-    if failed_packages:
+    # Un package blocca se e' fallito ora oppure se era gia' rosso a DB per lo stesso
+    # periodo e non e' stato rilanciato in questa run.
+    blockers = failed_packages + [pkg for pkg in blocked_by if pkg not in failed_packages]
+
+    if blockers:
         error_msg = "Pubblicazione bloccata: uno o più modelli semantici non risultano aggiornati."
-        logger.error(f"{error_msg} Package con errori: {failed_packages}")
+        logger.error(f"{error_msg} Package con errori: {blockers}")
         for pkg in PBI_packages:
             if pkg not in packages_status:
                 packages_status[pkg] = error_msg
+        # I package finali aggregano i dati degli altri: aggiornarli ora produrrebbe
+        # una vista coerente nella forma ma sbagliata nei numeri.
+        for pkg in final_packages:
+            packages_status[pkg] = (
+                "Non aggiornato: pubblicazione bloccata da package in errore "
+                f"({', '.join(blockers)})."
+            )
+            logger.warning(f"Package finale '{pkg}' non aggiornato: bloccato da {blockers}.")
         return packages_status
+
+    # 2) Package finali: solo ora che tutti gli altri sono verdi.
+    if final_packages:
+        logger.info(f"Tutti i package sono aggiornati. Procedo con i package finali: {final_packages}")
+        _process_packages(final_packages)
+
+        final_failed = [
+            pkg for pkg in final_packages
+            if "successo" not in str(packages_status.get(pkg, "")).lower()
+        ]
+        if final_failed:
+            logger.error(f"Package finali non aggiornati: {final_failed}. Aggiornamento app saltato.")
+            return packages_status
 
     logger.info("Aggiornamento app in corso...")
     data_chains["chains"] = {chain: data[chain] for chain in app_chain}

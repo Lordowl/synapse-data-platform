@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Security
 from pydantic import BaseModel
 import logging
 import os
@@ -6,12 +6,12 @@ import json
 import configparser
 import subprocess
 import platform
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session
 
-from core.config import config_manager
+from core.config import config_manager, settings
 from core.security import get_current_user
-from db import database, models, crud, schemas
+from db import models, crud, schemas, get_db, init_db
+import db as db_pkg
 from db.models import User
 
 router = APIRouter(tags=["Settings"])
@@ -89,13 +89,18 @@ async def update_folder_path(data: FolderUpdate):
             raise HTTPException(status_code=500, detail="Impossibile aggiornare SETTINGS_PATH")
         logging.info(f"[Settings] SETTINGS_PATH aggiornata: {folder}")
 
+        # update_setting() scrive solo il file .env: allinea anche l'istanza in memoria.
+        settings.DATABASE_URL = new_db_url
+
         # --- 5. Ricrea engine SQLAlchemy e tabelle ---
-        database.engine = create_engine(new_db_url, connect_args={"check_same_thread": False})
-        database.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=database.engine)
-        models.Base.metadata.create_all(bind=database.engine)
+        # init_db() riassegna le globali di db/__init__.py, le uniche lette da get_db().
+        # Assegnare db.database.engine/SessionLocal non avrebbe effetto: db/database.py
+        # reimporta quei nomi per valore.
+        init_db(new_db_url)
+        logging.info(f"[Settings] Engine SQLAlchemy reinizializzato su: {new_db_url}")
 
         # --- 6. Inizializza banche e admin in un'unica sessione ---
-        db = database.SessionLocal()
+        db = db_pkg.SessionLocal()
         try:
             # Inserisci banche nel database
             for bank_info in banks_data:
@@ -339,7 +344,7 @@ async def open_file(data: OpenFileRequest, current_user: User = Depends(get_curr
 
 # ----------------------- OPEN LOG FILE -----------------------
 @router.post("/folder/open-log")
-async def open_log_file(data: OpenLogRequest, current_user: User = Depends(get_current_user)):
+async def open_log_file(data: OpenLogRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Apre il file di log di un flow dato il log_key e la banca.
     """
@@ -347,55 +352,70 @@ async def open_log_file(data: OpenLogRequest, current_user: User = Depends(get_c
         log_key = data.log_key
         bank = data.bank
 
-        db_url = config_manager.get_setting("DATABASE_URL")
-        if not db_url:
-            raise HTTPException(status_code=404, detail="DATABASE_URL non configurato")
+        # Prima prova a recuperare il path dal DB (salvato da tasks.py nei details)
+        log_file_path = None
+        try:
+            exec_record = db.query(models.FlowExecutionHistory).filter(
+                models.FlowExecutionHistory.log_key == log_key
+            ).first()
+            if exec_record and exec_record.details and exec_record.details.get("log_file"):
+                candidate = exec_record.details["log_file"]
+                if os.path.exists(candidate):
+                    log_file_path = candidate
+                    logging.getLogger(__name__).info(f"File di log trovato via DB: {log_file_path}")
+        except Exception as db_err:
+            logging.getLogger(__name__).warning(f"Lookup DB log fallito: {db_err}")
 
-        db_path = db_url.replace("sqlite:///", "")
-        folder_path = os.path.dirname(os.path.dirname(db_path))
+        if log_file_path is None:
+            db_url = config_manager.get_setting("DATABASE_URL")
+            if not db_url:
+                raise HTTPException(status_code=404, detail="DATABASE_URL non configurato")
 
-        # Leggi il file INI per ottenere il template del filelog
-        banks_json_path = os.path.join(folder_path, "Ingestion", "banks_default.json")
-        if not os.path.exists(banks_json_path):
-            raise HTTPException(status_code=404, detail=f"File banks_default.json non trovato")
+            db_path = db_url.replace("sqlite:///", "")
+            folder_path = os.path.dirname(os.path.dirname(db_path))
 
-        from core.config import get_banks_from_config
-        with open(banks_json_path, "r", encoding="utf-8") as f:
-            banks_config = json.load(f)
-        banks_data = get_banks_from_config(banks_config)
+            # Leggi il file INI per ottenere il template del filelog
+            banks_json_path = os.path.join(folder_path, "Ingestion", "banks_default.json")
+            if not os.path.exists(banks_json_path):
+                raise HTTPException(status_code=404, detail=f"File banks_default.json non trovato")
 
-        bank_info = next((b for b in banks_data if b["label"] == bank), None)
-        if not bank_info:
-            raise HTTPException(status_code=404, detail=f"Banca '{bank}' non trovata")
+            from core.config import get_banks_from_config
+            with open(banks_json_path, "r", encoding="utf-8") as f:
+                banks_config = json.load(f)
+            banks_data = get_banks_from_config(banks_config)
 
-        ini_path = os.path.join(folder_path, "Ingestion", bank_info["ini_path"])
-        if not os.path.exists(ini_path):
-            raise HTTPException(status_code=404, detail=f"File INI non trovato: {ini_path}")
+            bank_info = next((b for b in banks_data if b["label"] == bank), None)
+            if not bank_info:
+                raise HTTPException(status_code=404, detail=f"Banca '{bank}' non trovata")
 
-        # Leggi il template del filelog dal file INI
-        config = configparser.ConfigParser(allow_no_value=True)
-        config.read(ini_path, encoding="utf-8")
-        filelog_template = config.get("DEFAULT", "filelog", fallback=None)
+            ini_path = os.path.join(folder_path, "Ingestion", bank_info["ini_path"])
+            if not os.path.exists(ini_path):
+                raise HTTPException(status_code=404, detail=f"File INI non trovato: {ini_path}")
 
-        if not filelog_template:
-            raise HTTPException(status_code=404, detail="Template filelog non trovato nel file INI")
+            # Leggi il template del filelog dal file INI
+            config = configparser.ConfigParser(allow_no_value=True)
+            config.read(ini_path, encoding="utf-8")
+            filelog_template = config.get("DEFAULT", "filelog", fallback=None)
 
-        # Estrai la cartella dal template (es. "log_SPK" da "log_SPK\${now}_...")
-        log_folder_name = filelog_template.split("\\")[0].split("/")[0] if "\\" in filelog_template or "/" in filelog_template else "log"
-        log_folder = os.path.join(folder_path, "Ingestion", log_folder_name)
+            if not filelog_template:
+                raise HTTPException(status_code=404, detail="Template filelog non trovato nel file INI")
 
-        if not os.path.exists(log_folder):
-            raise HTTPException(status_code=404, detail=f"Cartella log non trovata: {log_folder}")
+            # Estrai la cartella dal template (es. "log_SPK" da "log_SPK\${now}_...")
+            log_folder_name = filelog_template.split("\\")[0].split("/")[0] if "\\" in filelog_template or "/" in filelog_template else "log"
+            log_folder = os.path.join(folder_path, "Ingestion", log_folder_name)
 
-        # Cerca il file di log con pattern *_{log_key}.log
-        import glob
-        log_pattern = os.path.join(log_folder, f"*_{log_key}.log")
-        log_files = glob.glob(log_pattern)
+            if not os.path.exists(log_folder):
+                raise HTTPException(status_code=404, detail=f"Cartella log non trovata: {log_folder}")
 
-        if not log_files:
-            raise HTTPException(status_code=404, detail=f"File di log non trovato per log_key: {log_key}")
+            # Cerca il file di log con pattern *_{log_key}.log
+            import glob
+            log_pattern = os.path.join(log_folder, f"*_{log_key}.log")
+            log_files = glob.glob(log_pattern)
 
-        log_file_path = log_files[0]  # Prende il primo match
+            if not log_files:
+                raise HTTPException(status_code=404, detail=f"File di log non trovato per log_key: {log_key}")
+
+            log_file_path = log_files[0]
 
         # Apre il file
         system = platform.system()

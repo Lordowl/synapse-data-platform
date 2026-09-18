@@ -1,5 +1,6 @@
 # sdp-api/api/flows.py
 import json
+import re
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
@@ -14,16 +15,38 @@ from core.security import get_current_user, get_current_active_admin
 
 router = APIRouter()
 
-DATA_FILE = Path(__file__).parent.parent / "data" / "flows.json"
+DATA_DIR = Path(__file__).parent.parent / "data"
+# File storico, senza banca: usato come fallback per le installazioni gia' esistenti.
+DATA_FILE = DATA_DIR / "flows.json"
+
+
+def bank_token(bank: Optional[str]) -> str:
+    """Normalizza il nome della banca in un token utilizzabile nel nome file."""
+    token = re.sub(r"[^a-zA-Z0-9]+", "_", (bank or "")).strip("_").lower()
+    return token or "default"
+
+
+def get_flows_file(bank: Optional[str]) -> Path:
+    """
+    Percorso del file dei flussi per la banca indicata.
+    La lista flussi deriva dal file metadati, che e' specifico per banca: tenerla in
+    un unico flows.json faceva vincere l'ultima banca che apriva la pagina Ingest.
+    """
+    return DATA_DIR / f"flows_{bank_token(bank)}.json"
 
 
 @router.get("/", response_model=List[dict])
-def get_all_flows():
-    """Restituisce la lista di flussi dal file JSON."""
-    if not DATA_FILE.is_file():
-        raise HTTPException(status_code=404, detail="File dei flussi non trovato. Eseguire l'aggiornamento.")
+def get_all_flows(current_user: models.User = Depends(get_current_user)):
+    """Restituisce la lista di flussi della banca dell'utente."""
+    flows_file = get_flows_file(current_user.bank)
+    if not flows_file.is_file():
+        # Fallback al file storico non scopato per banca (prima esecuzione dopo l'update).
+        if DATA_FILE.is_file():
+            flows_file = DATA_FILE
+        else:
+            raise HTTPException(status_code=404, detail="File dei flussi non trovato. Eseguire l'aggiornamento.")
     try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
+        with open(flows_file, "r", encoding="utf-8") as f:
             data = json.load(f)
         return data.get("flows", [])
     except Exception as e:

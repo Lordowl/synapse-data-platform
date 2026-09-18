@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import apiClient from "../api/apiClient";
 import { useAppContext } from "../context/AppContext";
+import { useAppVersion } from "../hooks/useAppVersion";
 import "./Home.css";
 
 import sparkasseLogo from "../assets/sparkasse.png";
@@ -19,6 +20,7 @@ import defaultLogo from "../assets/logo.png";
 
 function Home({ setIsAuthenticated }) {
   const { metadataFilePath } = useAppContext();
+  const appVersion = useAppVersion();
   const [user, setUser] = useState(null);
   const [iniData, setIniData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -169,11 +171,11 @@ function Home({ setIsAuthenticated }) {
         </div>
       </div>
 
-      <div className="version-footer">
-        <small style={{ color: "#666", fontSize: "12px" }}>
-          Versione 0.2.43{" "}
-        </small>
-      </div>
+      {appVersion && (
+        <div className="version-footer">
+          <small style={{ color: "#666", fontSize: "12px" }}>v{appVersion}</small>
+        </div>
+      )}
     </div>
   );
 }

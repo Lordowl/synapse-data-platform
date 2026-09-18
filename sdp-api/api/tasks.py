@@ -67,14 +67,19 @@ def trigger_update_flows_from_excel(
     if not input_excel_path.is_file():
         raise HTTPException(400, f"File Excel non trovato: {input_excel_path}")
 
+    logger.info(f"Aggiornamento flussi per la banca '{current_user.bank}' da {input_excel_path}")
+
     try:
         # Import the script functions directly instead of subprocess
         from scripts import generate_flows_from_excel
 
         # Execute the script logic
         SHEET_NAME = 'File reportistica'
-        BASE_PATH = Path(__file__).parent.parent
-        OUTPUT_JSON_FILE = BASE_PATH / "data" / "flows.json"
+        # Il file dei flussi e' scopato per banca: il file metadati di partenza e'
+        # diverso per Sparkasse e CiviBank, quindi un unico flows.json faceva vincere
+        # l'ultima banca che apriva la pagina Ingest.
+        from api.flows import get_flows_file
+        OUTPUT_JSON_FILE = get_flows_file(current_user.bank)
         COLUMNS_FOR_JSON = ['ID', 'SEQ', 'Package', 'Filename out']
 
         logger.info(f"Reading Excel file: {input_excel_path}")
@@ -232,6 +237,7 @@ def execute_selected_flows(
 
     elements_results = []
     all_lines = []
+    log_file_path = None
     try:
         # Timeout di 12 ore per gestire ingestion di file multipli o operazioni lunghe
         result = subprocess.run(
@@ -252,10 +258,20 @@ def execute_selected_flows(
             logger.info(f"File di log trovato con log_key: {log_file_path}")
         else:
             all_logs = list(log_folder.glob("*.log"))
-            if not all_logs:
-                raise HTTPException(500, f"Nessun file .log trovato in {log_folder}")
-            log_file_path = max(all_logs, key=os.path.getctime)
-            logger.warning(f"Log con log_key non trovato, usando file più recente: {log_file_path}")
+            recent = [f for f in all_logs if os.path.getctime(f) >= start_time - 30]
+            if not recent:
+                logger.error(f"ingestion.ps1 non ha prodotto un file di log in {log_folder} (ultimo log: {max(all_logs, key=os.path.getctime) if all_logs else 'nessuno'})")
+                raise HTTPException(500, "Lo script di ingestion non ha prodotto un file di log per questa esecuzione.")
+            log_file_path = max(recent, key=os.path.getctime)
+            logger.warning(f"Log con log_key non trovato, usando file più recente della run: {log_file_path}")
+            # Rinomina per incorporare il log_key — così open-log può trovarlo in seguito
+            try:
+                renamed = log_file_path.parent / f"{log_file_path.stem}_{log_key}{log_file_path.suffix}"
+                log_file_path.rename(renamed)
+                log_file_path = renamed
+                logger.info(f"File di log rinominato con log_key: {log_file_path}")
+            except Exception as rename_err:
+                logger.warning(f"Impossibile rinominare il file di log: {rename_err}")
         # Lettura log
         for enc in ["cp1252", "utf-8", "latin-1"]:
             try:
@@ -380,7 +396,7 @@ def execute_selected_flows(
             flow_id_str=flow_ids_str,
             status=status,
             duration_seconds=duration,
-            details={"executed_by": executed_by, "params": request.params},
+            details={"executed_by": executed_by, "params": request.params, "log_file": str(log_file_path) if log_file_path else None},
             log_key=log_key,
             bank=current_user.bank,
             anno=anno_int,

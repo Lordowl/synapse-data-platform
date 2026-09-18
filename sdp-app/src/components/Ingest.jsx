@@ -8,6 +8,7 @@ import ExecutionTabContent from "./ExecutionTab";
 import LogsTabContent from "./LogsTab";
 import { useIngestData } from "../hooks/useIngestData";
 import { useIngestFlows } from "../hooks/useIngestFlows";
+import { useAppVersion } from "../hooks/useAppVersion";
 import "./Ingest.css";
 
 const TABS = [
@@ -27,6 +28,7 @@ const yearOptions = Array.from({ length: 2 }, (_, i) => currentYear - i).map(
 function Ingest() {
   const navigate = useNavigate();
   const location = useLocation();
+  const appVersion = useAppVersion();
   const metadataFilePath = location.state?.metadataFilePath;
 
   // 🔹 Ottieni la banca corrente per localStorage specifico
@@ -300,7 +302,7 @@ function Ingest() {
               </div>
               <div>
                 <h1 className="ingest-header-title">Ingestion</h1>
-                <p className="ingest-header-subtitle">Banca: {currentBank}</p>
+                <p className="ingest-header-subtitle">Banca: {currentBank}{appVersion && <span className="header-version-badge">v{appVersion}</span>}</p>
               </div>
             </div>
 

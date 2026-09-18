@@ -19,6 +19,7 @@ import {
   Key,
 } from "lucide-react";
 import "./Settings.css";
+import { useAppVersion } from "../hooks/useAppVersion";
 
 // =================================================================================
 // --- DEFINIZIONE DEI SOTTO-COMPONENTI PER I TAB
@@ -749,6 +750,7 @@ function PasswordChangeModal({
 function Settings() {
   const navigate = useNavigate();
   const { metadataFilePath, setMetadataFilePath } = useAppContext();
+  const appVersion = useAppVersion();
 
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -1190,7 +1192,7 @@ function Settings() {
               </div>
               <div>
                 <h1 className="settings-header-title">Impostazioni</h1>
-                <p className="settings-header-subtitle">Banca: {sessionStorage.getItem("selectedBank") || "N/A"}</p>
+                <p className="settings-header-subtitle">Banca: {sessionStorage.getItem("selectedBank") || "N/A"}{appVersion && <span className="header-version-badge">v{appVersion}</span>}</p>
               </div>
             </div>
 

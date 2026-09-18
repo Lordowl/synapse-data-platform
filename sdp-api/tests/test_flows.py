@@ -30,6 +30,28 @@ def flows_json_file(tmp_path):
 
 
 @pytest.fixture
+def bank_flows_json_file(test_user):
+    """Crea il file dei flussi specifico per la banca dell'utente di test."""
+    from api.flows import get_flows_file
+
+    flows_file = get_flows_file(test_user.bank)
+    flows_file.parent.mkdir(exist_ok=True)
+
+    flows_data = {
+        "flows": [
+            {"id": "bankflow1", "name": "Flow della banca", "description": "specifico"},
+        ]
+    }
+    with open(flows_file, "w", encoding="utf-8") as f:
+        json.dump(flows_data, f)
+
+    yield flows_file
+
+    if flows_file.exists():
+        flows_file.unlink()
+
+
+@pytest.fixture
 def flow_execution_history(db_session, test_user):
     """Crea dati di storico esecuzione flow"""
     from db import models
@@ -87,9 +109,15 @@ def flow_execution_details(db_session, test_user):
 class TestFlowsEndpoints:
     """Test per gli endpoint dei flows"""
 
-    def test_get_all_flows_with_file(self, client, flows_json_file):
-        """Test recupero tutti i flows quando il file esiste"""
+    def test_get_all_flows_requires_auth(self, client):
+        """L'endpoint non e' piu' pubblico: serve la banca dell'utente per scegliere il file"""
         response = client.get("/api/v1/flows/")
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_get_all_flows_legacy_file_fallback(self, authenticated_client, flows_json_file):
+        """Senza file per banca si usa il flows.json storico"""
+        response = authenticated_client.get("/api/v1/flows/")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -98,14 +126,32 @@ class TestFlowsEndpoints:
         assert data[0]["id"] == "flow1"
         assert data[1]["id"] == "flow2"
 
-    def test_get_all_flows_without_file(self, client):
-        """Test recupero flows quando il file non esiste"""
-        # Assicurati che il file non esista
-        flows_file = Path(__file__).parent.parent / "data" / "flows.json"
-        if flows_file.exists():
-            flows_file.unlink()
+    def test_get_all_flows_prefers_bank_file(self, authenticated_client, flows_json_file, bank_flows_json_file):
+        """Il file della banca ha la precedenza sul file storico"""
+        response = authenticated_client.get("/api/v1/flows/")
 
-        response = client.get("/api/v1/flows/")
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["id"] == "bankflow1"
+
+    def test_get_all_flows_is_bank_scoped(self, authenticated_client, test_user, bank_flows_json_file):
+        """I flussi di una banca non finiscono a un'altra banca"""
+        from api.flows import get_flows_file
+
+        assert get_flows_file("CiviBank") != get_flows_file(test_user.bank)
+        assert get_flows_file("CiviBank").name == "flows_civibank.json"
+        assert get_flows_file("Sparkasse").name == "flows_sparkasse.json"
+
+    def test_get_all_flows_without_file(self, authenticated_client, test_user):
+        """Test recupero flows quando non esiste nessun file"""
+        from api.flows import get_flows_file, DATA_FILE
+
+        for f in (DATA_FILE, get_flows_file(test_user.bank)):
+            if f.exists():
+                f.unlink()
+
+        response = authenticated_client.get("/api/v1/flows/")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "non trovato" in response.json()["detail"].lower()

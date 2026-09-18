@@ -206,6 +206,11 @@ def startup_event():
     if not os.path.exists(config_banks_file):
         config_banks_file = os.path.join(os.path.dirname(__file__), "config", "banks_default.json")
 
+    # URL calcolato dalla configurazione: ha la precedenza su settings.DATABASE_URL,
+    # che e' stato letto dal .env all'import del modulo e non riflette le scritture
+    # fatte in questo startup da config_manager.update_setting().
+    configured_db_url = None
+
     if os.path.exists(config_banks_file):
         try:
             with open(config_banks_file, "r", encoding="utf-8") as f:
@@ -241,16 +246,16 @@ def startup_event():
                     config_manager.update_setting("DATABASE_URL", new_db_url)
                     config_manager.update_setting("SETTINGS_PATH", folder)
 
+                    # update_setting() scrive solo il file .env: allinea anche l'istanza
+                    # gia' caricata in memoria, altrimenti resta al valore di avvio.
+                    settings.DATABASE_URL = new_db_url
+
                     logging.info(f"[STARTUP] Configurazione automatica completata: {folder}")
 
-                    # Ricrea engine SQLAlchemy
-                    from sqlalchemy import create_engine
-                    from sqlalchemy.orm import sessionmaker
-                    import db.database as database
-
-                    database.engine = create_engine(new_db_url, connect_args={"check_same_thread": False})
-                    database.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=database.engine)
-                    models.Base.metadata.create_all(bind=database.engine)
+                    # L'engine viene creato piu' avanti da init_db(): assegnare qui
+                    # db.database.engine/SessionLocal non avrebbe effetto, perche'
+                    # db/database.py reimporta quei nomi per valore da db/__init__.py.
+                    configured_db_url = new_db_url
 
                     logging.info(f"[STARTUP] Database configurato: {new_db_url}")
                 else:
@@ -261,7 +266,7 @@ def startup_event():
         except Exception as e:
             logging.warning(f"[STARTUP] Errore durante la lettura di banks_default.json: {e}")
 
-    db_url = settings.DATABASE_URL
+    db_url = configured_db_url or settings.DATABASE_URL
     if not db_url:
         logging.warning(
             "[STARTUP] Nessun DATABASE_URL configurato. Modifica app_config.json con il percorso corretto."

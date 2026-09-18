@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import "./Report.css";
 import apiClient from "../api/apiClient";
+import { useAppVersion } from "../hooks/useAppVersion";
 
 // --- Componente Tooltip Personalizzato ---
 function CustomTooltip({ children, content, position = 'bottom' }) {
@@ -288,6 +289,7 @@ const stabilizzaDate = (anno, settimana, lunedi) => {
 function Report() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const appVersion = useAppVersion();
   const selectedBank = getEffectiveSelectedBank();
 
   // Leggi la periodicità dai parametri URL o default a 'settimanale'
@@ -1145,7 +1147,7 @@ function Report() {
                 <h1 className="report-header-title">
                   Cruscotto Reportistica
                 </h1>
-                <p className="report-header-subtitle">Banca: {selectedBank || "N/A"}</p>
+                <p className="report-header-subtitle">Banca: {selectedBank || "N/A"}{appVersion && <span className="header-version-badge">v{appVersion}</span>}</p>
               </div>
             </div>
 
