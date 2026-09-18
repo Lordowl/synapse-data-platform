@@ -36,6 +36,12 @@ Output atteso:
 
 ## 3) Genera `latest.json`
 
+> **Attenzione al nome del file nell URL.** GitHub normalizza i nomi degli asset:
+> ogni carattere che non sia alfanumerico, punto, underscore o trattino diventa un
+> punto. Lo spazio di "Cruscotto Operativo" diventa quindi un punto, e l URL deve
+> usare `Cruscotto.Operativo_...`, non `Cruscotto%20Operativo_...`. Con `%20`
+> l update viene annunciato ai client ma il download restituisce 404.
+
 ```powershell
 $VERSION="0.2.44"
 $EXE_NAME="Cruscotto Operativo_${VERSION}_x64-setup.exe"
@@ -50,7 +56,7 @@ $json = @"
   "platforms": {
     "windows-x86_64": {
       "signature": "$SIG",
-      "url": "https://github.com/Lordowl/synapse-data-updates/releases/download/$VERSION/Cruscotto%20Operativo_${VERSION}_x64-setup.exe",
+      "url": "https://github.com/Lordowl/synapse-data-updates/releases/download/$VERSION/Cruscotto.Operativo_${VERSION}_x64-setup.exe",
       "with_elevated_task": false
     }
   }
