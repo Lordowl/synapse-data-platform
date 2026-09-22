@@ -24,7 +24,7 @@ Output atteso (Windows):
 ## 2) Firma dell'installer (`.sig`)
 
 ```powershell
-$VERSION="0.2.44"
+$VERSION="0.2.45"
 $PASSWORD="<PASSWORD_KEY>"
 $EXE="src-tauri\target\release\bundle\nsis\Cruscotto Operativo_${VERSION}_x64-setup.exe"
 
@@ -43,7 +43,7 @@ Output atteso:
 > l update viene annunciato ai client ma il download restituisce 404.
 
 ```powershell
-$VERSION="0.2.44"
+$VERSION="0.2.45"
 $EXE_NAME="Cruscotto Operativo_${VERSION}_x64-setup.exe"
 $SIG=(Get-Content -Raw "src-tauri\target\release\bundle\nsis\${EXE_NAME}.sig").Trim()
 $PUB_DATE=(Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -69,7 +69,7 @@ Set-Content -Path "src-tauri\target\release\bundle\nsis\latest.json" -Value $jso
 ## 4) Verifica file pronti
 
 ```powershell
-$VERSION="0.2.44"
+$VERSION="0.2.45"
 Get-ChildItem -File `
   "src-tauri\target\release\bundle\nsis\Cruscotto Operativo_${VERSION}_x64-setup.exe", `
   "src-tauri\target\release\bundle\nsis\Cruscotto Operativo_${VERSION}_x64-setup.exe.sig", `
@@ -80,10 +80,10 @@ Get-ChildItem -File `
 
 Nel repo `Lordowl/synapse-data-updates`:
 
-1. Crea release con tag `0.2.44`
+1. Crea release con tag `0.2.45`
 2. Carica questi 3 asset:
-   - `Cruscotto Operativo_0.2.44_x64-setup.exe`
-   - `Cruscotto Operativo_0.2.44_x64-setup.exe.sig`
+   - `Cruscotto Operativo_0.2.45_x64-setup.exe`
+   - `Cruscotto Operativo_0.2.45_x64-setup.exe.sig`
    - `latest.json`
 3. Pubblica la release (non draft)
 
@@ -93,4 +93,4 @@ Controlla:
 
 `https://github.com/Lordowl/synapse-data-updates/releases/latest/download/latest.json`
 
-Deve mostrare `"version": "0.2.44"`.
+Deve mostrare `"version": "0.2.45"`.

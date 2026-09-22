@@ -156,7 +156,7 @@ def create_default_admin_if_not_exists():
 app = FastAPI(
     title="Cruscotto Operativo API",
     description="API per il Cruscotto Operativo.",
-    version="0.2.44",
+    version="0.2.45",
 )
 
 
