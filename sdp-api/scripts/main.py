@@ -188,16 +188,83 @@ def _fmt_ts(epoch_ms) -> str:
         return str(epoch_ms)
 
 
+# Eventi mouse inviati direttamente alla riga: non dipendono dalle coordinate del
+# puntatore, quindi funzionano anche quando lo spostamento fisico non produce hover.
+_JS_HOVER_ROW = """
+var el = arguments[0];
+var row = el.closest('[data-testid="workspace-list-content-view-row"]') || el;
+['pointerover','mouseover','pointerenter','mouseenter','mousemove'].forEach(function(t) {
+    row.dispatchEvent(new MouseEvent(t, {bubbles: true, cancelable: true, view: window}));
+});
+"""
+
+
+def _hover_row(driver: webdriver.Chrome, name_el) -> None:
+    """
+    Porta la riga in stato hover, cosi' che le quick-action si espandano.
+
+    Le quick-action di Power BI non sono nascoste da opacity o visibility: il loro
+    contenitore resta largo 0 px finche' la riga non e' in hover, e Selenium considera
+    non visibile un elemento di larghezza zero. Subito dopo un driver.refresh() la riga
+    viene ricostruita mentre il puntatore resta fermo dov'era: un move_to_element sulle
+    stesse coordinate non genera alcun mouseover sul nuovo elemento, l'hover non scatta
+    e il pulsante resta a 0 px per sempre (verificato: invariato anche dopo 150 s).
+
+    Servono quindi due cose insieme: spostare davvero il puntatore, parcheggiandolo
+    prima fuori dalla riga, e notificare la riga anche via eventi DOM.
+    """
+    try:
+        body = driver.find_element(By.TAG_NAME, "body")
+        ActionChains(driver).move_to_element_with_offset(body, 3, 3).perform()
+        time.sleep(0.3)
+        ActionChains(driver).move_to_element(name_el).perform()
+    except Exception as e:
+        logger.debug(f"Spostamento del puntatore non riuscito ({type(e).__name__}), resto sugli eventi DOM.")
+    try:
+        driver.execute_script(_JS_HOVER_ROW, name_el)
+    except Exception as e:
+        logger.debug(f"Invio eventi hover via JS non riuscito ({type(e).__name__}).")
+    time.sleep(0.5)
+
+
+def _click_via_js(driver: webdriver.Chrome, package: str, button_xpath: str, attempt: int) -> bool:
+    """
+    Clicca il pulsante via JavaScript, che ignora la visibilita'.
+
+    Usato quando il pulsante esiste ed e' abilitato ma resta largo 0 px, condizione in
+    cui il click nativo e' impossibile. Non solleva mai: un problema qui deve valere
+    come tentativo fallito, non interrompere la pubblicazione.
+    """
+    try:
+        button = driver.find_element(By.XPATH, button_xpath)
+        if not button.is_enabled() or button.get_attribute("aria-disabled") == "true":
+            logger.warning(f"Pulsante 'Aggiorna adesso' di '{package}' presente ma disabilitato.")
+            return False
+        logger.warning(
+            f"Pulsante 'Aggiorna adesso' di '{package}' presente ma non visibile "
+            f"(quick-action collassate): procedo con click JavaScript."
+        )
+        driver.execute_script("arguments[0].click();", button)
+        logger.info(
+            f"Click 'Aggiorna adesso' riuscito per '{package}' al tentativo {attempt} (via JavaScript)."
+        )
+        return True
+    except NoSuchElementException:
+        return False
+    except Exception as e:
+        logger.warning(f"Click JavaScript su '{package}' non riuscito: {type(e).__name__}.")
+        return False
+
+
 def _click_refresh_button(driver: webdriver.Chrome, package: str, attempts: int = 3) -> bool:
     """
     Clicca "Aggiorna adesso" sulla riga del package usando Selenium diretto.
 
-    Serve come rete di sicurezza quando il click pilotato da FluentX fallisce: i
-    pulsanti quick-action di Power BI compaiono all'hover, e fra il MOVE TO sulla riga
-    e il CLICK sul pulsante l'hover puo' perdersi o il pulsante puo' non aver finito di
-    renderizzare. Qui hover e click sono consecutivi, si attende che il pulsante sia
-    cliccabile (non solo presente) e si ripiega sul click JavaScript se un overlay lo
-    intercetta.
+    Serve come rete di sicurezza quando il click pilotato da FluentX fallisce, in
+    particolare nel caso che si verifica subito dopo un reload keep-alive: la riga e'
+    nel DOM e il pulsante e' presente e abilitato, ma resta largo 0 px perche' l'hover
+    non e' mai scattato (vedi _hover_row). Qui l'hover viene forzato, e se il pulsante
+    resta comunque non visibile lo si clicca via JavaScript, che ignora la visibilita'.
 
     Restituisce True se il click e' andato a segno.
     """
@@ -213,13 +280,20 @@ def _click_refresh_button(driver: webdriver.Chrome, package: str, attempts: int 
             )
             time.sleep(0.5)
 
-            # L'hover fa comparire i pulsanti quick-action sulla riga.
-            ActionChains(driver).move_to_element(name_el).perform()
-            time.sleep(0.5)
+            # L'hover espande le quick-action della riga.
+            _hover_row(driver, name_el)
 
-            button = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, button_xpath))
-            )
+            try:
+                button = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, button_xpath))
+                )
+            except TimeoutException:
+                # Il pulsante puo' esserci ed essere abilitato pur restando largo 0 px:
+                # in quel caso il click nativo e' impossibile ma quello via JS va a segno.
+                if not _click_via_js(driver, package, button_xpath, attempt):
+                    raise  # nessun click possibile: vale come tentativo fallito
+                return True
+
             try:
                 button.click()
             except Exception as click_err:
@@ -237,6 +311,121 @@ def _click_refresh_button(driver: webdriver.Chrome, package: str, attempts: int 
             time.sleep(2)
 
     _log_debug_html(driver, package, "click di recupero fallito su tutti i tentativi")
+    return False
+
+
+def _errori_login(log) -> list:
+    """Task di login falliti, escluso 'rimanere connessi' che e' opzionale."""
+    falliti = []
+    for task_name, l in (log or {}).get("Login", {}).get("Login", {}).items():
+        if l.get("status") != "error" or "rimanere connessi" in task_name.lower():
+            continue
+        falliti.append((task_name, l.get("error") or l.get("message", "Errore sconosciuto")))
+    return falliti
+
+
+def _login_riuscito(driver: webdriver.Chrome, timeout: int = 30) -> bool:
+    """
+    Verifica di essere davvero dentro Power BI e non fermi sulla pagina di accesso.
+
+    Il pulsante "Aree di lavoro" fa parte della shell dell'applicazione: c'e' solo a
+    sessione autenticata. Serve a distinguere due casi che la catena di login segnala
+    entrambi come errore: quello in cui l'accesso e' gia' attivo e i campi del form
+    non esistono piu', e quello in cui l'accesso non e' proprio avvenuto.
+    """
+    try:
+        WebDriverWait(driver, timeout).until(
+            EC.presence_of_element_located((By.XPATH, '//button[@aria-label="Aree di lavoro"]'))
+        )
+        return True
+    except (TimeoutException, NoSuchElementException):
+        return False
+
+
+def _attendi_form_login(driver: webdriver.Chrome, timeout: int = 60) -> bool:
+    """
+    Attende che il campo email sia interagibile, non solo presente.
+
+    La catena di login aspetta 5 secondi fissi e poi scrive: se la pagina di accesso non
+    ha finito di renderizzare, il campo esiste ma non e' interagibile e tutti i passi
+    successivi falliscono a catena.
+    """
+    try:
+        WebDriverWait(driver, timeout).until(
+            EC.element_to_be_clickable((By.XPATH, '//input[@id="email"]'))
+        )
+        return True
+    except TimeoutException:
+        return False
+
+
+def _has_error_icon(driver: webdriver.Chrome, package: str) -> bool:
+    """Presenza dell'icona di errore sulla riga, senza cliccarla né aprire i dettagli."""
+    xpath = (
+        f'//span[@data-value="{package}"]'
+        '/ancestor::*[@data-testid="workspace-list-content-view-row"]'
+        '//button[.//i[contains(@class, "pbi-glyph-warning")]]'
+    )
+    try:
+        driver.find_element(By.XPATH, xpath)
+        return True
+    except (NoSuchElementException, StaleElementReferenceException):
+        return False
+
+
+def _spinner_ricompare(driver: webdriver.Chrome, package: str, spinner_xpath: str, grace: int = 45) -> bool:
+    """
+    Cerca lo spinner ripetutamente entro una finestra di grazia.
+
+    Dopo un reload la riga viene ricostruita e lo spinner puo' non essere ancora
+    renderizzato: cercarlo una sola volta faceva concludere che il refresh fosse
+    finito quando invece stava ancora girando, con il timestamp fermo al valore
+    precedente e il package marcato come non aggiornato.
+    """
+    start = time.time()
+    while time.time() - start < grace:
+        _scroll_to_package(driver, package)
+        try:
+            driver.find_element(By.XPATH, spinner_xpath)
+            return True
+        except NoSuchElementException:
+            time.sleep(2)
+    return False
+
+
+def _attendi_conferma_refresh(driver: webdriver.Chrome, package: str, spinner_xpath: str,
+                              baseline_ts, run_start_ms: int, budget: int = 1800) -> bool:
+    """
+    Lo spinner non e' piu' rilevabile: stabilisce se il refresh sia davvero concluso.
+
+    L'assenza dello spinner da sola non basta come prova, perche' subito dopo un reload
+    la riga e' appena stata ricostruita e lo spinner puo' non essere ancora renderizzato.
+    Qui si attende una conferma vera: avanzamento del timestamp oppure comparsa
+    dell'icona di errore. Se lo spinner ricompare, il refresh era ancora in corso e lo si
+    riattende.
+
+    Restituisce True appena l'esito e' deciso, False se entro il budget non arriva alcuna
+    conferma: in quel caso il chiamante prosegue e _verify_refresh riportera' l'esito.
+    """
+    start = time.time()
+    while time.time() - start < budget:
+        _scroll_to_package(driver, package)
+        current_ts = _read_last_refresh(driver, package)
+        if current_ts is not None and (
+            (baseline_ts is not None and current_ts > baseline_ts)
+            or current_ts >= (run_start_ms - _CLOCK_SKEW_MS)
+        ):
+            return True
+        if _has_error_icon(driver, package):
+            return True
+        try:
+            driver.find_element(By.XPATH, spinner_xpath)
+            logger.info(f"Spinner di nuovo visibile per '{package}': il refresh e' ancora in corso.")
+            _wait_spinner_gone(driver, package, timeout=3600)
+            continue
+        except NoSuchElementException:
+            pass
+        time.sleep(20)
     return False
 
 
@@ -401,16 +590,39 @@ def main(workspace: str, PBI_packages: list, final_packages: list = None, blocke
     # Login
     logger.info("Fase Login in corso...")
     data_chains["chains"] = {chain: data[chain] for chain in login_chain}
-    actions, _, _, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook)
-    logger.info(f"Login log: {log}")
-    for task_name, l in log["Login"]["Login"].items():
-        if l["status"] == "error":
-            # Ignora l'errore per il task "premere si su rimanere connessi" (opzionale)
-            if "rimanere connessi" in task_name.lower():
-                logger.debug(f"Task '{task_name}' fallito ma ignorato (opzionale)")
-                continue
-            error_msg = l.get('error') or l.get('message', 'Errore sconosciuto')
+    actions = None
+    for tentativo in range(1, 4):
+        actions, _, _, log = run_flow(
+            modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions
+        )
+        logger.info(f"Login log: {log}")
+        falliti = _errori_login(log)
+        if not falliti:
+            break
+
+        for task_name, error_msg in falliti:
             logger.error(f"ERROR durante login nel task '{task_name}': {error_msg}")
+
+        # La catena segnala errore anche quando la sessione era gia' autenticata e i
+        # campi del form non esistono piu': in quel caso siamo dentro e si prosegue.
+        if _login_riuscito(actions.driver):
+            logger.info("Sessione Power BI gia' attiva: proseguo nonostante gli errori della catena.")
+            break
+
+        if tentativo == 3:
+            logger.error("Login non riuscito dopo 3 tentativi.")
+            sys.exit(
+                "ERROR: accesso a Power BI non riuscito. Controlla credenziali e "
+                "connessione di rete."
+            )
+
+        logger.warning(f"Login non riuscito al tentativo {tentativo}/3, ricarico la pagina e riprovo...")
+        try:
+            actions.driver.refresh()
+        except Exception as e:
+            logger.warning(f"Ricarica della pagina non riuscita ({type(e).__name__}).")
+        if not _attendi_form_login(actions.driver):
+            logger.warning("Il campo email non e' diventato interagibile entro 60s, riprovo comunque.")
 
     # Workspace
     if workspace != "Engage-PRE CHECK":
@@ -418,7 +630,15 @@ def main(workspace: str, PBI_packages: list, final_packages: list = None, blocke
         workbook["Cambia workspace"]["B5"].value = f'//button[contains(@data-testid, "workspace-item-btn") and contains(@title, "{workspace}")]'    # da modificare
         data_chains["chains"] = {chain: data[chain] for chain in workspace_chain}
         actions, _, _, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
-        if log["Cambia workspace"]["Cambia workspace"]["Selezionare workspace"]["status"] == "error":
+        # Letture difensive: se la catena non e' partita (tipicamente perche' la pagina
+        # non e' quella attesa) la chiave manca del tutto, e un KeyError qui nascondeva
+        # la causa vera dietro un errore 500 illeggibile.
+        ws_task = (
+            log.get("Cambia workspace", {})
+            .get("Cambia workspace", {})
+            .get("Selezionare workspace", {})
+        )
+        if ws_task.get("status", "error") == "error":
             logger.error(f"ERROR: non sono riuscito a trovare il workspace '{workspace}'. Controlla che il nome sia corretto.")
             sys.exit(f"ERROR: non sono riuscito a trovare il workspace '{workspace}'. Controlla che il nome sia corretto.")
     
@@ -580,6 +800,14 @@ def main(workspace: str, PBI_packages: list, final_packages: list = None, blocke
                         break
                     done = _wait_spinner_gone(driver, package, timeout=int(chunk))
                     if done:
+                        # Spinner sparito: conferma l'esito prima di smettere di attendere.
+                        if not _attendi_conferma_refresh(
+                            driver, package, spinner_xpath, baseline_ts, run_start_ms
+                        ):
+                            logger.warning(
+                                f"'{package}': spinner sparito ma nessuna conferma di aggiornamento "
+                                f"entro 30 minuti, procedo con la verifica."
+                            )
                         finished = True
                         break
                     # Chunk scaduto, spinner ancora presente: refresh per tenere viva la sessione
@@ -589,11 +817,18 @@ def main(workspace: str, PBI_packages: list, final_packages: list = None, blocke
                     data_chains["chains"] = {chain: data[chain] for chain in ms_chain}
                     actions, _, _, log = run_flow(modules, _FLOW_NAME, data_chains, workbook=workbook, actions=actions)
                     driver = actions.driver
-                    _scroll_to_package(driver, package)
-                    try:
-                        driver.find_element(By.XPATH, spinner_xpath)
+                    # Dopo il reload la riga e' ricostruita: cercare lo spinner una sola
+                    # volta faceva concludere per sbaglio che il refresh fosse finito.
+                    if _spinner_ricompare(driver, package, spinner_xpath):
                         logger.info(f"Spinner ancora presente per '{package}' post-refresh periodico, continuo...")
-                    except NoSuchElementException:
+                    else:
+                        if not _attendi_conferma_refresh(
+                            driver, package, spinner_xpath, baseline_ts, run_start_ms
+                        ):
+                            logger.warning(
+                                f"'{package}': spinner assente dopo il refresh periodico e nessuna "
+                                f"conferma di aggiornamento, procedo con la verifica."
+                            )
                         finished = True
                         break
 
