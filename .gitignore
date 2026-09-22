@@ -15,8 +15,11 @@ Thumbs.db
 # BACKEND - sdp-api (Python/FastAPI)
 # ==================================
 sdp-api/.venv/
-sdp-api/__pycache__/
-sdp-api/*.pyc
+# Bytecode Python a qualsiasi livello: le regole precedenti coprivano solo
+# sdp-api/__pycache__/, non le sottocartelle tipo sdp-api/api/__pycache__/.
+__pycache__/
+*.pyc
+*.pyo
 sdp-api/.env
 sdp-api/database.db
 sdp-api/dist
