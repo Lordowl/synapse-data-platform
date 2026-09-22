@@ -1030,16 +1030,23 @@ function Report() {
     });
   }, [tasksForSemaphore, repoUpdateInfo, currentPeriodicity]);
 
-  // Verifica se tutti i package SELEZIONATI hanno pre_check = true (verde, non error/timeout)
+  // Per pubblicare in produzione servono TUTTI i package della periodicita' corrente
+  // verdi in Pre-Check E tutti sullo stesso periodo selezionato in alto (settimana/mese):
+  // Homepage aggrega i dati degli altri, quindi un verde della settimana precedente
+  // produrrebbe una vista coerente nella forma ma con numeri vecchi.
   const allPreCheckGreen = useMemo(() => {
-    if (selectedPublishPackages.size === 0) return false;
+    if (publicationData.length === 0) return false;
 
-    // Filtra solo i package selezionati
-    const selectedItems = publicationData.filter(item => selectedPublishPackages.has(item.package));
+    return publicationData.every(item => {
+      const isGreen = item.pre_check === true;
 
-    return selectedItems.length > 0 &&
-      selectedItems.every(item => item.pre_check === true);
-  }, [publicationData, selectedPublishPackages]);
+      const isSelectedPeriod = currentPeriodicity === 'settimanale'
+        ? (item.anno_precheck === repoUpdateInfo.anno && item.settimana_precheck === repoUpdateInfo.settimana)
+        : (item.anno_precheck === repoUpdateInfo.anno && item.mese_precheck === repoUpdateInfo.mese);
+
+      return isGreen && isSelectedPeriod;
+    });
+  }, [publicationData, repoUpdateInfo, currentPeriodicity]);
 
   // Trova i package con errori (pre_check o prod con errore/timeout)
   const packagesWithErrors = useMemo(() => {
@@ -1707,7 +1714,7 @@ function Report() {
                 disabled={!allFirstTableGreen || !allPreCheckGreen || loadingActions.global !== null}
                 title={
                   !allFirstTableGreen ? "Tutte le righe della prima tabella devono avere disponibilità file verde" :
-                    !allPreCheckGreen ? "Tutte le righe devono avere Pre-Check verde" :
+                    !allPreCheckGreen ? `Tutti i package devono avere Pre-Check verde sullo stesso periodo selezionato (${periodicityConfig.timeLabel} ${currentPeriodicity === 'settimanale' ? repoUpdateInfo.settimana : repoUpdateInfo.mese}/${repoUpdateInfo.anno})` :
                       `Pubblica Report ${periodicityConfig.label}`
                 }
                 style={{

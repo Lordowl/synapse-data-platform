@@ -542,8 +542,9 @@ def main(workspace: str, PBI_packages: list, final_packages: list = None, blocke
     final_packages : package che aggregano i dati degli altri (Obbligatorio = Y nella
                      mappatura, oggi solo 'Homepage'). Vengono aggiornati SOLO se tutti
                      i package normali sono andati a buon fine.
-    blocked_by     : package gia' in errore a DB per lo stesso periodo e non rilanciati
-                     in questa run. Bloccano i final_packages come un errore corrente.
+    blocked_by     : package che a DB non risultano verdi per il periodo selezionato e
+                     non sono stati rilanciati in questa run, perche' in errore oppure
+                     perche' mai eseguiti in quel periodo. Bloccano i final_packages.
     """
     logger.info(f"=== INIZIO ELABORAZIONE ===")
     logger.info(f"Workspace: {workspace}")
@@ -558,7 +559,7 @@ def main(workspace: str, PBI_packages: list, final_packages: list = None, blocke
     logger.info(f"Packages: {PBI_packages}")
     logger.info(f"Packages finali (dopo gli altri): {final_packages}")
     if blocked_by:
-        logger.warning(f"Package gia' in errore a DB per questo periodo: {blocked_by}")
+        logger.warning(f"Package non verdi a DB per il periodo selezionato: {blocked_by}")
 
     # Istante di avvio: soglia per stabilire se un timestamp di ultimo aggiornamento
     # appartiene a questa esecuzione.
@@ -862,22 +863,26 @@ def main(workspace: str, PBI_packages: list, final_packages: list = None, blocke
     _process_packages(PBI_packages)
 
     failed_packages = [pkg for pkg, status in packages_status.items() if "successo" not in str(status).lower()]
-    # Un package blocca se e' fallito ora oppure se era gia' rosso a DB per lo stesso
-    # periodo e non e' stato rilanciato in questa run.
+    # Un package blocca se e' fallito ora oppure se a DB non risulta verde per il periodo
+    # selezionato e non e' stato rilanciato in questa run: i package finali servono tutti
+    # verdi E tutti sullo stesso periodo, un verde di una settimana precedente non vale.
     blockers = failed_packages + [pkg for pkg in blocked_by if pkg not in failed_packages]
 
     if blockers:
-        error_msg = "Pubblicazione bloccata: uno o più modelli semantici non risultano aggiornati."
-        logger.error(f"{error_msg} Package con errori: {blockers}")
+        error_msg = "Pubblicazione bloccata: uno o più modelli semantici non risultano aggiornati per il periodo selezionato."
+        logger.error(f"{error_msg} Package bloccanti: {blockers}")
         for pkg in PBI_packages:
             if pkg not in packages_status:
                 packages_status[pkg] = error_msg
         # I package finali aggregano i dati degli altri: aggiornarli ora produrrebbe
         # una vista coerente nella forma ma sbagliata nei numeri.
         for pkg in final_packages:
+            # La parola "errore" e' necessaria: l'endpoint instrada il dettaglio nella
+            # colonna error di publication_logs cercandola nel testo, ed e' da li' che
+            # la UI pesca il messaggio del pallino rosso.
             packages_status[pkg] = (
-                "Non aggiornato: pubblicazione bloccata da package in errore "
-                f"({', '.join(blockers)})."
+                "Non aggiornato: pubblicazione bloccata da package in errore o non "
+                f"aggiornati per il periodo selezionato ({', '.join(blockers)})."
             )
             logger.warning(f"Package finale '{pkg}' non aggiornato: bloccato da {blockers}.")
         return packages_status

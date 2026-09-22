@@ -1978,14 +1978,17 @@ def _compute_blocked_packages(
     packages_in_run: List[str],
 ) -> List[str]:
     """
-    Package che risultano in ERRORE a DB per il periodo corrente e che NON fanno parte
-    di questa esecuzione. Bloccano l'aggiornamento dei package finali (Homepage).
+    Package che NON risultano verdi a DB per il periodo selezionato e che NON fanno
+    parte di questa esecuzione. Bloccano l'aggiornamento dei package finali (Homepage).
 
-    Due regole importanti:
-    - un package senza alcun log non blocca: non e' "in errore", semplicemente non e'
-      ancora stato eseguito (caso normale quando si pubblica solo una selezione);
-    - conta solo l'ultimo log a package singolo del periodo corrente, esattamente come
-      fa la tabella in UI.
+    I package finali aggregano i dati di tutti gli altri, quindi non basta che nessuno
+    sia rosso: servono tutti verdi E tutti sullo stesso periodo, cioe' la settimana
+    (o il mese) selezionata in repo_update_info. Bloccano percio':
+    - i package in errore per il periodo selezionato;
+    - i package che per quel periodo non hanno alcun log, perche' mai eseguiti oppure
+      verdi solo su un periodo precedente: i numeri aggregati sarebbero vecchi.
+
+    Conta solo l'ultimo log a package singolo del periodo, come fa la tabella in UI.
     """
     in_run = set(packages_in_run)
     to_check = [pkg for pkg in candidates if pkg not in in_run]
@@ -2026,10 +2029,13 @@ def _compute_blocked_packages(
             continue
         latest[pkg_name] = _resolve_log_status(log_status, log_output, log_error)
 
-    blocked = [pkg for pkg in to_check if latest.get(pkg) == "error"]
+    blocked = [pkg for pkg in to_check if latest.get(pkg) is not True]
     if blocked:
+        in_errore = [pkg for pkg in blocked if latest.get(pkg) == "error"]
+        fuori_periodo = [pkg for pkg in blocked if pkg not in latest]
         logger.info(
-            f"Package gia' in errore a DB per il periodo corrente (bloccano i package finali): {blocked}"
+            "Package non verdi per il periodo selezionato (bloccano i package finali): "
+            f"in errore={in_errore}, senza esecuzione nel periodo={fuori_periodo}"
         )
     return blocked
 
@@ -2119,8 +2125,8 @@ async def publish_precheck(
         final_packages = [pkg for pkg in pbi_packages if pkg in mandatory_packages]
         normal_packages = [pkg for pkg in pbi_packages if pkg not in mandatory_packages]
 
-        # Package gia' rossi a DB per questo periodo e non rilanciati ora: bloccano
-        # comunque i package finali.
+        # Package che a DB non sono verdi per il periodo selezionato e non sono
+        # rilanciati ora (in errore o mai eseguiti): bloccano i package finali.
         try:
             blocked_by = _compute_blocked_packages(
                 db=db,
@@ -2139,7 +2145,7 @@ async def publish_precheck(
 
         logger.info(f"Package normali: {normal_packages}")
         logger.info(f"Package finali: {final_packages}")
-        logger.info(f"Package bloccanti (errori pregressi a DB): {blocked_by}")
+        logger.info(f"Package bloccanti (non verdi a DB per il periodo selezionato): {blocked_by}")
 
         logger.info(f"Workspace Power BI: {workspace_powerbi}")
         logger.info(f"Workspace Data Factory: {workspace_datafactory}")
@@ -2565,8 +2571,8 @@ async def publish_production(
         final_packages = [pkg for pkg in pbi_packages if pkg in mandatory_packages]
         normal_packages = [pkg for pkg in pbi_packages if pkg not in mandatory_packages]
 
-        # Package gia' rossi a DB per questo periodo e non rilanciati ora: bloccano
-        # comunque i package finali.
+        # Package che a DB non sono verdi per il periodo selezionato e non sono
+        # rilanciati ora (in errore o mai eseguiti): bloccano i package finali.
         try:
             blocked_by = _compute_blocked_packages(
                 db=db,
@@ -2585,7 +2591,7 @@ async def publish_production(
 
         logger.info(f"Package normali: {normal_packages}")
         logger.info(f"Package finali: {final_packages}")
-        logger.info(f"Package bloccanti (errori pregressi a DB): {blocked_by}")
+        logger.info(f"Package bloccanti (non verdi a DB per il periodo selezionato): {blocked_by}")
 
         logger.info(f"Production Workspace Power BI: {workspace_powerbi}")
         logger.info(f"Production Workspace Data Factory: {workspace_datafactory}")
