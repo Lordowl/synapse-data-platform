@@ -44,6 +44,33 @@ if ($tauriVersion -ne $Version -or $cargoVersion -ne $Version) {
 }
 Write-Host "Versioni allineate su $Version" -ForegroundColor Green
 
+# --- Sidecar sdp-api --------------------------------------------------------
+# L'API viaggia dentro l'installer come sidecar Tauri (externalBin) e nulla nella
+# build la rigenera: npm run tauri build impacchetta l'exe che trova. Se e' piu'
+# vecchio dei sorgenti .py la release esce con un backend datato, senza errori.
+$sidecar = "src-tauri\binaries\sdp-api-x86_64-pc-windows-msvc.exe"
+if (-not (Test-Path $sidecar)) {
+    Write-Host "ERRORE: sidecar mancante: $sidecar" -ForegroundColor Red
+    exit 1
+}
+
+$ultimoPy = Get-ChildItem ..\sdp-api -Recurse -Filter *.py |
+    Where-Object { $_.FullName -notmatch '\\(venv|build|dist|__pycache__)\\' } |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+
+if ($ultimoPy -and $ultimoPy.LastWriteTime -gt (Get-Item $sidecar).LastWriteTime) {
+    Write-Host "ERRORE: il sidecar non contiene le ultime modifiche Python." -ForegroundColor Red
+    Write-Host "  piu' recente : $($ultimoPy.Name) - $($ultimoPy.LastWriteTime)"
+    Write-Host "  sidecar      : $((Get-Item $sidecar).LastWriteTime)"
+    Write-Host ""
+    Write-Host "Rigeneralo con:"
+    Write-Host "  cd ..\sdp-api"
+    Write-Host "  .\venv\Scripts\python.exe -m PyInstaller sdp-api.spec --noconfirm --clean"
+    Write-Host "  Copy-Item dist\sdp-api.exe ..\sdp-app\$sidecar -Force"
+    exit 1
+}
+Write-Host "Sidecar sdp-api aggiornato rispetto ai sorgenti" -ForegroundColor Green
+
 # --- Installer --------------------------------------------------------------
 $bundleDir = "src-tauri\target\release\bundle\nsis"
 $exeName = "Cruscotto Operativo_${Version}_x64-setup.exe"
