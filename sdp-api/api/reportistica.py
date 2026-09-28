@@ -2122,8 +2122,16 @@ async def publish_precheck(
             row[1] for row in results
             if row[1] and len(row) > 3 and str(row[3] or "").strip().upper() == "Y"
         }
-        final_packages = [pkg for pkg in pbi_packages if pkg in mandatory_packages]
+        # I package finali fanno parte di OGNI esecuzione, non solo di quelle che li
+        # hanno in selezione: il rilancio dei soli package in errore manda come
+        # selected_packages soltanto quelli, e ricavare i finali dalla selezione
+        # lasciava la lista vuota, cosi' Homepage non veniva piu' riaggiornata dopo
+        # la correzione degli input.
+        final_packages = [pkg for pkg in all_packages if pkg in mandatory_packages]
         normal_packages = [pkg for pkg in pbi_packages if pkg not in mandatory_packages]
+        # Da pbi_packages escono i publication_logs per package, i contatori e la
+        # risposta: va tenuta allineata o l'esito dei finali non arriverebbe in UI.
+        pbi_packages = normal_packages + final_packages
 
         # Package che a DB non sono verdi per il periodo selezionato e non sono
         # rilanciati ora (in errore o mai eseguiti): bloccano i package finali.
@@ -2387,7 +2395,21 @@ async def publish_precheck(
             logger.info("Salvando log per pubblicazione settimanale")
 
             for package_name in pbi_packages:
-                package_detail = packages_details.get(package_name, stdout if returncode == 0 else stderr)
+                # Senza un esito specifico si ricadeva sullo stdout di tutta la run:
+                # contenendo i "successo" degli altri package poteva dipingere di verde
+                # un package che non era mai stato verificato. Meglio un errore
+                # esplicito; lo stdout resta nei log dello script.
+                if package_name in packages_details:
+                    package_detail = packages_details[package_name]
+                else:
+                    package_detail = (
+                        "Errore: nessun esito riportato per questo package, "
+                        "esecuzione interrotta prima della verifica."
+                    )
+                    logger.warning(
+                        f"Nessun esito per '{package_name}' nel RESULT dello script: "
+                        f"lo segno in errore."
+                    )
 
                 log_entry = models.PublicationLog(
                     bank=current_user.bank,
@@ -2568,8 +2590,16 @@ async def publish_production(
             row[1] for row in results
             if row[1] and len(row) > 3 and str(row[3] or "").strip().upper() == "Y"
         }
-        final_packages = [pkg for pkg in pbi_packages if pkg in mandatory_packages]
+        # I package finali fanno parte di OGNI esecuzione, non solo di quelle che li
+        # hanno in selezione: il rilancio dei soli package in errore manda come
+        # selected_packages soltanto quelli, e ricavare i finali dalla selezione
+        # lasciava la lista vuota, cosi' Homepage non veniva piu' riaggiornata dopo
+        # la correzione degli input.
+        final_packages = [pkg for pkg in all_packages if pkg in mandatory_packages]
         normal_packages = [pkg for pkg in pbi_packages if pkg not in mandatory_packages]
+        # Da pbi_packages escono i publication_logs per package, i contatori e la
+        # risposta: va tenuta allineata o l'esito dei finali non arriverebbe in UI.
+        pbi_packages = normal_packages + final_packages
 
         # Package che a DB non sono verdi per il periodo selezionato e non sono
         # rilanciati ora (in errore o mai eseguiti): bloccano i package finali.
@@ -2782,7 +2812,21 @@ async def publish_production(
             logger.info("Salvando log per pubblicazione settimanale PRODUCTION")
 
             for package_name in pbi_packages:
-                package_detail = packages_details.get(package_name, stdout if returncode == 0 else stderr)
+                # Senza un esito specifico si ricadeva sullo stdout di tutta la run:
+                # contenendo i "successo" degli altri package poteva dipingere di verde
+                # un package che non era mai stato verificato. Meglio un errore
+                # esplicito; lo stdout resta nei log dello script.
+                if package_name in packages_details:
+                    package_detail = packages_details[package_name]
+                else:
+                    package_detail = (
+                        "Errore: nessun esito riportato per questo package, "
+                        "esecuzione interrotta prima della verifica."
+                    )
+                    logger.warning(
+                        f"Nessun esito per '{package_name}' nel RESULT dello script: "
+                        f"lo segno in errore."
+                    )
 
                 log_entry = models.PublicationLog(
                     bank=current_user.bank,

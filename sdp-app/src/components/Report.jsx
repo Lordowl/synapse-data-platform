@@ -1064,6 +1064,15 @@ function Report() {
 
     const errorPackageNames = packagesWithErrors.map(p => p.package);
 
+    // I package obbligatori (Homepage) entrano in ogni esecuzione: aggregano i dati
+    // degli altri, quindi dopo la correzione di un errore vanno riaggiornati anche
+    // loro. Il backend li aggiunge comunque, ma includerli qui rende la richiesta
+    // uguale a quella della pubblicazione manuale invece di dichiarare il falso.
+    const packagesDaRilanciare = new Set(errorPackageNames);
+    publicationData
+      .filter(pkg => pkg.obbligatorio)
+      .forEach(pkg => packagesDaRilanciare.add(pkg.package));
+
     // Determina se rilanciare pre-check o prod in base allo stato degli errori
     // Se ci sono errori in prod, rilancia prod; altrimenti rilancia pre-check
     const hasProductionErrors = packagesWithErrors.some(p => p.prod === 'error' || p.prod === 'timeout');
@@ -1074,7 +1083,8 @@ function Report() {
     try {
       showToast(`Rilancio ${errorPackageNames.length} package con errori...`, "info");
 
-      const packagesParams = errorPackageNames.map(pkg => `selected_packages=${encodeURIComponent(pkg)}`).join('&');
+      const packagesParams = Array.from(packagesDaRilanciare)
+        .map(pkg => `selected_packages=${encodeURIComponent(pkg)}`).join('&');
       const endpoint = hasProductionErrors ? 'publish-production' : 'publish-precheck';
       const response = await apiClient.post(`/reportistica/${endpoint}?periodicity=${currentPeriodicity}&${packagesParams}`);
 
